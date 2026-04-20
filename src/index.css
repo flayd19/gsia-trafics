@@ -1,0 +1,480 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+/* ============================================================
+ * GSIA TRAFICS — iOS Operations Design System
+ * Light-first. Mobile-first. Apple HIG-inspired.
+ * Paleta: canvas #F2F2F7, surface #FFFFFF, accent #007AFF,
+ *         success #34C759, danger #FF3B30, warning #FF9500.
+ * ============================================================ */
+
+@layer base {
+  :root {
+    /* --- Canvas & Surfaces (iOS Operations) --- */
+    --background: 240 22% 96%;        /* #F2F2F7  canvas */
+    --foreground: 240 6% 10%;         /* near-black ink */
+
+    --card: 0 0% 100%;                /* #FFFFFF surface */
+    --card-foreground: 240 6% 10%;
+
+    --popover: 0 0% 100%;
+    --popover-foreground: 240 6% 10%;
+
+    /* --- Borders / inputs / focus rings --- */
+    --border: 240 8% 88%;             /* hairline */
+    --input: 240 8% 92%;
+    --ring: 211 100% 50%;             /* iOS blue ring */
+
+    /* --- iOS Accent (blue) as primary --- */
+    --primary: 211 100% 50%;          /* #007AFF */
+    --primary-foreground: 0 0% 100%;
+
+    /* --- Secondary = indigo tint --- */
+    --secondary: 240 40% 62%;
+    --secondary-foreground: 0 0% 100%;
+
+    /* --- Status colors iOS --- */
+    --success: 135 59% 49%;           /* #34C759 */
+    --success-foreground: 0 0% 100%;
+
+    --danger: 4 100% 61%;              /* #FF3B30 */
+    --danger-foreground: 0 0% 100%;
+
+    --destructive: 4 100% 61%;
+    --destructive-foreground: 0 0% 100%;
+
+    --warning: 32 100% 50%;            /* #FF9500 */
+    --warning-foreground: 0 0% 100%;
+
+    /* --- Neutral / muted --- */
+    --muted: 240 12% 95%;              /* near canvas */
+    --muted-foreground: 240 4% 46%;    /* iOS secondaryLabel */
+
+    --accent: 211 100% 50%;
+    --accent-foreground: 0 0% 100%;
+
+    /* --- Raio iOS Operations --- */
+    --radius: 16px;                    /* default card radius */
+    --radius-sm: 8px;
+    --radius-md: 12px;
+    --radius-lg: 20px;
+    --radius-xl: 28px;
+
+    /* --- Gold de sistema (mantido pro tema Luxo/Premium antigo) --- */
+    --gold: 45 86% 57%;
+
+    /* --- Sombra iOS (soft, realista) --- */
+    --shadow-xs: 0 1px 2px hsl(240 6% 10% / 0.04);
+    --shadow-sm: 0 1px 3px hsl(240 6% 10% / 0.06), 0 1px 2px hsl(240 6% 10% / 0.04);
+    --shadow-md: 0 4px 12px hsl(240 6% 10% / 0.06), 0 2px 4px hsl(240 6% 10% / 0.04);
+    --shadow-lg: 0 12px 32px hsl(240 6% 10% / 0.08), 0 4px 8px hsl(240 6% 10% / 0.05);
+
+    /* --- Gradientes suaves iOS --- */
+    --gradient-primary: linear-gradient(135deg, hsl(211 100% 55%), hsl(211 100% 48%));
+    --gradient-success: linear-gradient(135deg, hsl(135 59% 54%), hsl(135 59% 45%));
+    --gradient-danger:  linear-gradient(135deg, hsl(4 100% 65%), hsl(4 100% 56%));
+    --gradient-warning: linear-gradient(135deg, hsl(32 100% 55%), hsl(32 100% 46%));
+    --gradient-card:    linear-gradient(180deg, hsl(0 0% 100%), hsl(240 20% 99%));
+    --gradient-bg:      radial-gradient(1200px 600px at 50% -10%, hsl(211 100% 96%), hsl(240 22% 96%));
+
+    /* --- Glow (bem sutil, só pra focus/active) --- */
+    --glow-primary: 0 0 0 4px hsl(211 100% 50% / 0.18);
+    --glow-success: 0 0 0 4px hsl(135 59% 49% / 0.18);
+    --glow-danger:  0 0 0 4px hsl(4 100% 61% / 0.18);
+
+    /* --- Alvos de toque iOS --- */
+    --touch-target: 44px;
+
+    /* --- Safe area do iOS (notch/home indicator) --- */
+    --safe-top:    env(safe-area-inset-top);
+    --safe-bottom: env(safe-area-inset-bottom);
+    --safe-left:   env(safe-area-inset-left);
+    --safe-right:  env(safe-area-inset-right);
+
+    /* --- Tab bar height --- */
+    --tab-bar-height: 64px;
+  }
+
+  /* Mantemos a classe .dark mas o design é light-first.
+     Se alguém alternar pra dark, cai num surface escuro coerente. */
+  .dark {
+    --background: 240 6% 10%;
+    --foreground: 0 0% 95%;
+    --card: 240 6% 14%;
+    --card-foreground: 0 0% 95%;
+    --popover: 240 6% 14%;
+    --popover-foreground: 0 0% 95%;
+    --border: 240 4% 22%;
+    --input: 240 4% 18%;
+    --muted: 240 4% 18%;
+    --muted-foreground: 240 4% 65%;
+    --gradient-bg: linear-gradient(180deg, hsl(240 6% 10%), hsl(240 6% 12%));
+    --gradient-card: linear-gradient(180deg, hsl(240 6% 14%), hsl(240 6% 16%));
+  }
+}
+
+@layer base {
+  * {
+    @apply border-border;
+  }
+
+  html, body, #root {
+    height: 100%;
+  }
+
+  html {
+    /* impede ajustes de fonte automáticos no iOS em landscape */
+    -webkit-text-size-adjust: 100%;
+    text-size-adjust: 100%;
+  }
+
+  body {
+    @apply bg-background text-foreground antialiased;
+    background: var(--gradient-bg);
+    background-attachment: fixed;
+    font-family:
+      -apple-system, BlinkMacSystemFont,
+      'SF Pro Text', 'SF Pro Display',
+      'Inter', 'Segoe UI', Roboto,
+      'Helvetica Neue', Arial, sans-serif;
+    font-weight: 400;
+    font-feature-settings: 'cv02','cv03','cv04','cv11';
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
+    overflow-x: hidden;
+  }
+
+  /* Tipografia: SF Pro Display pro título, Text pro resto */
+  .font-game-title,
+  h1, h2, h3 {
+    font-family:
+      -apple-system, BlinkMacSystemFont,
+      'SF Pro Display',
+      'Inter', 'Segoe UI', Roboto, sans-serif;
+    font-weight: 700;
+    letter-spacing: -0.01em;
+  }
+
+  .font-game-ui {
+    font-family:
+      -apple-system, BlinkMacSystemFont,
+      'SF Pro Text',
+      'Inter', 'Segoe UI', Roboto, sans-serif;
+    font-weight: 600;
+    letter-spacing: -0.005em;
+  }
+
+  /* Números em colunas alinhadas (HUD, dinheiro, contadores) */
+  .tabular-nums,
+  .font-mono {
+    font-variant-numeric: tabular-nums;
+    font-family:
+      ui-monospace, 'SF Mono', 'JetBrains Mono',
+      Menlo, Consolas, monospace;
+  }
+
+  /* Links e botões sem highlight de toque feio no iOS */
+  a, button, [role="button"] {
+    -webkit-tap-highlight-color: transparent;
+  }
+
+  /* Nunca deixa o input dar zoom no iOS (<16px faz o Safari zoomar) */
+  input, select, textarea {
+    font-size: 16px;
+  }
+}
+
+@layer components {
+  /* ============================================================
+   * Surfaces — estilo iOS "grouped"
+   * ============================================================ */
+  .ios-surface {
+    background: hsl(var(--card));
+    border-radius: var(--radius);
+    box-shadow: var(--shadow-sm);
+    border: 1px solid hsl(var(--border));
+  }
+
+  .ios-surface-elevated {
+    background: hsl(var(--card));
+    border-radius: var(--radius);
+    box-shadow: var(--shadow-lg);
+    border: 1px solid hsl(var(--border) / 0.6);
+  }
+
+  /* Glass (usado em top/bottom bars) */
+  .ios-glass {
+    background: hsl(0 0% 100% / 0.72);
+    backdrop-filter: saturate(180%) blur(20px);
+    -webkit-backdrop-filter: saturate(180%) blur(20px);
+    border: 1px solid hsl(var(--border) / 0.6);
+  }
+
+  /* ============================================================
+   * Aliases de compat — mantemos as classes legadas do jogo
+   * (.game-card, .btn-gaming, .hud-element, .tab-glow, .progress-gaming)
+   * funcionando com o visual novo, sem reescrever cada tela.
+   * ============================================================ */
+  .game-card {
+    @apply bg-card text-card-foreground;
+    background: var(--gradient-card);
+    border: 1px solid hsl(var(--border));
+    border-radius: var(--radius);
+    box-shadow: var(--shadow-sm);
+    transition: box-shadow 0.2s ease, transform 0.2s ease;
+  }
+  .game-card:hover {
+    box-shadow: var(--shadow-md);
+  }
+  .game-card:active {
+    transform: scale(0.995);
+  }
+
+  .btn-gaming {
+    @apply font-game-ui font-semibold tracking-wide text-white;
+    background: var(--gradient-primary);
+    border-radius: var(--radius-md);
+    padding: 10px 16px;
+    min-height: var(--touch-target);
+    transition: transform 0.15s ease, box-shadow 0.15s ease, filter 0.15s ease;
+  }
+  .btn-gaming:hover { filter: brightness(1.05); }
+  .btn-gaming:active {
+    transform: scale(0.97);
+    box-shadow: var(--glow-primary);
+  }
+
+  .hud-element {
+    @apply font-game-ui font-semibold text-sm;
+    background: hsl(var(--card));
+    border: 1px solid hsl(var(--border));
+    border-radius: var(--radius-sm);
+    padding: 6px 10px;
+    min-height: 32px;
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    color: hsl(var(--foreground));
+  }
+
+  /* Glow helpers — agora sombra iOS-ish, não neon */
+  .glow-primary  { box-shadow: var(--shadow-md); }
+  .glow-secondary{ box-shadow: var(--shadow-md); }
+  .glow-accent   { box-shadow: var(--shadow-md); }
+  .glow-danger   { box-shadow: var(--shadow-md); }
+
+  /* Animação "pulse-glow" antiga — no iOS usamos pulso suave, sem neon */
+  .pulse-glow {
+    animation: pulse-ios 2.2s ease-in-out infinite;
+  }
+
+  @keyframes pulse-ios {
+    0%, 100% { box-shadow: 0 0 0 0 hsl(var(--primary) / 0.22); }
+    50%      { box-shadow: 0 0 0 6px hsl(var(--primary) / 0.00); }
+  }
+
+  /* Tab bar item (legado) */
+  .tab-glow {
+    transition: background 0.2s ease, color 0.2s ease, transform 0.15s ease;
+    border-radius: var(--radius-md);
+  }
+  .tab-glow.active {
+    background: hsl(var(--primary) / 0.10);
+    color: hsl(var(--primary));
+  }
+  .tab-glow:active { transform: scale(0.96); }
+
+  /* Progress bar estilo iOS */
+  .progress-gaming {
+    background: hsl(var(--muted));
+    border: none;
+    border-radius: 999px;
+    overflow: hidden;
+    position: relative;
+  }
+  .progress-gaming::before {
+    content: '';
+    position: absolute;
+    inset: 0;
+    background: linear-gradient(90deg,
+      transparent,
+      hsl(var(--primary) / 0.15),
+      transparent);
+    animation: shimmer 2.2s linear infinite;
+  }
+  @keyframes shimmer {
+    0%   { transform: translateX(-100%); }
+    100% { transform: translateX(100%); }
+  }
+
+  /* ============================================================
+   * iOS Tab Bar (bottom navigation)
+   * ============================================================ */
+  .ios-tab-bar {
+    position: fixed;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    z-index: 50;
+    padding-bottom: var(--safe-bottom);
+    padding-left: var(--safe-left);
+    padding-right: var(--safe-right);
+    background: hsl(0 0% 100% / 0.82);
+    backdrop-filter: saturate(180%) blur(20px);
+    -webkit-backdrop-filter: saturate(180%) blur(20px);
+    border-top: 1px solid hsl(var(--border) / 0.8);
+  }
+
+  .ios-tab-item {
+    @apply flex flex-col items-center justify-center gap-1;
+    flex: 1 1 0;
+    min-height: var(--tab-bar-height);
+    color: hsl(var(--muted-foreground));
+    font-size: 10px;
+    font-weight: 600;
+    padding: 6px 4px;
+    transition: color 0.15s ease, transform 0.15s ease;
+    -webkit-user-select: none;
+    user-select: none;
+  }
+  .ios-tab-item[data-active="true"] {
+    color: hsl(var(--primary));
+  }
+  .ios-tab-item:active {
+    transform: scale(0.94);
+  }
+
+  /* ============================================================
+   * iOS Top "Nav Bar" (header)
+   * ============================================================ */
+  .ios-nav-bar {
+    position: sticky;
+    top: 0;
+    z-index: 40;
+    padding-top: var(--safe-top);
+    padding-left: calc(var(--safe-left) + 16px);
+    padding-right: calc(var(--safe-right) + 16px);
+    background: hsl(0 0% 100% / 0.82);
+    backdrop-filter: saturate(180%) blur(20px);
+    -webkit-backdrop-filter: saturate(180%) blur(20px);
+    border-bottom: 1px solid hsl(var(--border) / 0.8);
+  }
+
+  /* ============================================================
+   * iOS "pill" buttons + secondary/ghost
+   * ============================================================ */
+  .ios-btn {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: 6px;
+    min-height: var(--touch-target);
+    padding: 10px 16px;
+    font-weight: 600;
+    font-size: 15px;
+    border-radius: var(--radius-md);
+    transition: transform 0.12s ease, background 0.15s ease, filter 0.15s ease;
+    -webkit-user-select: none;
+    user-select: none;
+  }
+  .ios-btn:active { transform: scale(0.97); }
+
+  .ios-btn-primary {
+    background: hsl(var(--primary));
+    color: hsl(var(--primary-foreground));
+  }
+  .ios-btn-primary:hover { filter: brightness(1.05); }
+
+  .ios-btn-success {
+    background: hsl(var(--success));
+    color: hsl(var(--success-foreground));
+  }
+  .ios-btn-danger {
+    background: hsl(var(--danger));
+    color: hsl(var(--danger-foreground));
+  }
+  .ios-btn-secondary {
+    background: hsl(var(--muted));
+    color: hsl(var(--foreground));
+  }
+  .ios-btn-ghost {
+    background: transparent;
+    color: hsl(var(--primary));
+  }
+
+  /* ============================================================
+   * Safe area utilities
+   * ============================================================ */
+  .safe-area-inset-top    { padding-top: var(--safe-top); }
+  .safe-area-inset-bottom { padding-bottom: var(--safe-bottom); }
+  .safe-area-inset-x {
+    padding-left: var(--safe-left);
+    padding-right: var(--safe-right);
+  }
+
+  /* Espaço embaixo pra conteúdo não ficar atrás da tab bar */
+  .pb-tabbar {
+    padding-bottom: calc(var(--tab-bar-height) + var(--safe-bottom) + 8px);
+  }
+
+  /* ============================================================
+   * Scroll helpers
+   * ============================================================ */
+  .no-scrollbar::-webkit-scrollbar { display: none; }
+  .no-scrollbar { -ms-overflow-style: none; scrollbar-width: none; }
+
+  .smooth-scroll { -webkit-overflow-scrolling: touch; }
+
+  /* ============================================================
+   * Touch / mobile quality-of-life
+   * ============================================================ */
+  .touch-manipulation {
+    touch-action: manipulation;
+    -webkit-tap-highlight-color: transparent;
+    -webkit-user-select: none;
+    user-select: none;
+  }
+
+  button, input[type="submit"], input[type="button"] {
+    -webkit-appearance: none;
+    appearance: none;
+  }
+}
+
+/* ============================================================
+ * Viewport-specific: mobile refinements
+ * ============================================================ */
+@media (max-width: 768px) {
+  .min-h-screen {
+    min-height: 100vh;
+    min-height: 100dvh;
+  }
+
+  .hud-element {
+    font-size: 11px;
+    padding: 4px 8px;
+    min-height: 30px;
+  }
+
+  .animate-scale-in:active {
+    transform: scale(0.97);
+  }
+}
+
+/* Ultra-small (<= 375px) — iPhone SE */
+@media (max-width: 375px) {
+  .hud-element {
+    font-size: 10px;
+    padding: 3px 6px;
+    min-height: 26px;
+  }
+}
+
+/* PWA standalone: user está no app "instalado". Remove qualquer margem
+   de chrome e reforça que não há barra do browser. */
+@media all and (display-mode: standalone) {
+  body {
+    overscroll-behavior-y: contain;
+  }
+}

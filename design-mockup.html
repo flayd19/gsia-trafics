@@ -1,0 +1,1885 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>GSIA Operations — Design Mockup</title>
+<style>
+  /* =========================================================
+     DESIGN TOKENS — Apple iOS / macOS inspired
+     ========================================================= */
+  :root {
+    /* Canvas & Surfaces */
+    --bg-canvas: #F2F2F7;
+    --bg-surface: #FFFFFF;
+    --bg-elevated: #FFFFFF;
+    --bg-grouped: #F2F2F7;
+    --bg-glass: rgba(255, 255, 255, 0.72);
+    --bg-glass-dark: rgba(28, 28, 30, 0.72);
+
+    /* Text */
+    --text-primary: #1C1C1E;
+    --text-secondary: #3A3A3C;
+    --text-tertiary: #8E8E93;
+    --text-quaternary: #C7C7CC;
+    --text-inverse: #FFFFFF;
+
+    /* Accent — iOS Blue */
+    --accent-50:  #EBF5FF;
+    --accent-100: #D1E9FF;
+    --accent-300: #66B0FF;
+    --accent-500: #007AFF;
+    --accent-600: #0062CC;
+    --accent-700: #004999;
+
+    /* Semantic */
+    --success-100: #D1F4DD;
+    --success-500: #34C759;
+    --success-700: #1F7A36;
+
+    --danger-100: #FFDDDB;
+    --danger-500: #FF3B30;
+    --danger-700: #A6231B;
+
+    --warning-100: #FFE8C2;
+    --warning-500: #FF9500;
+    --warning-700: #A35F00;
+
+    --purple-500: #AF52DE;
+    --teal-500:   #5AC8FA;
+    --pink-500:   #FF2D55;
+
+    /* Borders & Separators */
+    --border-hairline: rgba(60, 60, 67, 0.12);
+    --border-subtle:  rgba(60, 60, 67, 0.18);
+    --border-strong:  rgba(60, 60, 67, 0.29);
+
+    /* Radii */
+    --radius-sm: 8px;
+    --radius-md: 12px;
+    --radius-lg: 16px;
+    --radius-xl: 20px;
+    --radius-2xl: 28px;
+    --radius-pill: 999px;
+
+    /* Shadows */
+    --shadow-sm: 0 1px 2px rgba(0, 0, 0, 0.04), 0 1px 1px rgba(0, 0, 0, 0.03);
+    --shadow-md: 0 4px 12px rgba(0, 0, 0, 0.06), 0 1px 3px rgba(0, 0, 0, 0.04);
+    --shadow-lg: 0 12px 32px rgba(0, 0, 0, 0.08), 0 4px 8px rgba(0, 0, 0, 0.04);
+    --shadow-xl: 0 24px 48px rgba(0, 0, 0, 0.10), 0 8px 16px rgba(0, 0, 0, 0.05);
+    --shadow-focus: 0 0 0 4px rgba(0, 122, 255, 0.25);
+
+    /* Type */
+    --font-display: -apple-system, BlinkMacSystemFont, "SF Pro Display", "Inter", "Helvetica Neue", Arial, sans-serif;
+    --font-text: -apple-system, BlinkMacSystemFont, "SF Pro Text", "Inter", "Helvetica Neue", Arial, sans-serif;
+    --font-mono: "SF Mono", ui-monospace, "JetBrains Mono", "Menlo", Consolas, monospace;
+
+    /* Motion */
+    --ease-out: cubic-bezier(0.22, 1, 0.36, 1);
+    --ease-spring: cubic-bezier(0.34, 1.56, 0.64, 1);
+    --dur-fast: 120ms;
+    --dur-base: 220ms;
+    --dur-slow: 420ms;
+
+    /* Layout */
+    --sidebar-w: 268px;
+    --topbar-h: 56px;
+  }
+
+  * { box-sizing: border-box; }
+  html, body { margin: 0; padding: 0; }
+
+  body {
+    font-family: var(--font-text);
+    background: var(--bg-canvas);
+    color: var(--text-primary);
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
+    font-size: 15px;
+    line-height: 1.45;
+    letter-spacing: -0.011em;
+    overflow: hidden;
+  }
+
+  /* Numbers: monospaced figures */
+  .num, .currency, td.num, .stat-value {
+    font-variant-numeric: tabular-nums;
+    font-feature-settings: "tnum" 1, "cv11" 1;
+  }
+
+  /* Typography scale */
+  h1, h2, h3, h4 { font-family: var(--font-display); letter-spacing: -0.022em; margin: 0; }
+  h1 { font-size: 34px; font-weight: 700; line-height: 1.1; }
+  h2 { font-size: 28px; font-weight: 700; line-height: 1.15; }
+  h3 { font-size: 22px; font-weight: 600; line-height: 1.2; }
+  h4 { font-size: 17px; font-weight: 600; line-height: 1.3; }
+  .caption { font-size: 12px; color: var(--text-tertiary); letter-spacing: 0; }
+  .subhead { font-size: 13px; color: var(--text-secondary); }
+  .label-upper { font-size: 11px; text-transform: uppercase; letter-spacing: 0.06em; color: var(--text-tertiary); font-weight: 600; }
+
+  /* =========================================================
+     APP SHELL
+     ========================================================= */
+  .app {
+    display: grid;
+    grid-template-columns: var(--sidebar-w) 1fr;
+    height: 100vh;
+    width: 100vw;
+  }
+
+  /* Sidebar — glass blur, vertical nav */
+  .sidebar {
+    background: var(--bg-glass);
+    backdrop-filter: saturate(180%) blur(20px);
+    -webkit-backdrop-filter: saturate(180%) blur(20px);
+    border-right: 1px solid var(--border-hairline);
+    padding: 20px 12px;
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+    overflow-y: auto;
+  }
+
+  .brand {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    padding: 8px 12px 20px;
+    border-bottom: 1px solid var(--border-hairline);
+    margin-bottom: 12px;
+  }
+  .brand-mark {
+    width: 36px; height: 36px;
+    border-radius: 10px;
+    background: linear-gradient(135deg, var(--accent-500), #5AC8FA);
+    display: grid; place-items: center;
+    color: white; font-weight: 700; font-size: 16px;
+    box-shadow: var(--shadow-md);
+  }
+  .brand-text { font-family: var(--font-display); font-weight: 600; font-size: 15px; letter-spacing: -0.015em; }
+  .brand-text small { display: block; font-size: 11px; color: var(--text-tertiary); font-weight: 400; }
+
+  .nav-section-label {
+    font-size: 11px; font-weight: 600; letter-spacing: 0.06em; text-transform: uppercase;
+    color: var(--text-tertiary);
+    padding: 16px 14px 8px;
+  }
+
+  .nav-item {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    padding: 10px 12px;
+    border-radius: var(--radius-md);
+    cursor: pointer;
+    color: var(--text-secondary);
+    font-size: 14px;
+    font-weight: 500;
+    transition: background var(--dur-fast) var(--ease-out), color var(--dur-fast) var(--ease-out), transform var(--dur-fast) var(--ease-out);
+    user-select: none;
+    position: relative;
+  }
+  .nav-item:hover { background: rgba(0,0,0,0.035); color: var(--text-primary); }
+  .nav-item:active { transform: scale(0.98); }
+  .nav-item.active {
+    background: var(--accent-500);
+    color: white;
+    box-shadow: 0 2px 8px rgba(0,122,255,0.28);
+  }
+  .nav-item.active .nav-icon { color: white; }
+  .nav-icon { width: 20px; height: 20px; display: grid; place-items: center; color: var(--text-tertiary); font-size: 16px; }
+  .nav-item.active .nav-icon { color: white; }
+  .nav-badge {
+    margin-left: auto;
+    background: var(--danger-500);
+    color: white;
+    font-size: 11px;
+    font-weight: 700;
+    padding: 2px 7px;
+    border-radius: var(--radius-pill);
+    min-width: 20px;
+    text-align: center;
+    line-height: 1.3;
+  }
+  .nav-item.active .nav-badge { background: rgba(255,255,255,0.28); }
+
+  .sidebar-footer {
+    margin-top: auto;
+    padding-top: 12px;
+    border-top: 1px solid var(--border-hairline);
+  }
+  .user-chip {
+    display: flex; align-items: center; gap: 10px;
+    padding: 8px 10px;
+    border-radius: var(--radius-md);
+    cursor: pointer;
+    transition: background var(--dur-fast) var(--ease-out);
+  }
+  .user-chip:hover { background: rgba(0,0,0,0.035); }
+  .avatar {
+    width: 32px; height: 32px; border-radius: 50%;
+    background: linear-gradient(135deg, #FF9500, #FF2D55);
+    color: white; display: grid; place-items: center; font-weight: 600; font-size: 13px;
+  }
+  .user-name { font-size: 13px; font-weight: 600; line-height: 1.2; }
+  .user-role { font-size: 11px; color: var(--text-tertiary); }
+
+  /* Main area */
+  .main {
+    display: flex; flex-direction: column;
+    overflow: hidden;
+    background: var(--bg-canvas);
+  }
+
+  /* Topbar */
+  .topbar {
+    height: var(--topbar-h);
+    display: flex; align-items: center; gap: 16px;
+    padding: 0 24px;
+    background: var(--bg-glass);
+    backdrop-filter: saturate(180%) blur(20px);
+    -webkit-backdrop-filter: saturate(180%) blur(20px);
+    border-bottom: 1px solid var(--border-hairline);
+    position: sticky; top: 0; z-index: 10;
+  }
+  .topbar .title { font-family: var(--font-display); font-size: 17px; font-weight: 600; }
+  .topbar .breadcrumb { color: var(--text-tertiary); font-size: 13px; }
+  .topbar-spacer { flex: 1; }
+
+  .search {
+    position: relative;
+    width: 320px;
+  }
+  .search input {
+    width: 100%;
+    height: 34px;
+    border: none;
+    border-radius: var(--radius-md);
+    background: rgba(118, 118, 128, 0.12);
+    padding: 0 14px 0 34px;
+    font-size: 13px;
+    font-family: inherit;
+    color: var(--text-primary);
+    outline: none;
+    transition: box-shadow var(--dur-fast) var(--ease-out), background var(--dur-fast) var(--ease-out);
+  }
+  .search input:focus { box-shadow: var(--shadow-focus); background: var(--bg-surface); }
+  .search .search-ico {
+    position: absolute; left: 11px; top: 50%; transform: translateY(-50%);
+    color: var(--text-tertiary); font-size: 14px;
+  }
+  .topbar-btn {
+    width: 34px; height: 34px;
+    border-radius: var(--radius-md);
+    border: none;
+    background: transparent;
+    cursor: pointer;
+    display: grid; place-items: center;
+    color: var(--text-secondary);
+    transition: background var(--dur-fast) var(--ease-out);
+    position: relative;
+    font-size: 16px;
+  }
+  .topbar-btn:hover { background: rgba(0,0,0,0.05); }
+  .topbar-btn .dot {
+    position: absolute; top: 6px; right: 6px;
+    width: 8px; height: 8px; border-radius: 50%;
+    background: var(--danger-500);
+    border: 1.5px solid var(--bg-glass);
+  }
+
+  /* Content wrapper */
+  .content {
+    flex: 1;
+    overflow-y: auto;
+    padding: 24px 32px 48px;
+  }
+
+  .screen { display: none; animation: fadeIn var(--dur-base) var(--ease-out); }
+  .screen.active { display: block; }
+  @keyframes fadeIn {
+    from { opacity: 0; transform: translateY(6px); }
+    to { opacity: 1; transform: translateY(0); }
+  }
+
+  /* =========================================================
+     COMPONENTS
+     ========================================================= */
+  .page-header {
+    display: flex; align-items: flex-end; justify-content: space-between;
+    margin-bottom: 24px;
+    gap: 16px;
+  }
+  .page-header p { margin: 6px 0 0; color: var(--text-tertiary); font-size: 14px; }
+
+  .btn {
+    font-family: inherit;
+    font-size: 14px; font-weight: 600;
+    padding: 9px 16px;
+    border-radius: var(--radius-md);
+    border: none;
+    cursor: pointer;
+    display: inline-flex; align-items: center; gap: 8px;
+    transition: transform var(--dur-fast) var(--ease-out), box-shadow var(--dur-fast) var(--ease-out), background var(--dur-fast) var(--ease-out), color var(--dur-fast) var(--ease-out);
+    letter-spacing: -0.01em;
+  }
+  .btn:active { transform: scale(0.97); }
+
+  .btn-primary {
+    background: var(--accent-500); color: white;
+    box-shadow: 0 1px 2px rgba(0,122,255,0.22), 0 2px 6px rgba(0,122,255,0.16);
+  }
+  .btn-primary:hover { background: var(--accent-600); }
+  .btn-primary:focus { outline: none; box-shadow: var(--shadow-focus); }
+
+  .btn-secondary {
+    background: rgba(0,122,255,0.10); color: var(--accent-500);
+  }
+  .btn-secondary:hover { background: rgba(0,122,255,0.16); }
+
+  .btn-ghost {
+    background: transparent; color: var(--text-secondary);
+  }
+  .btn-ghost:hover { background: rgba(0,0,0,0.05); color: var(--text-primary); }
+
+  .btn-danger {
+    background: var(--danger-500); color: white;
+  }
+  .btn-danger:hover { background: var(--danger-700); }
+
+  .btn-sm { padding: 6px 12px; font-size: 13px; }
+  .btn-lg { padding: 12px 22px; font-size: 15px; }
+
+  /* Card */
+  .card {
+    background: var(--bg-surface);
+    border-radius: var(--radius-lg);
+    border: 1px solid var(--border-hairline);
+    padding: 20px;
+    box-shadow: var(--shadow-sm);
+    transition: box-shadow var(--dur-base) var(--ease-out), transform var(--dur-base) var(--ease-out);
+  }
+  .card.hover:hover { box-shadow: var(--shadow-md); transform: translateY(-1px); }
+  .card-header {
+    display: flex; align-items: center; justify-content: space-between;
+    margin-bottom: 16px;
+  }
+  .card-title { font-size: 15px; font-weight: 600; letter-spacing: -0.015em; }
+  .card-subtitle { font-size: 12px; color: var(--text-tertiary); }
+
+  /* Stat card */
+  .stat {
+    display: flex; flex-direction: column; gap: 4px;
+  }
+  .stat-label { font-size: 12px; color: var(--text-tertiary); font-weight: 500; }
+  .stat-value {
+    font-family: var(--font-display);
+    font-size: 28px; font-weight: 700;
+    letter-spacing: -0.025em;
+  }
+  .stat-delta {
+    display: inline-flex; align-items: center; gap: 4px;
+    font-size: 12px; font-weight: 600;
+    margin-top: 4px;
+  }
+  .stat-delta.up { color: var(--success-500); }
+  .stat-delta.down { color: var(--danger-500); }
+
+  .grid-4 { display: grid; grid-template-columns: repeat(4, 1fr); gap: 16px; }
+  .grid-3 { display: grid; grid-template-columns: repeat(3, 1fr); gap: 16px; }
+  .grid-2 { display: grid; grid-template-columns: 1.4fr 1fr; gap: 16px; }
+
+  /* Tag / Status */
+  .tag {
+    display: inline-flex; align-items: center; gap: 6px;
+    padding: 3px 10px;
+    border-radius: var(--radius-pill);
+    font-size: 11px; font-weight: 600;
+    letter-spacing: 0.01em;
+  }
+  .tag-success { background: var(--success-100); color: var(--success-700); }
+  .tag-danger  { background: var(--danger-100);  color: var(--danger-700); }
+  .tag-warning { background: var(--warning-100); color: var(--warning-700); }
+  .tag-info    { background: var(--accent-100);  color: var(--accent-700); }
+  .tag-neutral { background: rgba(118,118,128,0.14); color: var(--text-secondary); }
+  .tag-dot { width: 6px; height: 6px; border-radius: 50%; background: currentColor; }
+
+  /* Table */
+  .table-wrap {
+    background: var(--bg-surface);
+    border-radius: var(--radius-lg);
+    border: 1px solid var(--border-hairline);
+    overflow: hidden;
+  }
+  table { width: 100%; border-collapse: collapse; }
+  thead th {
+    text-align: left;
+    font-size: 11px;
+    font-weight: 600;
+    letter-spacing: 0.06em;
+    text-transform: uppercase;
+    color: var(--text-tertiary);
+    padding: 12px 16px;
+    background: var(--bg-canvas);
+    border-bottom: 1px solid var(--border-hairline);
+  }
+  thead th.right { text-align: right; }
+  tbody td {
+    padding: 14px 16px;
+    font-size: 14px;
+    border-bottom: 1px solid var(--border-hairline);
+    color: var(--text-primary);
+    vertical-align: middle;
+  }
+  tbody tr:last-child td { border-bottom: none; }
+  tbody tr { transition: background var(--dur-fast) var(--ease-out); cursor: pointer; }
+  tbody tr:hover { background: rgba(0,122,255,0.04); }
+  td.right { text-align: right; }
+
+  .mini-id {
+    font-family: var(--font-mono);
+    font-size: 12px;
+    color: var(--text-tertiary);
+    background: rgba(118,118,128,0.10);
+    padding: 2px 6px;
+    border-radius: 4px;
+  }
+
+  /* Input */
+  .input {
+    width: 100%;
+    height: 38px;
+    border: 1px solid var(--border-subtle);
+    border-radius: var(--radius-md);
+    padding: 0 14px;
+    font-size: 14px;
+    font-family: inherit;
+    color: var(--text-primary);
+    background: var(--bg-surface);
+    outline: none;
+    transition: box-shadow var(--dur-fast) var(--ease-out), border-color var(--dur-fast) var(--ease-out);
+  }
+  .input:focus { box-shadow: var(--shadow-focus); border-color: var(--accent-500); }
+  .field-label { font-size: 12px; font-weight: 600; color: var(--text-secondary); margin-bottom: 6px; display: block; }
+
+  /* Toggle (iOS-style) */
+  .ios-toggle {
+    appearance: none;
+    width: 51px; height: 31px;
+    border-radius: var(--radius-pill);
+    background: rgba(120,120,128,0.16);
+    position: relative;
+    cursor: pointer;
+    transition: background var(--dur-base) var(--ease-out);
+    flex-shrink: 0;
+  }
+  .ios-toggle::after {
+    content: '';
+    position: absolute;
+    top: 2px; left: 2px;
+    width: 27px; height: 27px;
+    border-radius: 50%;
+    background: white;
+    box-shadow: 0 3px 8px rgba(0,0,0,0.15), 0 1px 2px rgba(0,0,0,0.08);
+    transition: transform var(--dur-base) var(--ease-spring);
+  }
+  .ios-toggle:checked { background: var(--success-500); }
+  .ios-toggle:checked::after { transform: translateX(20px); }
+
+  /* Segmented control */
+  .segmented {
+    display: inline-flex;
+    background: rgba(118,118,128,0.12);
+    padding: 2px;
+    border-radius: var(--radius-md);
+    gap: 0;
+  }
+  .segmented button {
+    border: none; background: transparent;
+    font-family: inherit; font-size: 13px; font-weight: 500;
+    padding: 6px 14px;
+    border-radius: calc(var(--radius-md) - 2px);
+    cursor: pointer;
+    color: var(--text-secondary);
+    transition: background var(--dur-fast) var(--ease-out), color var(--dur-fast) var(--ease-out), box-shadow var(--dur-fast) var(--ease-out);
+  }
+  .segmented button.active {
+    background: var(--bg-surface);
+    color: var(--text-primary);
+    box-shadow: 0 1px 2px rgba(0,0,0,0.08), 0 1px 1px rgba(0,0,0,0.04);
+    font-weight: 600;
+  }
+
+  /* iOS Grouped List */
+  .group-list {
+    background: var(--bg-surface);
+    border-radius: var(--radius-lg);
+    overflow: hidden;
+    border: 1px solid var(--border-hairline);
+  }
+  .group-list-header {
+    font-size: 11px;
+    text-transform: uppercase;
+    font-weight: 600;
+    letter-spacing: 0.06em;
+    color: var(--text-tertiary);
+    padding: 14px 4px 8px;
+  }
+  .group-row {
+    display: flex; align-items: center; gap: 12px;
+    padding: 12px 16px;
+    border-bottom: 1px solid var(--border-hairline);
+    cursor: pointer;
+    transition: background var(--dur-fast) var(--ease-out);
+  }
+  .group-row:last-child { border-bottom: none; }
+  .group-row:hover { background: rgba(0,0,0,0.02); }
+  .group-ico {
+    width: 28px; height: 28px; border-radius: 6px;
+    display: grid; place-items: center;
+    color: white; font-size: 14px;
+    flex-shrink: 0;
+  }
+  .group-label { flex: 1; font-size: 14px; color: var(--text-primary); font-weight: 500; }
+  .group-value { color: var(--text-tertiary); font-size: 13px; }
+  .group-chevron { color: var(--text-quaternary); font-size: 12px; }
+
+  /* HUD card (glass) */
+  .hud {
+    background: var(--bg-glass);
+    backdrop-filter: saturate(180%) blur(20px);
+    -webkit-backdrop-filter: saturate(180%) blur(20px);
+    border: 1px solid var(--border-hairline);
+    border-radius: var(--radius-xl);
+    padding: 16px 20px;
+    box-shadow: var(--shadow-md);
+  }
+
+  /* Progress bar */
+  .progress {
+    width: 100%; height: 6px;
+    background: rgba(118,118,128,0.12);
+    border-radius: var(--radius-pill);
+    overflow: hidden;
+  }
+  .progress-fill {
+    height: 100%;
+    background: linear-gradient(90deg, var(--accent-500), var(--teal-500));
+    border-radius: var(--radius-pill);
+    transition: width var(--dur-slow) var(--ease-out);
+  }
+  .progress-fill.warn { background: linear-gradient(90deg, var(--warning-500), var(--danger-500)); }
+  .progress-fill.ok { background: linear-gradient(90deg, var(--success-500), var(--teal-500)); }
+
+  /* Chart container */
+  .chart { width: 100%; height: 200px; }
+
+  /* Alert item */
+  .alert-item {
+    display: flex; gap: 12px; padding: 14px 16px;
+    border-bottom: 1px solid var(--border-hairline);
+    cursor: pointer;
+    transition: background var(--dur-fast) var(--ease-out);
+  }
+  .alert-item:last-child { border-bottom: none; }
+  .alert-item:hover { background: rgba(0,0,0,0.02); }
+  .alert-icon {
+    width: 36px; height: 36px; border-radius: 10px;
+    display: grid; place-items: center;
+    color: white; flex-shrink: 0;
+    font-size: 16px;
+  }
+  .alert-body { flex: 1; min-width: 0; }
+  .alert-title { font-size: 14px; font-weight: 600; color: var(--text-primary); margin-bottom: 2px; }
+  .alert-desc { font-size: 13px; color: var(--text-tertiary); line-height: 1.4; }
+  .alert-time { font-size: 11px; color: var(--text-quaternary); white-space: nowrap; }
+
+  /* Misc */
+  .divider { height: 1px; background: var(--border-hairline); margin: 20px 0; }
+  .spacer-16 { height: 16px; }
+  .spacer-24 { height: 24px; }
+  .row { display: flex; gap: 12px; align-items: center; }
+  .col { display: flex; flex-direction: column; gap: 12px; }
+
+  /* =========================================================
+     MENU PRINCIPAL — Full-screen splash
+     ========================================================= */
+  #screen-menu.screen { padding-top: 0; }
+  .menu-hero {
+    background: linear-gradient(135deg, #EBF5FF 0%, #F5F5F7 50%, #FFF1E0 100%);
+    border-radius: var(--radius-2xl);
+    padding: 48px 40px;
+    border: 1px solid var(--border-hairline);
+    margin-bottom: 24px;
+    position: relative;
+    overflow: hidden;
+  }
+  .menu-hero::before {
+    content: '';
+    position: absolute; top: -80px; right: -80px;
+    width: 320px; height: 320px;
+    background: radial-gradient(circle, rgba(0,122,255,0.18), transparent 70%);
+    border-radius: 50%;
+  }
+  .menu-hero::after {
+    content: '';
+    position: absolute; bottom: -120px; left: -40px;
+    width: 280px; height: 280px;
+    background: radial-gradient(circle, rgba(255,45,85,0.12), transparent 70%);
+    border-radius: 50%;
+  }
+  .menu-hero h1 { position: relative; font-size: 44px; letter-spacing: -0.03em; }
+  .menu-hero p { position: relative; color: var(--text-secondary); font-size: 16px; max-width: 540px; margin: 12px 0 28px; }
+  .menu-cta-row { position: relative; display: flex; gap: 12px; flex-wrap: wrap; }
+  .menu-cards { display: grid; grid-template-columns: repeat(3, 1fr); gap: 16px; }
+  .menu-card {
+    background: var(--bg-surface);
+    border-radius: var(--radius-xl);
+    padding: 24px;
+    border: 1px solid var(--border-hairline);
+    cursor: pointer;
+    transition: transform var(--dur-base) var(--ease-out), box-shadow var(--dur-base) var(--ease-out);
+    position: relative;
+    overflow: hidden;
+  }
+  .menu-card:hover { transform: translateY(-3px); box-shadow: var(--shadow-lg); }
+  .menu-card-ico {
+    width: 48px; height: 48px; border-radius: 14px;
+    display: grid; place-items: center;
+    color: white; margin-bottom: 16px; font-size: 22px;
+    box-shadow: 0 6px 14px rgba(0,0,0,0.12);
+  }
+  .menu-card h4 { font-size: 17px; margin-bottom: 4px; }
+  .menu-card p { font-size: 13px; color: var(--text-tertiary); line-height: 1.45; margin: 0; }
+
+  /* =========================================================
+     MAP (Screen 6)
+     ========================================================= */
+  .map-container {
+    background: linear-gradient(135deg, #E5EFFF 0%, #F0F8FF 50%, #E8F7FF 100%);
+    border-radius: var(--radius-lg);
+    height: 360px;
+    position: relative;
+    overflow: hidden;
+    border: 1px solid var(--border-hairline);
+  }
+  .map-grid {
+    position: absolute; inset: 0;
+    background-image:
+      linear-gradient(rgba(0,122,255,0.06) 1px, transparent 1px),
+      linear-gradient(90deg, rgba(0,122,255,0.06) 1px, transparent 1px);
+    background-size: 32px 32px;
+  }
+  .map-node {
+    position: absolute;
+    width: 16px; height: 16px;
+    border-radius: 50%;
+    border: 3px solid white;
+    box-shadow: 0 2px 8px rgba(0,0,0,0.15);
+    transform: translate(-50%, -50%);
+    cursor: pointer;
+    transition: transform var(--dur-fast) var(--ease-out);
+  }
+  .map-node:hover { transform: translate(-50%, -50%) scale(1.3); }
+  .map-node.origin { background: var(--success-500); }
+  .map-node.dest { background: var(--danger-500); }
+  .map-node.waypoint { background: var(--warning-500); width: 12px; height: 12px; }
+
+  .map-legend {
+    position: absolute;
+    bottom: 16px; left: 16px;
+    background: var(--bg-glass);
+    backdrop-filter: blur(20px);
+    -webkit-backdrop-filter: blur(20px);
+    border: 1px solid var(--border-hairline);
+    border-radius: var(--radius-md);
+    padding: 10px 14px;
+    font-size: 12px;
+    display: flex; gap: 14px;
+  }
+  .legend-dot { display: inline-flex; align-items: center; gap: 6px; color: var(--text-secondary); }
+  .legend-dot::before {
+    content: ''; width: 8px; height: 8px; border-radius: 50%;
+  }
+  .legend-dot.origin::before { background: var(--success-500); }
+  .legend-dot.dest::before   { background: var(--danger-500); }
+  .legend-dot.wp::before     { background: var(--warning-500); }
+
+  /* Stock bar */
+  .stock-bar {
+    display: flex; align-items: center; gap: 12px;
+    padding: 12px 0;
+    border-bottom: 1px solid var(--border-hairline);
+  }
+  .stock-bar:last-child { border-bottom: none; }
+  .stock-ico {
+    width: 36px; height: 36px;
+    border-radius: 10px;
+    background: var(--accent-50);
+    display: grid; place-items: center;
+    font-size: 18px;
+  }
+  .stock-name { flex: 1; font-size: 14px; font-weight: 500; }
+  .stock-qty { font-size: 13px; color: var(--text-tertiary); margin-right: 8px; min-width: 70px; text-align: right; }
+  .stock-progress { width: 120px; }
+
+  /* Scrollbar */
+  *::-webkit-scrollbar { width: 10px; height: 10px; }
+  *::-webkit-scrollbar-track { background: transparent; }
+  *::-webkit-scrollbar-thumb { background: rgba(0,0,0,0.15); border-radius: 8px; border: 2px solid transparent; background-clip: padding-box; }
+  *::-webkit-scrollbar-thumb:hover { background: rgba(0,0,0,0.25); background-clip: padding-box; }
+
+  /* Bottom sheet (Compras detail) */
+  .bottom-sheet {
+    position: absolute;
+    bottom: 0; left: 0; right: 0;
+    background: var(--bg-surface);
+    border-top-left-radius: var(--radius-2xl);
+    border-top-right-radius: var(--radius-2xl);
+    padding: 24px 28px 28px;
+    box-shadow: 0 -24px 48px rgba(0,0,0,0.08);
+    transform: translateY(calc(100% - 80px));
+    transition: transform var(--dur-slow) var(--ease-spring);
+  }
+  .bottom-sheet.open { transform: translateY(0); }
+  .bottom-sheet-handle {
+    width: 44px; height: 4px; border-radius: 2px;
+    background: var(--text-quaternary);
+    margin: 0 auto 20px;
+    cursor: grab;
+  }
+
+</style>
+</head>
+<body>
+
+<div class="app">
+
+  <!-- =====================================================
+       SIDEBAR
+       ===================================================== -->
+  <aside class="sidebar">
+    <div class="brand">
+      <div class="brand-mark">G</div>
+      <div class="brand-text">
+        GSIA Ops
+        <small>Operations Panel</small>
+      </div>
+    </div>
+
+    <div class="nav-section-label">Navegação</div>
+    <div class="nav-item active" data-target="menu"><span class="nav-icon">◉</span> Menu Principal</div>
+    <div class="nav-item" data-target="dashboard"><span class="nav-icon">▦</span> Dashboard</div>
+    <div class="nav-item" data-target="purchases"><span class="nav-icon">⇣</span> Compras</div>
+    <div class="nav-item" data-target="sales"><span class="nav-icon">⇡</span> Vendas</div>
+    <div class="nav-item" data-target="inventory"><span class="nav-icon">▤</span> Inventário</div>
+    <div class="nav-item" data-target="map"><span class="nav-icon">◈</span> Mapa / Logística</div>
+
+    <div class="nav-section-label">Sistema</div>
+    <div class="nav-item" data-target="alerts"><span class="nav-icon">●</span> Alertas / Eventos <span class="nav-badge">3</span></div>
+    <div class="nav-item" data-target="settings"><span class="nav-icon">⚙</span> Configurações</div>
+
+    <div class="sidebar-footer">
+      <div class="user-chip">
+        <div class="avatar">AL</div>
+        <div>
+          <div class="user-name">Alife</div>
+          <div class="user-role">Operador · Online</div>
+        </div>
+      </div>
+    </div>
+  </aside>
+
+  <!-- =====================================================
+       MAIN
+       ===================================================== -->
+  <main class="main">
+
+    <!-- Topbar -->
+    <div class="topbar">
+      <div class="title" id="topbar-title">Menu Principal</div>
+      <div class="breadcrumb">GSIA / Operações / <span id="topbar-crumb">Menu</span></div>
+      <div class="topbar-spacer"></div>
+      <div class="search">
+        <span class="search-ico">⌕</span>
+        <input placeholder="Buscar operação, produto, comprador…" />
+      </div>
+      <button class="topbar-btn" title="Notificações">◉<span class="dot"></span></button>
+      <button class="topbar-btn" title="Ajuda">?</button>
+    </div>
+
+    <!-- Content -->
+    <div class="content">
+
+      <!-- ================================================
+           SCREEN 1 · MENU PRINCIPAL
+           ================================================ -->
+      <section class="screen active" id="screen-menu">
+        <div class="menu-hero">
+          <h1>Bem-vindo de volta, Alife.</h1>
+          <p>Sua operação está <strong>estável</strong>. 4 entregas em trânsito, 2 oportunidades de mercado abertas e <strong>R$ 184.320</strong> em caixa disponíveis.</p>
+          <div class="menu-cta-row">
+            <button class="btn btn-primary btn-lg" onclick="navigateTo('dashboard')">Continuar Operação  →</button>
+            <button class="btn btn-secondary btn-lg">Nova Sessão</button>
+            <button class="btn btn-ghost btn-lg">Importar Save</button>
+          </div>
+        </div>
+
+        <div class="menu-cards">
+          <div class="menu-card" onclick="navigateTo('purchases')">
+            <div class="menu-card-ico" style="background: linear-gradient(135deg,#007AFF,#5AC8FA);">⇣</div>
+            <h4>Compras</h4>
+            <p>Encontre lotes com preços abaixo da média do mercado e negocie com fornecedores.</p>
+          </div>
+          <div class="menu-card" onclick="navigateTo('sales')">
+            <div class="menu-card-ico" style="background: linear-gradient(135deg,#34C759,#5AC8FA);">⇡</div>
+            <h4>Vendas</h4>
+            <p>Gerencie buyers ativos, contra-ofertas e margens por região em tempo real.</p>
+          </div>
+          <div class="menu-card" onclick="navigateTo('inventory')">
+            <div class="menu-card-ico" style="background: linear-gradient(135deg,#FF9500,#FF3B30);">▤</div>
+            <h4>Inventário</h4>
+            <p>Visualize estoque por galpão, capacidade ocupada e produtos com risco de perda.</p>
+          </div>
+          <div class="menu-card" onclick="navigateTo('map')">
+            <div class="menu-card-ico" style="background: linear-gradient(135deg,#AF52DE,#007AFF);">◈</div>
+            <h4>Mapa</h4>
+            <p>Acompanhe frotas em trânsito, pontos de interceptação e rotas alternativas.</p>
+          </div>
+          <div class="menu-card" onclick="navigateTo('alerts')">
+            <div class="menu-card-ico" style="background: linear-gradient(135deg,#FF3B30,#FF2D55);">●</div>
+            <h4>Alertas</h4>
+            <p>Eventos críticos: apreensões, batidas, oscilações de preço, acordos pendentes.</p>
+          </div>
+          <div class="menu-card" onclick="navigateTo('settings')">
+            <div class="menu-card-ico" style="background: linear-gradient(135deg,#8E8E93,#3A3A3C);">⚙</div>
+            <h4>Configurações</h4>
+            <p>Perfil, preferências de interface, sync de nuvem, exportação de dados e backups.</p>
+          </div>
+        </div>
+      </section>
+
+      <!-- ================================================
+           SCREEN 2 · DASHBOARD
+           ================================================ -->
+      <section class="screen" id="screen-dashboard">
+        <div class="page-header">
+          <div>
+            <h1>Dashboard</h1>
+            <p>Visão geral da sua operação em tempo real · Atualizado agora</p>
+          </div>
+          <div class="segmented">
+            <button class="active">Hoje</button>
+            <button>7 dias</button>
+            <button>30 dias</button>
+            <button>Ciclo</button>
+          </div>
+        </div>
+
+        <div class="grid-4">
+          <div class="card">
+            <div class="stat-label">Caixa disponível</div>
+            <div class="stat-value num">R$ 184.320</div>
+            <div class="stat-delta up">▲ 12,4% vs ontem</div>
+          </div>
+          <div class="card">
+            <div class="stat-label">Receita do ciclo</div>
+            <div class="stat-value num">R$ 892.140</div>
+            <div class="stat-delta up">▲ 3,8%</div>
+          </div>
+          <div class="card">
+            <div class="stat-label">Margem líquida</div>
+            <div class="stat-value num">28,4%</div>
+            <div class="stat-delta down">▼ 1,2 p.p.</div>
+          </div>
+          <div class="card">
+            <div class="stat-label">Entregas ativas</div>
+            <div class="stat-value num">4 / 12</div>
+            <div class="stat-delta up">▲ 2 em trânsito</div>
+          </div>
+        </div>
+
+        <div class="spacer-24"></div>
+
+        <div class="grid-2">
+          <div class="card">
+            <div class="card-header">
+              <div>
+                <div class="card-title">Receita vs Custo</div>
+                <div class="card-subtitle">Últimos 14 dias · BRL</div>
+              </div>
+              <div class="segmented">
+                <button class="active">Linha</button>
+                <button>Barra</button>
+              </div>
+            </div>
+            <svg class="chart" viewBox="0 0 560 200" preserveAspectRatio="none">
+              <!-- Grid -->
+              <g stroke="rgba(60,60,67,0.10)" stroke-width="1">
+                <line x1="0" y1="40" x2="560" y2="40" />
+                <line x1="0" y1="80" x2="560" y2="80" />
+                <line x1="0" y1="120" x2="560" y2="120" />
+                <line x1="0" y1="160" x2="560" y2="160" />
+              </g>
+              <!-- Revenue area -->
+              <defs>
+                <linearGradient id="revGrad" x1="0" y1="0" x2="0" y2="1">
+                  <stop offset="0%" stop-color="#007AFF" stop-opacity="0.28"/>
+                  <stop offset="100%" stop-color="#007AFF" stop-opacity="0"/>
+                </linearGradient>
+                <linearGradient id="costGrad" x1="0" y1="0" x2="0" y2="1">
+                  <stop offset="0%" stop-color="#FF3B30" stop-opacity="0.18"/>
+                  <stop offset="100%" stop-color="#FF3B30" stop-opacity="0"/>
+                </linearGradient>
+              </defs>
+              <path d="M0,140 C40,120 80,100 120,95 C160,90 200,70 240,60 C280,50 320,65 360,50 C400,35 440,30 480,25 C520,20 540,18 560,15 L560,200 L0,200 Z" fill="url(#revGrad)"/>
+              <path d="M0,140 C40,120 80,100 120,95 C160,90 200,70 240,60 C280,50 320,65 360,50 C400,35 440,30 480,25 C520,20 540,18 560,15" fill="none" stroke="#007AFF" stroke-width="2.5" stroke-linecap="round"/>
+
+              <path d="M0,170 C40,165 80,160 120,155 C160,150 200,145 240,140 C280,135 320,130 360,125 C400,122 440,118 480,112 C520,108 540,105 560,102 L560,200 L0,200 Z" fill="url(#costGrad)"/>
+              <path d="M0,170 C40,165 80,160 120,155 C160,150 200,145 240,140 C280,135 320,130 360,125 C400,122 440,118 480,112 C520,108 540,105 560,102" fill="none" stroke="#FF3B30" stroke-width="2" stroke-dasharray="4 3" stroke-linecap="round"/>
+            </svg>
+            <div class="row" style="margin-top:8px; font-size:12px; color: var(--text-tertiary);">
+              <span class="legend-dot" style="color:#007AFF;">● Receita</span>
+              <span class="legend-dot" style="color:#FF3B30;">● Custos operacionais</span>
+            </div>
+          </div>
+
+          <div class="card">
+            <div class="card-header">
+              <div class="card-title">Distribuição por Produto</div>
+              <button class="btn btn-ghost btn-sm">Ver detalhes</button>
+            </div>
+            <svg class="chart" viewBox="0 0 220 200" style="height:180px;">
+              <circle cx="110" cy="100" r="70" fill="none" stroke="rgba(60,60,67,0.08)" stroke-width="26"/>
+              <!-- Segments with stroke-dasharray trick -->
+              <circle cx="110" cy="100" r="70" fill="none" stroke="#007AFF" stroke-width="26"
+                stroke-dasharray="175 440" stroke-dashoffset="0" transform="rotate(-90 110 100)"/>
+              <circle cx="110" cy="100" r="70" fill="none" stroke="#34C759" stroke-width="26"
+                stroke-dasharray="110 440" stroke-dashoffset="-175" transform="rotate(-90 110 100)"/>
+              <circle cx="110" cy="100" r="70" fill="none" stroke="#FF9500" stroke-width="26"
+                stroke-dasharray="80 440" stroke-dashoffset="-285" transform="rotate(-90 110 100)"/>
+              <circle cx="110" cy="100" r="70" fill="none" stroke="#AF52DE" stroke-width="26"
+                stroke-dasharray="75 440" stroke-dashoffset="-365" transform="rotate(-90 110 100)"/>
+              <text x="110" y="95" text-anchor="middle" font-family="-apple-system" font-size="11" fill="#8E8E93" font-weight="500">Total</text>
+              <text x="110" y="115" text-anchor="middle" font-family="-apple-system" font-size="20" font-weight="700" fill="#1C1C1E">18.420 un</text>
+            </svg>
+            <div style="display:grid; grid-template-columns:1fr 1fr; gap:6px 14px; font-size:12px; margin-top:4px;">
+              <div><span style="display:inline-block;width:8px;height:8px;background:#007AFF;border-radius:2px;margin-right:6px;"></span>Eletrônicos 40%</div>
+              <div><span style="display:inline-block;width:8px;height:8px;background:#34C759;border-radius:2px;margin-right:6px;"></span>Têxteis 25%</div>
+              <div><span style="display:inline-block;width:8px;height:8px;background:#FF9500;border-radius:2px;margin-right:6px;"></span>Bebidas 18%</div>
+              <div><span style="display:inline-block;width:8px;height:8px;background:#AF52DE;border-radius:2px;margin-right:6px;"></span>Outros 17%</div>
+            </div>
+          </div>
+        </div>
+
+        <div class="spacer-24"></div>
+
+        <div class="card">
+          <div class="card-header">
+            <div>
+              <div class="card-title">Operações Recentes</div>
+              <div class="card-subtitle">Últimas 24h</div>
+            </div>
+            <button class="btn btn-secondary btn-sm">Exportar CSV</button>
+          </div>
+          <div class="table-wrap" style="border-radius: var(--radius-md);">
+            <table>
+              <thead>
+                <tr>
+                  <th>ID</th>
+                  <th>Operação</th>
+                  <th>Produto</th>
+                  <th class="right">Qtd</th>
+                  <th class="right">Valor</th>
+                  <th>Status</th>
+                  <th>Hora</th>
+                </tr>
+              </thead>
+              <tbody>
+                <tr>
+                  <td><span class="mini-id">#A49FB2</span></td>
+                  <td>Venda</td>
+                  <td>iPhones grade A</td>
+                  <td class="right num">240</td>
+                  <td class="right num">R$ 186.400</td>
+                  <td><span class="tag tag-success"><span class="tag-dot"></span>Concluída</span></td>
+                  <td class="num">14:22</td>
+                </tr>
+                <tr>
+                  <td><span class="mini-id">#F23E10</span></td>
+                  <td>Compra</td>
+                  <td>Cigarros importados</td>
+                  <td class="right num">1.200</td>
+                  <td class="right num">R$ 48.000</td>
+                  <td><span class="tag tag-warning"><span class="tag-dot"></span>Em trânsito</span></td>
+                  <td class="num">13:48</td>
+                </tr>
+                <tr>
+                  <td><span class="mini-id">#B71C55</span></td>
+                  <td>Venda</td>
+                  <td>Whisky 12 anos</td>
+                  <td class="right num">84</td>
+                  <td class="right num">R$ 62.160</td>
+                  <td><span class="tag tag-info"><span class="tag-dot"></span>Negociando</span></td>
+                  <td class="num">12:31</td>
+                </tr>
+                <tr>
+                  <td><span class="mini-id">#C8D440</span></td>
+                  <td>Compra</td>
+                  <td>Perfumes luxo</td>
+                  <td class="right num">60</td>
+                  <td class="right num">R$ 12.000</td>
+                  <td><span class="tag tag-danger"><span class="tag-dot"></span>Apreendida</span></td>
+                  <td class="num">11:05</td>
+                </tr>
+                <tr>
+                  <td><span class="mini-id">#E01F9A</span></td>
+                  <td>Venda</td>
+                  <td>Tênis esportivo</td>
+                  <td class="right num">320</td>
+                  <td class="right num">R$ 96.000</td>
+                  <td><span class="tag tag-success"><span class="tag-dot"></span>Concluída</span></td>
+                  <td class="num">09:47</td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
+        </div>
+      </section>
+
+      <!-- ================================================
+           SCREEN 3 · COMPRAS
+           ================================================ -->
+      <section class="screen" id="screen-purchases">
+        <div class="page-header">
+          <div>
+            <h1>Compras</h1>
+            <p>Lotes disponíveis, abaixo da cotação de mercado</p>
+          </div>
+          <div class="row">
+            <div class="segmented">
+              <button class="active">Todos</button>
+              <button>Eletrônicos</button>
+              <button>Bebidas</button>
+              <button>Têxteis</button>
+            </div>
+            <button class="btn btn-primary">+ Nova Oferta</button>
+          </div>
+        </div>
+
+        <div class="grid-3">
+          <div class="card hover" onclick="toggleSheet(true)">
+            <div class="row" style="justify-content:space-between;">
+              <span class="tag tag-success"><span class="tag-dot"></span>-18% mercado</span>
+              <span class="caption">São Paulo · 320 km</span>
+            </div>
+            <h3 style="margin: 16px 0 6px;">iPhones 15 Pro · Grade A</h3>
+            <p class="caption" style="margin:0;">Lote fechado · Selado de fábrica · Nota fria</p>
+            <div class="divider"></div>
+            <div class="row" style="justify-content:space-between; align-items:flex-end;">
+              <div>
+                <div class="stat-label">Unitário</div>
+                <div class="stat-value num" style="font-size:22px;">R$ 3.200</div>
+              </div>
+              <div style="text-align:right;">
+                <div class="stat-label">Qtd disponível</div>
+                <div class="num" style="font-weight:600; font-size:16px;">240 un</div>
+              </div>
+            </div>
+            <div class="row" style="margin-top:16px; gap:8px;">
+              <button class="btn btn-primary" style="flex:1;">Negociar</button>
+              <button class="btn btn-ghost">☆</button>
+            </div>
+          </div>
+
+          <div class="card hover">
+            <div class="row" style="justify-content:space-between;">
+              <span class="tag tag-warning"><span class="tag-dot"></span>Risco médio</span>
+              <span class="caption">Rio · 860 km</span>
+            </div>
+            <h3 style="margin: 16px 0 6px;">Whisky 12 anos · Lote 400</h3>
+            <p class="caption" style="margin:0;">Garrafas seladas · Origem Uruguai</p>
+            <div class="divider"></div>
+            <div class="row" style="justify-content:space-between; align-items:flex-end;">
+              <div>
+                <div class="stat-label">Unitário</div>
+                <div class="stat-value num" style="font-size:22px;">R$ 480</div>
+              </div>
+              <div style="text-align:right;">
+                <div class="stat-label">Qtd disponível</div>
+                <div class="num" style="font-weight:600; font-size:16px;">400 un</div>
+              </div>
+            </div>
+            <div class="row" style="margin-top:16px; gap:8px;">
+              <button class="btn btn-primary" style="flex:1;">Negociar</button>
+              <button class="btn btn-ghost">☆</button>
+            </div>
+          </div>
+
+          <div class="card hover">
+            <div class="row" style="justify-content:space-between;">
+              <span class="tag tag-info"><span class="tag-dot"></span>Premium</span>
+              <span class="caption">Curitiba · 440 km</span>
+            </div>
+            <h3 style="margin: 16px 0 6px;">Perfumes Importados</h3>
+            <p class="caption" style="margin:0;">Chanel, Dior · Frascos 100ml</p>
+            <div class="divider"></div>
+            <div class="row" style="justify-content:space-between; align-items:flex-end;">
+              <div>
+                <div class="stat-label">Unitário</div>
+                <div class="stat-value num" style="font-size:22px;">R$ 240</div>
+              </div>
+              <div style="text-align:right;">
+                <div class="stat-label">Qtd disponível</div>
+                <div class="num" style="font-weight:600; font-size:16px;">180 un</div>
+              </div>
+            </div>
+            <div class="row" style="margin-top:16px; gap:8px;">
+              <button class="btn btn-primary" style="flex:1;">Negociar</button>
+              <button class="btn btn-ghost">☆</button>
+            </div>
+          </div>
+        </div>
+
+        <div class="spacer-24"></div>
+
+        <div class="card">
+          <div class="card-header">
+            <div class="card-title">Mais Ofertas</div>
+            <div class="segmented">
+              <button class="active">Preço</button>
+              <button>Distância</button>
+              <button>Risco</button>
+            </div>
+          </div>
+          <div class="table-wrap" style="border-radius: var(--radius-md);">
+            <table>
+              <thead>
+                <tr>
+                  <th>Produto</th>
+                  <th>Fornecedor</th>
+                  <th>Origem</th>
+                  <th class="right">Unitário</th>
+                  <th class="right">Qtd</th>
+                  <th>Risco</th>
+                  <th></th>
+                </tr>
+              </thead>
+              <tbody>
+                <tr>
+                  <td>Cigarros importados (pack)</td><td>SN-118 <span class="mini-id">verificado</span></td><td>Foz do Iguaçu</td>
+                  <td class="right num">R$ 40</td><td class="right num">1.200</td>
+                  <td><span class="tag tag-warning"><span class="tag-dot"></span>Médio</span></td>
+                  <td class="right"><button class="btn btn-secondary btn-sm">Ver</button></td>
+                </tr>
+                <tr>
+                  <td>Tênis esportivo (par)</td><td>LG-402</td><td>Paraguai</td>
+                  <td class="right num">R$ 95</td><td class="right num">600</td>
+                  <td><span class="tag tag-success"><span class="tag-dot"></span>Baixo</span></td>
+                  <td class="right"><button class="btn btn-secondary btn-sm">Ver</button></td>
+                </tr>
+                <tr>
+                  <td>Óculos de sol (grife)</td><td>VS-217</td><td>Chile</td>
+                  <td class="right num">R$ 180</td><td class="right num">240</td>
+                  <td><span class="tag tag-success"><span class="tag-dot"></span>Baixo</span></td>
+                  <td class="right"><button class="btn btn-secondary btn-sm">Ver</button></td>
+                </tr>
+                <tr>
+                  <td>Camisas polo premium</td><td>MT-009</td><td>Argentina</td>
+                  <td class="right num">R$ 65</td><td class="right num">480</td>
+                  <td><span class="tag tag-danger"><span class="tag-dot"></span>Alto</span></td>
+                  <td class="right"><button class="btn btn-secondary btn-sm">Ver</button></td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
+        </div>
+      </section>
+
+      <!-- ================================================
+           SCREEN 4 · VENDAS / NEGOCIAÇÃO
+           ================================================ -->
+      <section class="screen" id="screen-sales">
+        <div class="page-header">
+          <div>
+            <h1>Vendas</h1>
+            <p>Buyers ativos aguardando negociação</p>
+          </div>
+          <div class="row">
+            <button class="btn btn-secondary">Vender Tudo</button>
+            <button class="btn btn-primary">+ Cotação</button>
+          </div>
+        </div>
+
+        <div class="grid-4">
+          <div class="card">
+            <div class="stat-label">Receita hoje</div>
+            <div class="stat-value num">R$ 344.560</div>
+            <div class="stat-delta up">▲ 9,4%</div>
+          </div>
+          <div class="card">
+            <div class="stat-label">Buyers ativos</div>
+            <div class="stat-value num">7</div>
+            <div class="stat-delta up">▲ 2 novos</div>
+          </div>
+          <div class="card">
+            <div class="stat-label">Ticket médio</div>
+            <div class="stat-value num">R$ 49.220</div>
+            <div class="stat-delta down">▼ 2,1%</div>
+          </div>
+          <div class="card">
+            <div class="stat-label">Taxa de fechamento</div>
+            <div class="stat-value num">72%</div>
+            <div class="stat-delta up">▲ 4 p.p.</div>
+          </div>
+        </div>
+
+        <div class="spacer-24"></div>
+
+        <div class="grid-2">
+          <div class="card">
+            <div class="card-header">
+              <div>
+                <div class="card-title">Negociação em andamento</div>
+                <div class="card-subtitle">Buyer RT-091 · SP</div>
+              </div>
+              <span class="tag tag-info"><span class="tag-dot"></span>Negociando</span>
+            </div>
+
+            <div style="background: var(--bg-canvas); border-radius: var(--radius-md); padding: 16px; margin-bottom: 16px;">
+              <div class="row" style="justify-content:space-between;">
+                <div>
+                  <div class="caption">Produto</div>
+                  <div style="font-weight:600; font-size:15px; margin-top:2px;">iPhones 15 Pro · 120 un</div>
+                </div>
+                <div style="text-align:right;">
+                  <div class="caption">Oferta atual</div>
+                  <div class="num" style="font-weight:700; font-size:18px; margin-top:2px;">R$ 3.780 /un</div>
+                </div>
+              </div>
+            </div>
+
+            <div style="font-size:13px; color: var(--text-tertiary); margin-bottom: 12px;">
+              <strong style="color: var(--text-primary);">Buyer:</strong> "Aceito 3.750 por unidade, fechamos em 120 e retiro amanhã cedo."
+            </div>
+
+            <div class="row" style="gap:8px; margin-bottom: 12px;">
+              <div style="flex:1;">
+                <label class="field-label">Contra-oferta (unitário)</label>
+                <input class="input num" value="3.820" />
+              </div>
+              <div style="flex:1;">
+                <label class="field-label">Quantidade</label>
+                <input class="input num" value="120" />
+              </div>
+            </div>
+
+            <div class="row" style="gap: 8px;">
+              <button class="btn btn-primary" style="flex:1;">Enviar contra-oferta</button>
+              <button class="btn btn-secondary">Aceitar oferta</button>
+              <button class="btn btn-ghost" style="color: var(--danger-500);">Recusar</button>
+            </div>
+          </div>
+
+          <div class="card">
+            <div class="card-header">
+              <div class="card-title">Fila de Buyers</div>
+              <span class="caption num">7 ativos</span>
+            </div>
+
+            <div style="display:flex; flex-direction:column; gap:4px;">
+              <div class="alert-item" style="padding: 12px 0; border-bottom: 1px solid var(--border-hairline);">
+                <div class="alert-icon" style="background:#34C759;">✓</div>
+                <div class="alert-body">
+                  <div class="alert-title">RT-091 · São Paulo</div>
+                  <div class="alert-desc">iPhones 15 · 120 un · R$ 3.750/un</div>
+                </div>
+                <div class="tag tag-info">Negociando</div>
+              </div>
+              <div class="alert-item" style="padding: 12px 0; border-bottom: 1px solid var(--border-hairline);">
+                <div class="alert-icon" style="background:#007AFF;">⌂</div>
+                <div class="alert-body">
+                  <div class="alert-title">VN-404 · Belo Horizonte</div>
+                  <div class="alert-desc">Whisky · 40 un · R$ 720/un</div>
+                </div>
+                <div class="tag tag-neutral">Aguardando</div>
+              </div>
+              <div class="alert-item" style="padding: 12px 0; border-bottom: 1px solid var(--border-hairline);">
+                <div class="alert-icon" style="background:#FF9500;">◎</div>
+                <div class="alert-body">
+                  <div class="alert-title">LZ-223 · Curitiba</div>
+                  <div class="alert-desc">Perfumes · 60 un · R$ 350/un</div>
+                </div>
+                <div class="tag tag-warning">Expira 8min</div>
+              </div>
+              <div class="alert-item" style="padding: 12px 0;">
+                <div class="alert-icon" style="background:#AF52DE;">★</div>
+                <div class="alert-body">
+                  <div class="alert-title">HG-517 · Rio de Janeiro</div>
+                  <div class="alert-desc">Tênis · 200 un · R$ 220/un</div>
+                </div>
+                <div class="tag tag-success">Pronto</div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <!-- ================================================
+           SCREEN 5 · INVENTÁRIO
+           ================================================ -->
+      <section class="screen" id="screen-inventory">
+        <div class="page-header">
+          <div>
+            <h1>Inventário</h1>
+            <p>Estoque consolidado · 3 galpões ativos</p>
+          </div>
+          <div class="row">
+            <div class="segmented">
+              <button class="active">Galpão Rua 36</button>
+              <button>Depósito Norte</button>
+              <button>Armazém Sul</button>
+            </div>
+          </div>
+        </div>
+
+        <div class="grid-3">
+          <div class="card">
+            <div class="card-header">
+              <div>
+                <div class="card-title">Capacidade</div>
+                <div class="card-subtitle">Rua 36 · m³</div>
+              </div>
+              <span class="tag tag-warning"><span class="tag-dot"></span>82% ocupado</span>
+            </div>
+            <div class="stat-value num" style="font-size:34px;">1.180 / 1.440</div>
+            <div class="progress" style="margin-top:16px;">
+              <div class="progress-fill warn" style="width:82%;"></div>
+            </div>
+            <div class="caption" style="margin-top:8px;">Espaço livre para 260 m³ adicionais</div>
+          </div>
+
+          <div class="card">
+            <div class="card-header">
+              <div class="card-title">Valor em Estoque</div>
+              <span class="caption">Custo de aquisição</span>
+            </div>
+            <div class="stat-value num" style="font-size:34px;">R$ 1,24M</div>
+            <div class="stat-delta up" style="margin-top:6px;">▲ R$ 86k · esta semana</div>
+            <div class="divider"></div>
+            <div class="row" style="justify-content:space-between;">
+              <span class="caption">Potencial de venda</span>
+              <span class="num" style="font-weight:600; color: var(--success-500);">R$ 1,78M</span>
+            </div>
+          </div>
+
+          <div class="card">
+            <div class="card-header">
+              <div class="card-title">Itens perecíveis</div>
+              <span class="tag tag-danger"><span class="tag-dot"></span>Atenção</span>
+            </div>
+            <div class="stat-value num" style="font-size:34px;">7</div>
+            <div class="caption" style="margin-top:4px;">produtos próximos da data limite</div>
+            <div class="divider"></div>
+            <button class="btn btn-secondary" style="width:100%;">Ver lotes críticos</button>
+          </div>
+        </div>
+
+        <div class="spacer-24"></div>
+
+        <div class="grid-2">
+          <div class="card">
+            <div class="card-header">
+              <div class="card-title">Distribuição por Produto</div>
+              <button class="btn btn-ghost btn-sm">Ver todos</button>
+            </div>
+            <div class="stock-bar">
+              <div class="stock-ico">🎧</div>
+              <div style="flex:1;">
+                <div class="stock-name">iPhones 15 Pro · Grade A</div>
+                <div class="caption">Eletrônicos</div>
+              </div>
+              <div class="stock-progress"><div class="progress"><div class="progress-fill ok" style="width:72%;"></div></div></div>
+              <div class="stock-qty num">360 un</div>
+            </div>
+            <div class="stock-bar">
+              <div class="stock-ico">🍾</div>
+              <div style="flex:1;">
+                <div class="stock-name">Whisky 12 anos</div>
+                <div class="caption">Bebidas</div>
+              </div>
+              <div class="stock-progress"><div class="progress"><div class="progress-fill" style="width:50%;"></div></div></div>
+              <div class="stock-qty num">240 un</div>
+            </div>
+            <div class="stock-bar">
+              <div class="stock-ico">👟</div>
+              <div style="flex:1;">
+                <div class="stock-name">Tênis esportivo</div>
+                <div class="caption">Têxteis</div>
+              </div>
+              <div class="stock-progress"><div class="progress"><div class="progress-fill" style="width:88%;"></div></div></div>
+              <div class="stock-qty num">1.200 un</div>
+            </div>
+            <div class="stock-bar">
+              <div class="stock-ico">🕶</div>
+              <div style="flex:1;">
+                <div class="stock-name">Óculos de sol</div>
+                <div class="caption">Acessórios</div>
+              </div>
+              <div class="stock-progress"><div class="progress"><div class="progress-fill" style="width:32%;"></div></div></div>
+              <div class="stock-qty num">180 un</div>
+            </div>
+            <div class="stock-bar">
+              <div class="stock-ico">💎</div>
+              <div style="flex:1;">
+                <div class="stock-name">Perfumes importados</div>
+                <div class="caption">Luxo</div>
+              </div>
+              <div class="stock-progress"><div class="progress"><div class="progress-fill warn" style="width:18%;"></div></div></div>
+              <div class="stock-qty num">60 un</div>
+            </div>
+          </div>
+
+          <div class="card">
+            <div class="card-header">
+              <div class="card-title">Movimentações</div>
+              <span class="caption">Últimas 24h</span>
+            </div>
+
+            <div class="alert-item" style="padding: 12px 0; border-bottom: 1px solid var(--border-hairline);">
+              <div class="alert-icon" style="background: var(--success-500);">↓</div>
+              <div class="alert-body">
+                <div class="alert-title">Entrada · iPhones 15 Pro</div>
+                <div class="alert-desc">+120 un · Fornecedor SN-118</div>
+              </div>
+              <div class="alert-time">há 2h</div>
+            </div>
+            <div class="alert-item" style="padding: 12px 0; border-bottom: 1px solid var(--border-hairline);">
+              <div class="alert-icon" style="background: var(--danger-500);">↑</div>
+              <div class="alert-body">
+                <div class="alert-title">Saída · Tênis esportivo</div>
+                <div class="alert-desc">-320 un · Buyer HG-517</div>
+              </div>
+              <div class="alert-time">há 4h</div>
+            </div>
+            <div class="alert-item" style="padding: 12px 0; border-bottom: 1px solid var(--border-hairline);">
+              <div class="alert-icon" style="background: var(--warning-500);">⚠</div>
+              <div class="alert-body">
+                <div class="alert-title">Perda · Whisky 12 anos</div>
+                <div class="alert-desc">-12 un · Lote vencido (auto-descarte)</div>
+              </div>
+              <div class="alert-time">há 6h</div>
+            </div>
+            <div class="alert-item" style="padding: 12px 0;">
+              <div class="alert-icon" style="background: var(--accent-500);">↔</div>
+              <div class="alert-body">
+                <div class="alert-title">Transferência inter-galpão</div>
+                <div class="alert-desc">Perfumes · Rua 36 → Depósito Norte · 40 un</div>
+              </div>
+              <div class="alert-time">ontem</div>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <!-- ================================================
+           SCREEN 6 · MAPA / LOGÍSTICA
+           ================================================ -->
+      <section class="screen" id="screen-map">
+        <div class="page-header">
+          <div>
+            <h1>Mapa / Logística</h1>
+            <p>4 veículos em operação · 2 rotas com risco reportado</p>
+          </div>
+          <div class="row">
+            <button class="btn btn-secondary">↻ Recalcular rotas</button>
+            <button class="btn btn-primary">+ Nova Viagem</button>
+          </div>
+        </div>
+
+        <div class="grid-2">
+          <div class="card" style="padding: 0; overflow: hidden;">
+            <div class="map-container" style="border-radius:0; border:none; height:460px;">
+              <div class="map-grid"></div>
+
+              <!-- route line 1 -->
+              <svg style="position:absolute; inset:0; pointer-events:none;" viewBox="0 0 600 460" preserveAspectRatio="none">
+                <path d="M90,340 C180,260 280,300 360,220 C420,160 460,140 500,110"
+                      fill="none" stroke="#007AFF" stroke-width="3" stroke-dasharray="6 4" stroke-linecap="round"/>
+                <path d="M130,380 C220,360 280,340 340,310 C400,280 450,260 490,240"
+                      fill="none" stroke="#34C759" stroke-width="3" stroke-linecap="round"/>
+                <path d="M80,120 C140,180 200,160 260,200 C320,240 380,220 440,260"
+                      fill="none" stroke="#FF9500" stroke-width="3" stroke-dasharray="6 4" stroke-linecap="round"/>
+              </svg>
+
+              <div class="map-node origin" style="top:74%; left:15%;"></div>
+              <div class="map-node waypoint" style="top:60%; left:40%;"></div>
+              <div class="map-node dest" style="top:24%; left:83%;"></div>
+
+              <div class="map-node origin" style="top:83%; left:22%;"></div>
+              <div class="map-node dest" style="top:52%; left:82%;"></div>
+
+              <div class="map-node origin" style="top:26%; left:13%;"></div>
+              <div class="map-node waypoint" style="top:43%; left:43%;"></div>
+              <div class="map-node dest" style="top:57%; left:73%;"></div>
+
+              <!-- Vehicle chip -->
+              <div style="position:absolute; top:50%; left:52%; transform: translate(-50%,-50%);">
+                <div class="hud" style="padding:10px 14px; font-size:12px;">
+                  <div style="font-weight:600; margin-bottom:2px;">🚛 Mercedes Axor · PL-432</div>
+                  <div style="color:var(--text-tertiary); font-size:11px;">iPhones · ETA 2h 14min · 73% concluído</div>
+                </div>
+              </div>
+
+              <div class="map-legend">
+                <span class="legend-dot origin">Origem</span>
+                <span class="legend-dot wp">Waypoint</span>
+                <span class="legend-dot dest">Destino</span>
+              </div>
+            </div>
+          </div>
+
+          <div class="col">
+            <div class="card">
+              <div class="card-header">
+                <div class="card-title">Viagens Ativas</div>
+                <span class="tag tag-info">4</span>
+              </div>
+
+              <div class="alert-item" style="padding: 12px 0; border-bottom: 1px solid var(--border-hairline);">
+                <div class="alert-icon" style="background: var(--accent-500);">🚛</div>
+                <div class="alert-body">
+                  <div class="alert-title">Axor PL-432 · iPhones</div>
+                  <div class="alert-desc">SP → RJ · ETA 2h 14min</div>
+                  <div class="progress" style="margin-top:6px;"><div class="progress-fill" style="width:73%;"></div></div>
+                </div>
+              </div>
+              <div class="alert-item" style="padding: 12px 0; border-bottom: 1px solid var(--border-hairline);">
+                <div class="alert-icon" style="background: var(--success-500);">🏍</div>
+                <div class="alert-body">
+                  <div class="alert-title">XRE-19 · Perfumes</div>
+                  <div class="alert-desc">SP → Campinas · ETA 48min</div>
+                  <div class="progress" style="margin-top:6px;"><div class="progress-fill ok" style="width:91%;"></div></div>
+                </div>
+              </div>
+              <div class="alert-item" style="padding: 12px 0; border-bottom: 1px solid var(--border-hairline);">
+                <div class="alert-icon" style="background: var(--warning-500);">⚠</div>
+                <div class="alert-body">
+                  <div class="alert-title">FH-4 · Whisky (alerta)</div>
+                  <div class="alert-desc">Desvio pela BR-116 · operação policial</div>
+                  <div class="progress" style="margin-top:6px;"><div class="progress-fill warn" style="width:40%;"></div></div>
+                </div>
+              </div>
+              <div class="alert-item" style="padding: 12px 0;">
+                <div class="alert-icon" style="background: var(--purple-500);">🚐</div>
+                <div class="alert-body">
+                  <div class="alert-title">Sprinter · Tênis</div>
+                  <div class="alert-desc">BH → Vitória · ETA 3h 40min</div>
+                  <div class="progress" style="margin-top:6px;"><div class="progress-fill" style="width:22%;"></div></div>
+                </div>
+              </div>
+            </div>
+
+            <div class="card">
+              <div class="card-title" style="margin-bottom:12px;">Status da Frota</div>
+              <div class="row" style="justify-content:space-between; padding:8px 0;">
+                <span class="subhead">Em trânsito</span>
+                <span class="num" style="font-weight:600;">4</span>
+              </div>
+              <div class="row" style="justify-content:space-between; padding:8px 0; border-top:1px solid var(--border-hairline);">
+                <span class="subhead">Disponíveis</span>
+                <span class="num" style="font-weight:600; color: var(--success-500);">6</span>
+              </div>
+              <div class="row" style="justify-content:space-between; padding:8px 0; border-top:1px solid var(--border-hairline);">
+                <span class="subhead">Em manutenção</span>
+                <span class="num" style="font-weight:600; color: var(--warning-500);">2</span>
+              </div>
+              <div class="row" style="justify-content:space-between; padding:8px 0; border-top:1px solid var(--border-hairline);">
+                <span class="subhead">Apreendidos</span>
+                <span class="num" style="font-weight:600; color: var(--danger-500);">1</span>
+              </div>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <!-- ================================================
+           SCREEN 7 · CONFIGURAÇÕES
+           ================================================ -->
+      <section class="screen" id="screen-settings">
+        <div class="page-header">
+          <div>
+            <h1>Configurações</h1>
+            <p>Preferências, conta e dados</p>
+          </div>
+        </div>
+
+        <div style="max-width: 720px;">
+
+          <div class="group-list-header">Conta</div>
+          <div class="group-list" style="margin-bottom: 28px;">
+            <div class="group-row">
+              <div class="group-ico" style="background:#007AFF;">👤</div>
+              <div class="group-label">Perfil</div>
+              <div class="group-value">Alife</div>
+              <div class="group-chevron">›</div>
+            </div>
+            <div class="group-row">
+              <div class="group-ico" style="background:#34C759;">✉</div>
+              <div class="group-label">E-mail</div>
+              <div class="group-value">flaidinhoslife.2004@…</div>
+              <div class="group-chevron">›</div>
+            </div>
+            <div class="group-row">
+              <div class="group-ico" style="background:#FF9500;">🔑</div>
+              <div class="group-label">Senha</div>
+              <div class="group-value">Alterada há 14 dias</div>
+              <div class="group-chevron">›</div>
+            </div>
+            <div class="group-row">
+              <div class="group-ico" style="background:#AF52DE;">◐</div>
+              <div class="group-label">Autenticação em 2 fatores</div>
+              <div class="group-value"><input type="checkbox" class="ios-toggle" /></div>
+            </div>
+          </div>
+
+          <div class="group-list-header">Aparência</div>
+          <div class="group-list" style="margin-bottom: 28px;">
+            <div class="group-row">
+              <div class="group-ico" style="background:#1C1C1E;">☾</div>
+              <div class="group-label">Modo escuro</div>
+              <div class="group-value"><input type="checkbox" class="ios-toggle" /></div>
+            </div>
+            <div class="group-row">
+              <div class="group-ico" style="background:#5AC8FA;">Aa</div>
+              <div class="group-label">Tamanho do texto</div>
+              <div class="group-value">Padrão</div>
+              <div class="group-chevron">›</div>
+            </div>
+            <div class="group-row">
+              <div class="group-ico" style="background:#FF2D55;">◐</div>
+              <div class="group-label">Reduzir movimento</div>
+              <div class="group-value"><input type="checkbox" class="ios-toggle" /></div>
+            </div>
+          </div>
+
+          <div class="group-list-header">Sincronização</div>
+          <div class="group-list" style="margin-bottom: 28px;">
+            <div class="group-row">
+              <div class="group-ico" style="background:#007AFF;">☁</div>
+              <div class="group-label">Sync automático na nuvem</div>
+              <div class="group-value"><input type="checkbox" class="ios-toggle" checked /></div>
+            </div>
+            <div class="group-row">
+              <div class="group-ico" style="background:#34C759;">↻</div>
+              <div class="group-label">Último save</div>
+              <div class="group-value">há 18 segundos</div>
+            </div>
+            <div class="group-row">
+              <div class="group-ico" style="background:#FF9500;">⎙</div>
+              <div class="group-label">Backups automáticos</div>
+              <div class="group-value">A cada 30min</div>
+              <div class="group-chevron">›</div>
+            </div>
+            <div class="group-row">
+              <div class="group-ico" style="background:#AF52DE;">⇣</div>
+              <div class="group-label">Exportar dados (JSON)</div>
+              <div class="group-chevron">›</div>
+            </div>
+          </div>
+
+          <div class="group-list-header">Jogo</div>
+          <div class="group-list" style="margin-bottom: 28px;">
+            <div class="group-row">
+              <div class="group-ico" style="background:#FF3B30;">⚡</div>
+              <div class="group-label">Velocidade do ciclo</div>
+              <div class="group-value">Normal (1.0×)</div>
+              <div class="group-chevron">›</div>
+            </div>
+            <div class="group-row">
+              <div class="group-ico" style="background:#5AC8FA;">◎</div>
+              <div class="group-label">Sons de notificação</div>
+              <div class="group-value"><input type="checkbox" class="ios-toggle" checked /></div>
+            </div>
+            <div class="group-row">
+              <div class="group-ico" style="background:#8E8E93;">⟲</div>
+              <div class="group-label" style="color: var(--danger-500);">Resetar progresso</div>
+              <div class="group-chevron">›</div>
+            </div>
+          </div>
+
+          <button class="btn btn-ghost" style="color: var(--danger-500); width:100%; justify-content:center; padding: 14px;">Sair da conta</button>
+        </div>
+      </section>
+
+      <!-- ================================================
+           SCREEN 8 · ALERTAS / EVENTOS
+           ================================================ -->
+      <section class="screen" id="screen-alerts">
+        <div class="page-header">
+          <div>
+            <h1>Alertas & Eventos</h1>
+            <p>3 eventos não lidos · filtrar por tipo</p>
+          </div>
+          <div class="segmented">
+            <button class="active">Todos</button>
+            <button>Críticos</button>
+            <button>Financeiros</button>
+            <button>Logística</button>
+          </div>
+        </div>
+
+        <div class="grid-4">
+          <div class="card">
+            <div class="stat-label">Eventos hoje</div>
+            <div class="stat-value num">12</div>
+          </div>
+          <div class="card">
+            <div class="stat-label">Críticos</div>
+            <div class="stat-value num" style="color: var(--danger-500);">2</div>
+          </div>
+          <div class="card">
+            <div class="stat-label">Pendências</div>
+            <div class="stat-value num" style="color: var(--warning-500);">5</div>
+          </div>
+          <div class="card">
+            <div class="stat-label">Resolvidos</div>
+            <div class="stat-value num" style="color: var(--success-500);">5</div>
+          </div>
+        </div>
+
+        <div class="spacer-24"></div>
+
+        <div class="card" style="padding: 0;">
+          <div class="card-header" style="padding: 20px 20px 12px;">
+            <div class="card-title">Fluxo de Eventos</div>
+            <button class="btn btn-ghost btn-sm">Marcar todos como lidos</button>
+          </div>
+
+          <div class="alert-item">
+            <div class="alert-icon" style="background: var(--danger-500);">!</div>
+            <div class="alert-body">
+              <div class="alert-title">Carga apreendida · BR-116</div>
+              <div class="alert-desc">Veículo FH-4 interceptado com 1.200 unidades de cigarros. Valor estimado perdido: R$ 48.000. Advogado pode negociar liberação parcial.</div>
+              <div style="margin-top: 10px; display:flex; gap: 8px;">
+                <button class="btn btn-primary btn-sm">Pagar advogado (R$ 12k)</button>
+                <button class="btn btn-ghost btn-sm">Aceitar perda</button>
+              </div>
+            </div>
+            <div class="alert-time">há 8min</div>
+          </div>
+
+          <div class="alert-item">
+            <div class="alert-icon" style="background: var(--warning-500);">⚠</div>
+            <div class="alert-body">
+              <div class="alert-title">Oscilação de mercado · Whisky</div>
+              <div class="alert-desc">Preço subiu 14% nas últimas 6 horas devido a apreensão na região Sul. Boa janela para vender estoque em Curitiba.</div>
+            </div>
+            <div class="alert-time">há 22min</div>
+          </div>
+
+          <div class="alert-item">
+            <div class="alert-icon" style="background: var(--accent-500);">☎</div>
+            <div class="alert-body">
+              <div class="alert-title">Buyer HG-517 entrou em contato</div>
+              <div class="alert-desc">Interessado em lote grande de tênis esportivo. Oferta inicial: R$ 220/un · 200 un.</div>
+              <div style="margin-top: 10px; display:flex; gap: 8px;">
+                <button class="btn btn-secondary btn-sm">Abrir negociação</button>
+                <button class="btn btn-ghost btn-sm">Recusar</button>
+              </div>
+            </div>
+            <div class="alert-time">há 42min</div>
+          </div>
+
+          <div class="alert-item">
+            <div class="alert-icon" style="background: var(--success-500);">✓</div>
+            <div class="alert-body">
+              <div class="alert-title">Venda concluída · iPhones</div>
+              <div class="alert-desc">240 unidades vendidas ao Buyer RT-091 por R$ 776/un. Receita: R$ 186.400 (margem 34%).</div>
+            </div>
+            <div class="alert-time">há 1h</div>
+          </div>
+
+          <div class="alert-item">
+            <div class="alert-icon" style="background: var(--purple-500);">◉</div>
+            <div class="alert-body">
+              <div class="alert-title">Novo nível desbloqueado</div>
+              <div class="alert-desc">Acesso liberado a fornecedores internacionais da categoria Premium.</div>
+            </div>
+            <div class="alert-time">ontem</div>
+          </div>
+
+          <div class="alert-item">
+            <div class="alert-icon" style="background: var(--text-tertiary);">◷</div>
+            <div class="alert-body">
+              <div class="alert-title">Custo semanal debitado</div>
+              <div class="alert-desc">Aluguéis (galpões), salários (motoristas) e manutenção: R$ 34.600.</div>
+            </div>
+            <div class="alert-time">ontem</div>
+          </div>
+
+          <div class="alert-item">
+            <div class="alert-icon" style="background: var(--warning-500);">⛽</div>
+            <div class="alert-body">
+              <div class="alert-title">Veículo Sprinter precisa de reparo</div>
+              <div class="alert-desc">Taxa de falha aumentou após 480 km. Manutenção preventiva recomendada (R$ 4.800).</div>
+            </div>
+            <div class="alert-time">2d atrás</div>
+          </div>
+        </div>
+      </section>
+
+    </div>
+  </main>
+</div>
+
+<script>
+  // =========================================================
+  // Navigation
+  // =========================================================
+  const screenTitles = {
+    menu: { title: 'Menu Principal', crumb: 'Menu' },
+    dashboard: { title: 'Dashboard', crumb: 'Dashboard' },
+    purchases: { title: 'Compras', crumb: 'Compras' },
+    sales: { title: 'Vendas', crumb: 'Vendas' },
+    inventory: { title: 'Inventário', crumb: 'Inventário' },
+    map: { title: 'Mapa / Logística', crumb: 'Logística' },
+    alerts: { title: 'Alertas & Eventos', crumb: 'Alertas' },
+    settings: { title: 'Configurações', crumb: 'Configurações' },
+  };
+
+  function navigateTo(target) {
+    document.querySelectorAll('.nav-item').forEach(el => {
+      el.classList.toggle('active', el.dataset.target === target);
+    });
+    document.querySelectorAll('.screen').forEach(el => {
+      el.classList.toggle('active', el.id === 'screen-' + target);
+    });
+    const meta = screenTitles[target];
+    if (meta) {
+      document.getElementById('topbar-title').textContent = meta.title;
+      document.getElementById('topbar-crumb').textContent = meta.crumb;
+    }
+    // scroll to top
+    document.querySelector('.content').scrollTop = 0;
+  }
+
+  document.querySelectorAll('.nav-item').forEach(el => {
+    el.addEventListener('click', () => navigateTo(el.dataset.target));
+  });
+
+  // =========================================================
+  // Segmented control
+  // =========================================================
+  document.querySelectorAll('.segmented').forEach(seg => {
+    seg.addEventListener('click', e => {
+      const btn = e.target.closest('button');
+      if (!btn) return;
+      seg.querySelectorAll('button').forEach(b => b.classList.remove('active'));
+      btn.classList.add('active');
+    });
+  });
+</script>
+
+</body>
+</html>
