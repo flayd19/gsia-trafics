@@ -80,6 +80,52 @@ const decomposeStockDelta = (
   return [{ productId, quantity: qty }];
 };
 
+/* ----------------------------------------------------------------
+ * Trip duration helper
+ *
+ * Regras (definidas pelo gameplay):
+ *   - Viagem MAIS RÁPIDA  = 20 segundos
+ *   - Viagem MAIS LENTA   = 58 segundos
+ *
+ * Como é calculado:
+ *   - Se `distanceKm` é passado (pickup em fornecedor), o tempo varia
+ *     proporcionalmente entre 20s (fornecedor mais perto) e 58s (mais
+ *     distante), com um leve peso pra velocidade do veículo.
+ *   - Se `distanceKm` NÃO é passado (entrega direta / venda), o tempo
+ *     vem do `vehicle.tripDuration`, só clamp em [20, 58].
+ *
+ * Constantes vêm dos limites reais dos dados:
+ *   - vehicle.tripDuration: 10.5s (Bell 206) a 57s (Amarok)
+ *   - supplier.distanceKm:  15km (Taubaté) a 920km (Belo Horizonte)
+ * ---------------------------------------------------------------- */
+const TRIP_MIN_DURATION_S = 20;
+const TRIP_MAX_DURATION_S = 58;
+
+const computeTripDurationSeconds = (
+  vehicleTripDuration: number | undefined,
+  distanceKm?: number
+): number => {
+  const baseClamped = Math.max(
+    10.5,
+    Math.min(57, vehicleTripDuration ?? 22.5)
+  );
+
+  // Sem distância: só clampa o tripDuration do veículo no range final.
+  if (distanceKm === undefined || distanceKm === null) {
+    // Mapeia tripDuration [10.5, 57] → [20, 58]
+    const speedT = (baseClamped - 10.5) / (57 - 10.5);
+    return TRIP_MIN_DURATION_S + speedT * (TRIP_MAX_DURATION_S - TRIP_MIN_DURATION_S);
+  }
+
+  // Com distância: combina distância (60%) + velocidade do veículo (40%).
+  const dClamped = Math.max(15, Math.min(920, distanceKm));
+  const distT = (dClamped - 15) / (920 - 15);
+  const speedT = (baseClamped - 10.5) / (57 - 10.5);
+  const combinedT = distT * 0.6 + speedT * 0.4;
+
+  return TRIP_MIN_DURATION_S + combinedT * (TRIP_MAX_DURATION_S - TRIP_MIN_DURATION_S);
+};
+
 export const useGameLogic = () => {
   const [gameState, setGameState] = useState<GameState>({
     ...INITIAL_GAME_STATE,
@@ -1171,18 +1217,20 @@ export const useGameLogic = () => {
     // Limpar timeout anterior se existir
     clearTripTimeout(vehicleId);
     
-    // Iniciar viagem com duração
+    // Iniciar viagem com duração (20s–58s, proporcional ao veículo)
     const now = Date.now();
-    const tripDurationMs = (vehicle.tripDuration || 22.5) * 1000; // Converter segundos para ms
-    
+    const scaledDuration = computeTripDurationSeconds(vehicle.tripDuration);
+    const tripDurationMs = scaledDuration * 1000;
+
     setGameState(prev => ({
       ...prev,
       money: prev.money - tripCost,
-      vehicles: prev.vehicles.map(v => 
-        v.id === vehicleId ? { 
-          ...v, 
+      vehicles: prev.vehicles.map(v =>
+        v.id === vehicleId ? {
+          ...v,
           active: true,
           tripStartTime: now,
+          tripDuration: scaledDuration,
           productId,
           quantity
         } : v
@@ -1344,18 +1392,20 @@ export const useGameLogic = () => {
     // Limpar timeout anterior se existir
     clearTripTimeout(vehicleId);
     
-    // Iniciar viagem com duração
+    // Iniciar viagem com duração (20s–58s, proporcional ao veículo)
     const now = Date.now();
-    const tripDurationMs = (vehicle.tripDuration || 22.5) * 1000; // Converter segundos para ms
-    
+    const scaledDuration = computeTripDurationSeconds(vehicle.tripDuration);
+    const tripDurationMs = scaledDuration * 1000;
+
     setGameState(prev => ({
       ...prev,
       money: prev.money - tripCost,
-      vehicles: prev.vehicles.map(v => 
-        v.id === vehicleId ? { 
-          ...v, 
+      vehicles: prev.vehicles.map(v =>
+        v.id === vehicleId ? {
+          ...v,
           active: true,
           tripStartTime: now,
+          tripDuration: scaledDuration,
           selectedProducts // Armazenar múltiplos produtos
         } : v
       )
@@ -1868,12 +1918,11 @@ export const useGameLogic = () => {
         ([productId, quantity]) => ({ productId, quantity })
       );
 
-      // Duração da viagem baseada na distância
-      // Base: tripDuration do veículo (padrão 22.5s) escalada por distância
-      const baseDuration = vehicle.tripDuration || 22.5;
-      const scaledDuration = Math.max(
-        baseDuration,
-        baseDuration * Math.max(1, load.maxDistance / 100)
+      // Duração da viagem: 20s–58s, proporcional à distância do fornecedor
+      // e à velocidade do veículo (60% distância, 40% velocidade)
+      const scaledDuration = computeTripDurationSeconds(
+        vehicle.tripDuration,
+        load.maxDistance
       );
       const tripDurationMs = scaledDuration * 1000;
       const now = Date.now();
