@@ -40,7 +40,7 @@ create table if not exists public.player_profiles (
 create table if not exists public.game_progress (
     id uuid default gen_random_uuid() primary key,
     user_id uuid references auth.users(id) on delete cascade unique,
-    money decimal not null default 15000,
+    money decimal not null default 40000,
     overdraft_limit decimal default -30000,
     last_interest_calculation integer default 1,
     game_day integer default 1,
@@ -490,8 +490,8 @@ begin
     insert into public.player_profiles (user_id, display_name)
         values (new.id, v_display_name)
         on conflict (user_id) do nothing;
-    insert into public.game_progress (user_id)
-        values (new.id)
+    insert into public.game_progress (user_id, money)
+        values (new.id, 40000)
         on conflict (user_id) do nothing;
     return new;
 end;
@@ -522,8 +522,8 @@ begin
     insert into public.player_profiles (user_id, display_name)
         values (v_uid, v_name)
         on conflict (user_id) do nothing;
-    insert into public.game_progress (user_id)
-        values (v_uid)
+    insert into public.game_progress (user_id, money)
+        values (v_uid, 40000)
         on conflict (user_id) do nothing;
 end;
 $$;
