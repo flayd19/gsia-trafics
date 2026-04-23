@@ -1077,7 +1077,7 @@ export const WAREHOUSES: Warehouse[] = [
 ];
 
 export const INITIAL_GAME_STATE: GameState = {
-  money: 20000, // Saldo inicial de R$ 20.000
+  money: 40000, // Saldo inicial de R$ 40.000
   vehicles: INITIAL_VEHICLES,
   drivers: INITIAL_DRIVERS,
   stock: {},

@@ -83,6 +83,21 @@ export const TripsScreen = ({
               </Card>
             )}
 
+            {/* Empty state: sem nenhum veículo */}
+            {gameState.vehicles.length === 0 && (
+              <Card className="p-6 border-primary/40 bg-primary/5">
+                <div className="text-center space-y-2">
+                  <div className="text-4xl">🚗</div>
+                  <div className="text-primary font-bold text-base">
+                    Você não tem nenhum veículo
+                  </div>
+                  <div className="text-sm text-muted-foreground">
+                    Compre carros no <span className="font-semibold text-foreground">Marketplace</span> pra começar a fazer viagens.
+                  </div>
+                </div>
+              </Card>
+            )}
+
             {/* Renderizar veículos */}
             {gameState.vehicles.map((vehicle) => {
               const assignedDriver = gameState.drivers.find((d) => d.id === vehicle.driverId);

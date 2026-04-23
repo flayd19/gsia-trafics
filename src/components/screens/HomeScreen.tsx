@@ -81,8 +81,22 @@ export const HomeScreen = ({ gameState, warehouseOccupation, products }: HomeScr
   const activeVehicles = gameState.vehicles.filter((v: any) => v.active).length;
   const totalStock = Object.values(gameState.stock as Record<string, number>).reduce((sum: number, qty: number) => sum + qty, 0);
 
+  const hasAnyVehicle = gameState.vehicles.some((v: any) => v.id && !v.sold);
+
   return (
     <div className="space-y-6">
+      {/* Aviso: jogador sem veículos */}
+      {!hasAnyVehicle && (
+        <Card className="p-4 border-primary/40 bg-primary/5">
+          <div className="text-center space-y-1">
+            <div className="text-primary font-bold text-base">🚗 Você não tem nenhum veículo</div>
+            <div className="text-sm text-muted-foreground">
+              Compre carros no <span className="font-semibold text-foreground">Marketplace</span> pra começar a fazer viagens.
+            </div>
+          </div>
+        </Card>
+      )}
+
       {/* Aviso de galpão lotando */}
       {warehouseOccupation >= 80 && (
         <Card className="p-4 border-warning bg-warning/5">
