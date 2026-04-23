@@ -490,8 +490,38 @@ begin
     insert into public.player_profiles (user_id, display_name)
         values (new.id, v_display_name)
         on conflict (user_id) do nothing;
-    insert into public.game_progress (user_id, money)
-        values (new.id, 40000)
+    insert into public.game_progress (user_id, money, vehicles, drivers)
+        values (
+            new.id,
+            40000,
+            '[{
+                "id": "monza1",
+                "name": "Monza 1997",
+                "capacity": 200,
+                "fuelCost": 300,
+                "price": 15000,
+                "assigned": true,
+                "driverId": "felipe",
+                "active": false,
+                "tripDuration": 33.75,
+                "breakdownChance": 0.10
+            }]'::jsonb,
+            '[{
+                "id": "felipe",
+                "name": "Felipe Mendes",
+                "dailyWage": 257,
+                "repairDiscount": 0,
+                "breakdownChanceModifier": 0.1,
+                "seizureChanceModifier": 0.1,
+                "speedModifier": 0.05,
+                "experience": "iniciante",
+                "assigned": true,
+                "photo": "/lovable-uploads/4476bcca-8aeb-4119-befe-efb3257ff415.png",
+                "description": "Ex-marceneiro, tem 4 filhos com 4 mulheres diferentes. Busca uma renda extra.",
+                "vehicles": ["Monza", "Uno"],
+                "trait": "Confiável mas inexperiente"
+            }]'::jsonb
+        )
         on conflict (user_id) do nothing;
     return new;
 end;
@@ -522,8 +552,38 @@ begin
     insert into public.player_profiles (user_id, display_name)
         values (v_uid, v_name)
         on conflict (user_id) do nothing;
-    insert into public.game_progress (user_id, money)
-        values (v_uid, 40000)
+    insert into public.game_progress (user_id, money, vehicles, drivers)
+        values (
+            v_uid,
+            40000,
+            '[{
+                "id": "monza1",
+                "name": "Monza 1997",
+                "capacity": 200,
+                "fuelCost": 300,
+                "price": 15000,
+                "assigned": true,
+                "driverId": "felipe",
+                "active": false,
+                "tripDuration": 33.75,
+                "breakdownChance": 0.10
+            }]'::jsonb,
+            '[{
+                "id": "felipe",
+                "name": "Felipe Mendes",
+                "dailyWage": 257,
+                "repairDiscount": 0,
+                "breakdownChanceModifier": 0.1,
+                "seizureChanceModifier": 0.1,
+                "speedModifier": 0.05,
+                "experience": "iniciante",
+                "assigned": true,
+                "photo": "/lovable-uploads/4476bcca-8aeb-4119-befe-efb3257ff415.png",
+                "description": "Ex-marceneiro, tem 4 filhos com 4 mulheres diferentes. Busca uma renda extra.",
+                "vehicles": ["Monza", "Uno"],
+                "trait": "Confiável mas inexperiente"
+            }]'::jsonb
+        )
         on conflict (user_id) do nothing;
 end;
 $$;
