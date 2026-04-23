@@ -19,9 +19,9 @@ import type { Database } from './types';
 // configure essas mesmas variáveis no painel do provedor.
 // -----------------------------------------------------------------
 
-const FALLBACK_URL = 'https://pdyalejsbargjidfdtim.supabase.co';
+const FALLBACK_URL = 'https://ebudhqndkxiorisnyjoh.supabase.co';
 const FALLBACK_KEY =
-  'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InBkeWFsZWpzYmFyZ2ppZGZkdGltIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NTU4ODE5MjEsImV4cCI6MjA3MTQ1NzkyMX0.1J1qDQL0D0PWOPuW2LqTtvx3xWZizPN902k_sjNm0Kw';
+  'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImVidWRocW5ka3hpb3Jpc255am9oIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzY5NjEwMTksImV4cCI6MjA5MjUzNzAxOX0.s7I9xoa2rtRfklCBcyCppzSzmI5e-pjq_PlyOEMOuro';
 
 const SUPABASE_URL =
   (import.meta.env?.VITE_SUPABASE_URL as string | undefined) || FALLBACK_URL;
