@@ -13,6 +13,15 @@ export interface Product {
   riskLevel?: string;
   category?: string; // Categoria do produto
   isIllicit?: boolean; // Indica se o produto é ilícito (sujeito a apreensão)
+  /**
+   * Marca o produto como uma CAIXA que, ao chegar no estoque, se desmembra
+   * em `units` unidades do produto base (`productId`). Também afeta o cálculo
+   * de espaço: a caixa ocupa `units` slots no veículo/galpão em vez de 1.
+   */
+  boxContents?: {
+    productId: string; // id do produto base que está dentro da caixa
+    units: number;     // quantas unidades do produto base a caixa contém
+  };
 }
 
 export interface ProductCategory {
@@ -94,7 +103,25 @@ export interface Warehouse {
   capacity: number;
   weeklyCost: number;
   unlockRequirement: number;
+  /** Nível mínimo de reputação para desbloquear (opcional — default 1). */
+  levelRequirement?: number;
   description: string;
+}
+
+/**
+ * Sistema de Reputação / Nível do jogador.
+ *
+ * - 1 XP por venda concluída.
+ * - 1 XP por viagem concluída sem quebra nem apreensão.
+ * - Cada level up dobra o XP exigido: Lv2 = 20xp, Lv3 = 40xp, Lv4 = 80xp, ..., até o Lv 100.
+ */
+export interface Reputation {
+  /** Nível atual (1..100). */
+  level: number;
+  /** XP acumulado dentro do nível atual (zera no level up). */
+  xp: number;
+  /** XP total ganho durante toda a partida (só estatística). */
+  totalXp: number;
 }
 
 export interface PoliceInterception {
@@ -250,6 +277,8 @@ export interface GameState {
   productStats: Record<string, ProductStats>;
   // Lojas
   stores: Store[]; // Lojas disponíveis
+  /** Reputação do jogador (level + xp). Opcional pra compatibilidade com saves antigos. */
+  reputation?: Reputation;
   // Campos adicionais usados em partes legadas
   buyers?: any[];
   pending_deliveries?: any[];
@@ -264,6 +293,8 @@ export interface MarketplaceItem {
   description: string;
   specs?: any; // Especificações específicas
   unlockRequirement?: number; // Dinheiro necessário para desbloquear
+  /** Nível mínimo de reputação para aparecer desbloqueado (opcional — default 1). */
+  levelRequirement?: number;
   // Vehicle specific
   seller?: string;
   condition?: string;

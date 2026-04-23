@@ -6,6 +6,12 @@ interface SalesScreenProps {
   gameState: any;
   products: any[];
   buyers: Buyer[];
+  /**
+   * Máximo de slots de comprador. Escala com reputação:
+   * Lv 1→2, Lv 5→3, Lv 10→4, …, Lv 30+→8.
+   * Padrão 2 se não for passado (evita quebrar callers antigos).
+   */
+  maxBuyers?: number;
   onSellToBuyer: (buyerId: string, productId: string, quantity: number, price: number) => void;
   onRejectBuyer: (buyerId: string) => void;
   onBargain?: (buyerId: string) => void;
@@ -15,6 +21,7 @@ export const SalesScreen = ({
   gameState,
   products,
   buyers,
+  maxBuyers = 2,
   onSellToBuyer,
   onRejectBuyer,
   onBargain,
@@ -35,6 +42,8 @@ export const SalesScreen = ({
       maximumFractionDigits: 0,
     }).format(v);
 
+  const slotCount = Math.max(1, Math.min(8, maxBuyers));
+
   return (
     <div className="space-y-4">
       {/* Section header iOS-style */}
@@ -44,7 +53,7 @@ export const SalesScreen = ({
             Compradores
           </h2>
           <p className="text-[12px] text-muted-foreground mt-0.5">
-            {Math.min(4, buyers.length)} de 4 · chegadas em gotejamento
+            {Math.min(slotCount, buyers.length)} de {slotCount} · chegadas em gotejamento
           </p>
         </div>
         <div className="text-right">
@@ -59,7 +68,7 @@ export const SalesScreen = ({
 
       {/* Lista vertical (mobile-first); em telas >= md vira 2 colunas */}
       <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-        {Array.from({ length: 4 }, (_, index) => {
+        {Array.from({ length: slotCount }, (_, index) => {
           const buyer = buyers[index];
           if (buyer) {
             return (
@@ -99,45 +108,6 @@ export const SalesScreen = ({
           );
         })}
       </div>
-
-      {/* Resumo do estoque */}
-      {stockedProducts.length > 0 && (
-        <div className="ios-surface p-4">
-          <div className="flex items-center justify-between mb-3">
-            <h4 className="text-[13px] uppercase tracking-wider text-muted-foreground font-semibold">
-              Resumo do Estoque
-            </h4>
-            <span className="text-[11px] text-muted-foreground">
-              {stockedProducts.length} produtos
-            </span>
-          </div>
-          <div className="divide-y divide-border -mx-1">
-            {stockedProducts.map((product) => {
-              const quantity = gameState.stock[product.id] || 0;
-              const value = quantity * (product.currentPrice || 0);
-              return (
-                <div
-                  key={product.id}
-                  className="flex items-center gap-3 py-2 px-1"
-                >
-                  <div className="w-8 h-8 rounded-[10px] bg-muted flex items-center justify-center text-base">
-                    {product.icon || '📦'}
-                  </div>
-                  <span className="flex-1 text-[14px] font-medium text-foreground truncate">
-                    {product.displayName}
-                  </span>
-                  <span className="text-[11px] text-muted-foreground tabular-nums">
-                    {formatMoney(value)}
-                  </span>
-                  <span className="font-game-title tabular-nums text-[14px] font-bold text-foreground min-w-[28px] text-right">
-                    {quantity}
-                  </span>
-                </div>
-              );
-            })}
-          </div>
-        </div>
-      )}
     </div>
   );
 };

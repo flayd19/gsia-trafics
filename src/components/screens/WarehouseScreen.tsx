@@ -8,6 +8,7 @@ import { TrendingUp, TrendingDown, Package, Warehouse, AlertTriangle } from 'luc
 import { GameState, Product, ProductStats } from '@/types/game';
 import { PRODUCT_CATEGORIES } from '@/data/gameData';
 import { cn } from '@/lib/utils';
+import { ensureReputation, meetsLevelRequirement } from '@/lib/reputation';
 
 /**
  * Tira de analytics por produto: preço médio de compra/venda e últimos
@@ -140,9 +141,13 @@ export const WarehouseScreen = ({ gameState, products, warehouseOccupation, ware
     return sum + (gameState.stock[product.id] || 0);
   }, 0);
 
-  const availableUpgrades = warehouses.filter(warehouse => 
-    !warehouse.owned && gameState.money >= warehouse.unlockRequirement
+  // Mostra todos os galpões que o jogador ainda não possui — incluindo os
+  // bloqueados por nível, pra dar visibilidade do que vem pela frente.
+  const availableUpgrades = warehouses.filter(warehouse =>
+    !warehouse.owned && warehouse.id !== gameState.currentWarehouse
   );
+
+  const currentLevel = ensureReputation(gameState.reputation).level;
 
   const handleUpgrade = (warehouseId: string) => {
     return upgradeWarehouse(warehouseId);
@@ -365,31 +370,58 @@ export const WarehouseScreen = ({ gameState, products, warehouseOccupation, ware
         <div>
           <h3 className="text-lg font-semibold mb-3">Melhorar Galpão</h3>
           <div className="space-y-3">
-            {availableUpgrades.map((warehouse) => (
-              <Card key={warehouse.id} className="p-4 border-primary/20">
-                <div className="flex items-center justify-between">
-                  <div className="flex-1">
-                    <h4 className="font-semibold text-foreground">{warehouse.name}</h4>
-                    <p className="text-sm text-muted-foreground mt-1">{warehouse.description}</p>
-                    <div className="text-xs text-muted-foreground mt-2">
-                      Capacidade: {warehouse.capacity} unidades • Custo semanal: {formatMoney(warehouse.weeklyCost)}
+            {availableUpgrades.map((warehouse) => {
+              const requiredLevel = warehouse.levelRequirement ?? 1;
+              const levelLocked = !meetsLevelRequirement(currentLevel, requiredLevel);
+              const cantAfford = gameState.money < warehouse.unlockRequirement;
+              const disabled = levelLocked || cantAfford;
+
+              return (
+                <Card
+                  key={warehouse.id}
+                  className={cn(
+                    'p-4 border-primary/20',
+                    levelLocked && 'opacity-60 border-orange-500/40'
+                  )}
+                >
+                  <div className="flex items-center justify-between">
+                    <div className="flex-1">
+                      <div className="flex items-center gap-2 flex-wrap">
+                        <h4 className="font-semibold text-foreground">{warehouse.name}</h4>
+                        {levelLocked && (
+                          <Badge variant="outline" className="text-[10px] border-orange-500 text-orange-600 font-semibold">
+                            🔒 Nv {requiredLevel}
+                          </Badge>
+                        )}
+                      </div>
+                      <p className="text-sm text-muted-foreground mt-1">{warehouse.description}</p>
+                      <div className="text-xs text-muted-foreground mt-2">
+                        Capacidade: {warehouse.capacity} unidades • Custo semanal: {formatMoney(warehouse.weeklyCost)}
+                      </div>
+                      {levelLocked && (
+                        <div className="text-xs text-orange-600 font-semibold mt-1">
+                          Desbloqueia no Nível {requiredLevel} (você está no Nv {currentLevel})
+                        </div>
+                      )}
+                    </div>
+                    <div className="ml-4 text-right">
+                      <div className="text-lg font-bold text-foreground mb-2">
+                        {formatMoney(warehouse.unlockRequirement)}
+                      </div>
+                      <Button
+                        onClick={() => handleUpgrade(warehouse.id)}
+                        className="bg-blue-600 hover:bg-blue-700 text-white"
+                        disabled={disabled}
+                      >
+                        {levelLocked ? `🔒 Nv ${requiredLevel}` :
+                         cantAfford ? 'Dinheiro insuficiente' :
+                         'Melhorar Galpão'}
+                      </Button>
                     </div>
                   </div>
-                  <div className="ml-4 text-right">
-                    <div className="text-lg font-bold text-foreground mb-2">
-                      {formatMoney(warehouse.unlockRequirement)}
-                    </div>
-                    <Button 
-                      onClick={() => handleUpgrade(warehouse.id)}
-                      className="bg-blue-600 hover:bg-blue-700 text-white"
-                      disabled={gameState.money < warehouse.unlockRequirement}
-                    >
-                      {gameState.money < warehouse.unlockRequirement ? 'Dinheiro insuficiente' : 'Melhorar Galpão'}
-                    </Button>
-                  </div>
-                </div>
-              </Card>
-            ))}
+                </Card>
+              );
+            })}
           </div>
         </div>
       )}

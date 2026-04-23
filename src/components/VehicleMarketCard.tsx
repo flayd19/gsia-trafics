@@ -11,6 +11,10 @@ interface VehicleMarketCardProps {
   canAfford: boolean;
   isUnlocked: boolean;
   money: number;
+  /** Se está bloqueado por nível de reputação insuficiente. */
+  levelLocked?: boolean;
+  /** Nível atual do jogador (pra mostrar diferença no badge). */
+  currentLevel?: number;
 }
 
 export const VehicleMarketCard: React.FC<VehicleMarketCardProps> = ({
@@ -18,7 +22,9 @@ export const VehicleMarketCard: React.FC<VehicleMarketCardProps> = ({
   onBuy,
   canAfford,
   isUnlocked,
-  money
+  money,
+  levelLocked = false,
+  currentLevel = 1,
 }) => {
   const formatMoney = (value: number) => {
     return new Intl.NumberFormat('pt-BR', {
@@ -39,9 +45,12 @@ export const VehicleMarketCard: React.FC<VehicleMarketCardProps> = ({
 
   const vehicleImage = getVehicleImage(vehicle.name, 0);
 
+  const requiredLevel = vehicle.levelRequirement ?? 1;
+  const effectivelyLocked = levelLocked || !isUnlocked;
+
   return (
     <Card className={`transition-all duration-200 hover:shadow-md border-0 bg-white ${
-      !isUnlocked ? 'opacity-50' : ''
+      effectivelyLocked ? 'opacity-60' : ''
     }`}>
       <div className="p-0">
         {/* Vehicle Image */}
@@ -86,7 +95,12 @@ export const VehicleMarketCard: React.FC<VehicleMarketCardProps> = ({
             <span className="font-bold text-lg text-gray-900">{formatMoney(vehicle.price)}</span>
           </div>
           
-          {!isUnlocked && vehicle.unlockRequirement && (
+          {levelLocked && (
+            <div className="absolute top-2 right-2 bg-orange-500 text-white px-2 py-1 rounded text-xs font-semibold shadow">
+              🔒 Nível {requiredLevel}
+            </div>
+          )}
+          {!levelLocked && !isUnlocked && vehicle.unlockRequirement && (
             <div className="absolute top-2 right-2 bg-red-500 text-white px-2 py-1 rounded text-xs">
               💰 Saldo Insuficiente
             </div>
@@ -126,25 +140,31 @@ export const VehicleMarketCard: React.FC<VehicleMarketCardProps> = ({
             <p className="text-xs text-gray-500 mb-3">📋 {vehicle.condition}</p>
           )}
           
-          {!isUnlocked && vehicle.unlockRequirement && (
+          {levelLocked && (
+            <div className="text-xs text-orange-600 font-semibold mb-3">
+              🔒 Desbloqueia no Nível {requiredLevel} (você está no Nv {currentLevel})
+            </div>
+          )}
+          {!levelLocked && !isUnlocked && vehicle.unlockRequirement && (
             <div className="text-xs text-orange-600 mb-3">
               💰 Desbloqueado com {formatMoney(vehicle.unlockRequirement)}
             </div>
           )}
-          
+
           {/* Action Button - Facebook style */}
-          <Button 
+          <Button
             onClick={() => onBuy(vehicle)}
-            disabled={!isUnlocked || !canAfford}
+            disabled={effectivelyLocked || !canAfford}
             className={`w-full text-sm font-medium py-2 rounded-md transition-colors ${
-              canAfford && isUnlocked 
-                ? 'bg-blue-600 hover:bg-blue-700 text-white' 
+              canAfford && !effectivelyLocked
+                ? 'bg-blue-600 hover:bg-blue-700 text-white'
                 : 'bg-gray-200 text-gray-500 cursor-not-allowed'
             }`}
             variant="ghost"
           >
-            {!isUnlocked ? '💰 Saldo Insuficiente' :
-             !canAfford ? '💰 Sem grana' : 
+            {levelLocked ? `🔒 Nível ${requiredLevel} necessário` :
+             !isUnlocked ? '💰 Saldo Insuficiente' :
+             !canAfford ? '💰 Sem grana' :
              'Comprar agora'}
           </Button>
         </div>

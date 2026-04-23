@@ -14,6 +14,7 @@ import {
 } from '@/data/suppliers';
 import { GameState, PendingPickup, Product } from '@/types/game';
 import { cn } from '@/lib/utils';
+import { ensureReputation, meetsLevelRequirement } from '@/lib/reputation';
 
 interface SuppliersScreenProps {
   gameState: GameState;
@@ -145,20 +146,33 @@ const PickupCard: React.FC<{
 const SupplierCard: React.FC<{
   supplier: Supplier;
   pendingUnits: number;
+  locked: boolean;
+  currentLevel: number;
   onClick: () => void;
-}> = ({ supplier, pendingUnits, onClick }) => {
+}> = ({ supplier, pendingUnits, locked, currentLevel, onClick }) => {
   const tagStyle = SUPPLIER_TAG_STYLE[supplier.tag];
+  const requiredLevel = supplier.levelRequirement ?? 1;
+
   return (
     <button
       onClick={onClick}
-      className="w-full text-left active:scale-[0.99] transition"
+      disabled={locked}
+      className={cn(
+        'w-full text-left transition',
+        locked ? 'opacity-60 cursor-not-allowed' : 'active:scale-[0.99]'
+      )}
     >
-      <Card className="ios-surface p-4 flex items-center gap-3">
+      <Card
+        className={cn(
+          'ios-surface p-4 flex items-center gap-3',
+          locked && 'border-warning/40'
+        )}
+      >
         <div
           className="w-12 h-12 rounded-[14px] flex items-center justify-center text-2xl shadow-sm"
           style={{ background: 'hsl(var(--muted))' }}
         >
-          {supplier.emoji}
+          {locked ? '🔒' : supplier.emoji}
         </div>
 
         <div className="flex-1 min-w-0">
@@ -172,9 +186,16 @@ const SupplierCard: React.FC<{
             >
               {SUPPLIER_TAG_LABEL[supplier.tag]}
             </span>
+            {locked && (
+              <span className="text-[10px] font-bold uppercase px-1.5 py-0.5 rounded-md tracking-wider bg-warning/10 text-warning">
+                🔒 Nv {requiredLevel}
+              </span>
+            )}
           </div>
           <p className="text-[12px] text-muted-foreground mt-0.5 leading-snug line-clamp-2">
-            {supplier.shortDescription}
+            {locked
+              ? `Desbloqueia no Nível ${requiredLevel} (seu: Nv ${currentLevel}).`
+              : supplier.shortDescription}
           </p>
           <div className="flex items-center gap-3 mt-1 text-[11px] text-muted-foreground">
             <span>📍 {supplier.distanceKm} km</span>
@@ -187,7 +208,7 @@ const SupplierCard: React.FC<{
           </div>
         </div>
 
-        <div className="text-muted-foreground">›</div>
+        <div className="text-muted-foreground">{locked ? '🔒' : '›'}</div>
       </Card>
     </button>
   );
@@ -448,6 +469,12 @@ export const SuppliersScreen: React.FC<SuppliersScreenProps> = ({
   const [selectedSupplierId, setSelectedSupplierId] = useState<string | null>(null);
   const [tab, setTab] = useState<'list' | 'pickup'>('list');
 
+  // Nível atual de reputação do jogador (pra gates de fornecedor)
+  const currentLevel = useMemo(
+    () => ensureReputation(gameState.reputation).level,
+    [gameState.reputation]
+  );
+
   const totalPending = (gameState.pendingPickups || []).reduce(
     (s, p) => s + p.quantity,
     0
@@ -473,9 +500,14 @@ export const SuppliersScreen: React.FC<SuppliersScreenProps> = ({
   const selectedSupplier = selectedSupplierId
     ? getSupplierById(selectedSupplierId)
     : null;
+  const selectedSupplierLocked = selectedSupplier
+    ? !meetsLevelRequirement(currentLevel, selectedSupplier.levelRequirement)
+    : false;
 
   // Dentro do detalhe de um fornecedor, retorne a view pura (sem tabs)
-  if (selectedSupplier) {
+  // Só abre se o jogador atender o levelRequirement — defense in depth
+  // (SupplierCard já desabilita o clique quando locked).
+  if (selectedSupplier && !selectedSupplierLocked) {
     return (
       <SupplierDetail
         supplier={selectedSupplier}
@@ -556,12 +588,17 @@ export const SuppliersScreen: React.FC<SuppliersScreenProps> = ({
             {SUPPLIERS.map((supplier) => {
               const pending = pendingBySupplier.get(supplier.id) || [];
               const pendingUnits = pending.reduce((s, p) => s + p.quantity, 0);
+              const locked = !meetsLevelRequirement(currentLevel, supplier.levelRequirement);
               return (
                 <SupplierCard
                   key={supplier.id}
                   supplier={supplier}
                   pendingUnits={pendingUnits}
-                  onClick={() => setSelectedSupplierId(supplier.id)}
+                  locked={locked}
+                  currentLevel={currentLevel}
+                  onClick={() => {
+                    if (!locked) setSelectedSupplierId(supplier.id);
+                  }}
                 />
               );
             })}

@@ -101,18 +101,13 @@ export const showOfflineToast = () =>
   });
 
 // =========================================================
-// Detecção de modo teste local
+// Detecção de modo teste local (DEPRECADO)
+// -----------------------------------------------------------
+// O modo "teste local" foi removido do fluxo de auth — todos os jogadores
+// entram via Supabase real agora. Mantemos esta função apenas como
+// retorno sempre-false para não quebrar chamadas legadas.
 // =========================================================
-const LOCAL_TEST_STORAGE_KEY = 'gsia_local_test_session';
-
-export const isLocalSession = (): boolean => {
-  try {
-    return typeof localStorage !== 'undefined' &&
-      localStorage.getItem(LOCAL_TEST_STORAGE_KEY) === '1';
-  } catch {
-    return false;
-  }
-};
+export const isLocalSession = (): boolean => false;
 
 // =========================================================
 // Timeout helper (AbortController)

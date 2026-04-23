@@ -19,6 +19,8 @@ import {
 } from 'lucide-react';
 import { supabase } from '@/integrations/supabase/client';
 import { useAudio } from '@/hooks/useAudio';
+import { ensureReputation, levelProgress, xpRequiredForLevel, MAX_LEVEL } from '@/lib/reputation';
+import type { Reputation } from '@/types/game';
 
 /* ----------------------------------------------------------------
  * Tab metadata (iOS Operations)
@@ -32,14 +34,14 @@ type TabDef = {
 };
 
 const PRIMARY_TABS: TabDef[] = [
-  { id: 'home',        label: 'Início',       icon: Home },
+  { id: 'warehouse',   label: 'Galpão',       icon: Warehouse },
   { id: 'suppliers',   label: 'Fornecedores', icon: Building2 },
   { id: 'trips',       label: 'Viagens',      icon: Truck },
   { id: 'sales',       label: 'Vendas',       icon: DollarSign },
 ];
 
 const SECONDARY_TABS: TabDef[] = [
-  { id: 'warehouse',    label: 'Galpão',      icon: Warehouse },
+  { id: 'home',         label: 'Início',      icon: Home },
   { id: 'marketplace',  label: 'Marketplace', icon: ShoppingBag },
   { id: 'stores',       label: 'Lojas',       icon: Store },
   { id: 'playermarket', label: 'Mercado P2P', icon: Users },
@@ -60,6 +62,8 @@ interface GameLayoutProps {
   isSyncing?: boolean;
   user?: { email?: string } | null;
   onLogout?: () => void;
+  /** Reputação (nível + xp) do jogador pra exibir badge no header. */
+  reputation?: Reputation;
 }
 
 export const GameLayout = ({
@@ -73,6 +77,7 @@ export const GameLayout = ({
   isSyncing,
   user,
   onLogout,
+  reputation,
 }: GameLayoutProps) => {
   const [displayName, setDisplayName] = useState<string>('');
   const [moreOpen, setMoreOpen] = useState(false);
@@ -122,6 +127,12 @@ export const GameLayout = ({
   };
 
   const isNegative = money < 0;
+
+  // Reputação — defaults compatíveis com saves antigos
+  const rep = ensureReputation(reputation);
+  const isMaxLevel = rep.level >= MAX_LEVEL;
+  const xpNeeded = isMaxLevel ? 0 : xpRequiredForLevel(rep.level + 1);
+  const xpProgressPct = Math.round(levelProgress(rep) * 100);
 
   return (
     <div className="min-h-screen flex flex-col bg-background">
@@ -218,6 +229,35 @@ export const GameLayout = ({
               >
                 Ajustes
               </button>
+            </div>
+          </div>
+
+          {/* Reputação — badge de nível + barra de XP */}
+          <div className="mt-2 flex items-center gap-2">
+            <div
+              className="flex items-center gap-1 px-2 py-1 rounded-full text-white text-[11px] font-bold shadow-sm"
+              style={{ background: 'var(--gradient-primary)' }}
+              aria-label={`Nível ${rep.level}`}
+            >
+              <span>⭐</span>
+              <span className="tabular-nums">Nv {rep.level}</span>
+              {isMaxLevel && <span className="text-[9px] opacity-90">MAX</span>}
+            </div>
+            <div className="flex-1 min-w-0">
+              <div className="w-full h-1.5 bg-muted rounded-full overflow-hidden">
+                <div
+                  className="h-full rounded-full transition-all"
+                  style={{
+                    width: `${xpProgressPct}%`,
+                    background: 'var(--gradient-primary)',
+                  }}
+                />
+              </div>
+              <div className="text-[9px] text-muted-foreground mt-0.5 tabular-nums leading-none">
+                {isMaxLevel
+                  ? `XP total ${rep.totalXp}`
+                  : `${rep.xp} / ${xpNeeded} XP · próximo Nv ${rep.level + 1}`}
+              </div>
             </div>
           </div>
         </div>

@@ -6,6 +6,9 @@ import { cn } from '@/lib/utils';
 import { getVehicleImage } from '@/utils/vehicleImages';
 import { isFeatureEnabled } from '@/config/gameFeatures';
 
+// Duração do conserto na oficina (em segundos) — sincronizado com useGameLogic
+const REPAIR_DURATION_SEC = 30;
+
 
 interface VehicleCardProps {
   vehicle: Vehicle;
@@ -182,6 +185,48 @@ export const VehicleCard: React.FC<VehicleCardProps> = ({
       setRemainingTime(0);
     }
   }, [vehicle.active]);
+
+  // ================================================================
+  // Timer da oficina (veículo quebrado sendo consertado)
+  // ================================================================
+  const [repairRemaining, setRepairRemaining] = useState<number>(0);
+  const [repairProgress, setRepairProgress] = useState<number>(0);
+
+  useEffect(() => {
+    const isRepairing =
+      !!vehicle.broken &&
+      !!vehicle.towTruckPaidForBreakdown &&
+      !!vehicle.repairStartTime;
+
+    if (!isRepairing) {
+      setRepairRemaining(0);
+      setRepairProgress(0);
+      return;
+    }
+
+    const update = () => {
+      const elapsed = (Date.now() - (vehicle.repairStartTime as number)) / 1000;
+      const remaining = Math.max(0, REPAIR_DURATION_SEC - elapsed);
+      const pct = Math.min(100, (elapsed / REPAIR_DURATION_SEC) * 100);
+      setRepairRemaining(remaining);
+      setRepairProgress(pct);
+    };
+
+    update();
+    const id = setInterval(update, 500);
+    return () => clearInterval(id);
+  }, [vehicle.broken, vehicle.towTruckPaidForBreakdown, vehicle.repairStartTime]);
+
+  const formatRepairTime = (sec: number) => {
+    if (sec <= 0) return '0s';
+    const s = Math.ceil(sec);
+    if (s >= 60) {
+      const m = Math.floor(s / 60);
+      const rem = s % 60;
+      return `${m}m ${rem.toString().padStart(2, '0')}s`;
+    }
+    return `${s}s`;
+  };
 
   const canDispatchPickup =
     !vehicle.active &&
@@ -398,8 +443,32 @@ export const VehicleCard: React.FC<VehicleCardProps> = ({
                   </button>
                 </>
               ) : (
-                <div className="text-[11px] text-muted-foreground text-center">
-                  Oficina em reparo…
+                <div className="space-y-2">
+                  <div className="flex items-center justify-between">
+                    <div className="flex items-center gap-1.5">
+                      <span className="text-base">🔧</span>
+                      <span className="text-[11px] uppercase tracking-wider text-muted-foreground font-semibold">
+                        Oficina — Revisa Autocenter
+                      </span>
+                    </div>
+                    <div className="tabular-nums font-game-title text-[13px] font-bold text-orange-500">
+                      {formatRepairTime(repairRemaining)}
+                    </div>
+                  </div>
+
+                  {/* Barra de progresso do conserto */}
+                  <div className="w-full h-1.5 bg-muted rounded-full overflow-hidden">
+                    <div
+                      className="h-full bg-orange-500 transition-[width] duration-500 ease-linear"
+                      style={{ width: `${repairProgress}%` }}
+                    />
+                  </div>
+
+                  <div className="text-[10px] text-muted-foreground text-center">
+                    {repairRemaining > 0
+                      ? 'Mecânico consertando o veículo…'
+                      : 'Conserto concluído! Liberando veículo…'}
+                  </div>
                 </div>
               )}
             </div>

@@ -1,5 +1,6 @@
 import { Product, Vehicle, Driver, MarketplaceItem, Warehouse, GameState, ProductCategory } from '@/types/game';
 import { INITIAL_STORES } from './stores';
+import { INITIAL_REPUTATION } from '@/lib/reputation';
 
 export const PRODUCT_CATEGORIES: ProductCategory[] = [
   {
@@ -434,6 +435,260 @@ export const PRODUCTS: Product[] = [
     priceDirection: 'stable',
     riskLevel: 'médio',
     category: 'eletronicos'
+  },
+  // =====================================================
+  // CAIXAS (produtos em caixa — desconto por volume)
+  // =====================================================
+  {
+    id: 'caixa_pods',
+    name: 'caixa_pods',
+    displayName: 'Caixa de Pods (12un)',
+    icon: '📦',
+    space: 12,
+    baseCost: 88, // 8 × 12 = 96 -> desconto ~8% por volume
+    baseStreetPrice: 132, // 1.5x do custo (margem maior pro atacado)
+    currentPrice: 132,
+    priceDirection: 'stable',
+    riskLevel: 'baixo',
+    category: 'tabaco_vape',
+    boxContents: { productId: 'pods', units: 12 }
+  },
+  {
+    id: 'caixa_smirnoffa',
+    name: 'caixa_smirnoffa',
+    displayName: 'Caixa de Smirnoffa (10un)',
+    icon: '📦',
+    space: 10,
+    baseCost: 162, // 18 × 10 = 180 -> desconto 10%
+    baseStreetPrice: 243, // 1.5x do custo
+    currentPrice: 243,
+    priceDirection: 'stable',
+    riskLevel: 'baixo',
+    category: 'bebidas',
+    boxContents: { productId: 'smirnoffa', units: 10 }
+  },
+  {
+    id: 'caixa_marlboro',
+    name: 'caixa_marlboro',
+    displayName: 'Caixa de Marlboro (10un)',
+    icon: '📦',
+    space: 10,
+    baseCost: 108, // 12 × 10 = 120 -> desconto 10%
+    baseStreetPrice: 162, // 1.5x do custo
+    currentPrice: 162,
+    priceDirection: 'stable',
+    riskLevel: 'baixo',
+    category: 'tabaco_vape',
+    boxContents: { productId: 'marlboro', units: 10 }
+  },
+  {
+    id: 'caixa_perfumes',
+    name: 'caixa_perfumes',
+    displayName: 'Caixa de Perfumes (8un)',
+    icon: '📦',
+    space: 8,
+    baseCost: 180, // 25 × 8 = 200 -> desconto 10%
+    baseStreetPrice: 270,
+    currentPrice: 270,
+    priceDirection: 'stable',
+    riskLevel: 'médio',
+    category: 'perfumes',
+    boxContents: { productId: 'perfumes', units: 8 }
+  },
+  {
+    id: 'caixa_municao_762',
+    name: 'caixa_municao_762',
+    displayName: 'Caixa Munição 7.62 (50un)',
+    icon: '📦',
+    space: 3,
+    baseCost: 1200,
+    baseStreetPrice: 1800,
+    currentPrice: 1800,
+    priceDirection: 'stable',
+    riskLevel: 'alto',
+    category: 'armas',
+    isIllicit: true
+  },
+  {
+    id: 'caixa_starlinks',
+    name: 'caixa_starlinks',
+    displayName: 'Caixa de Starlinks (5un)',
+    icon: '📦',
+    space: 5,
+    baseCost: 20250, // 4500 × 5 = 22500 -> desconto 10%
+    baseStreetPrice: 30375, // 1.5x do custo
+    currentPrice: 30375,
+    priceDirection: 'stable',
+    riskLevel: 'médio',
+    category: 'eletronicos',
+    boxContents: { productId: 'starlinks', units: 5 }
+  },
+  {
+    id: 'caixa_camiseta_peruana',
+    name: 'caixa_camiseta_peruana',
+    displayName: 'Caixa de Camisetas Peruanas (40un)',
+    icon: '📦',
+    space: 40,
+    baseCost: 1080, // 30 × 40 = 1200 -> desconto 10%
+    baseStreetPrice: 1620,
+    currentPrice: 1620,
+    priceDirection: 'stable',
+    riskLevel: 'baixo',
+    category: 'roupas',
+    boxContents: { productId: 'camiseta_peruana', units: 40 }
+  },
+  {
+    id: 'caixa_perfumes_grande',
+    name: 'caixa_perfumes_grande',
+    displayName: 'Caixa Grande de Perfumes (50un)',
+    icon: '📦',
+    space: 50,
+    baseCost: 1125, // 25 × 50 = 1250 -> desconto 10%
+    baseStreetPrice: 1688,
+    currentPrice: 1688,
+    priceDirection: 'stable',
+    riskLevel: 'médio',
+    category: 'perfumes',
+    boxContents: { productId: 'perfumes', units: 50 }
+  },
+  // =====================================================
+  // VARIAÇÕES DE SABORES — Pods
+  // =====================================================
+  {
+    id: 'pods_manga',
+    name: 'pods_manga',
+    displayName: 'Pods Manga Gelada',
+    icon: '🥭',
+    space: 1,
+    baseCost: 9,
+    baseStreetPrice: 13,
+    currentPrice: 13,
+    priceDirection: 'stable',
+    riskLevel: 'baixo',
+    category: 'tabaco_vape'
+  },
+  {
+    id: 'pods_menta',
+    name: 'pods_menta',
+    displayName: 'Pods Menta Ice',
+    icon: '🌿',
+    space: 1,
+    baseCost: 9,
+    baseStreetPrice: 13,
+    currentPrice: 13,
+    priceDirection: 'stable',
+    riskLevel: 'baixo',
+    category: 'tabaco_vape'
+  },
+  {
+    id: 'pods_uva',
+    name: 'pods_uva',
+    displayName: 'Pods Uva Black',
+    icon: '🍇',
+    space: 1,
+    baseCost: 10,
+    baseStreetPrice: 14,
+    currentPrice: 14,
+    priceDirection: 'stable',
+    riskLevel: 'baixo',
+    category: 'tabaco_vape'
+  },
+  {
+    id: 'pods_morango',
+    name: 'pods_morango',
+    displayName: 'Pods Morango Kiwi',
+    icon: '🍓',
+    space: 1,
+    baseCost: 10,
+    baseStreetPrice: 14,
+    currentPrice: 14,
+    priceDirection: 'stable',
+    riskLevel: 'baixo',
+    category: 'tabaco_vape'
+  },
+  // =====================================================
+  // VARIAÇÕES DE SABORES — Marlboro
+  // =====================================================
+  {
+    id: 'marlboro_red',
+    name: 'marlboro_red',
+    displayName: 'Marlboro Vermelho',
+    icon: '🚬',
+    space: 1,
+    baseCost: 13,
+    baseStreetPrice: 18,
+    currentPrice: 18,
+    priceDirection: 'stable',
+    riskLevel: 'baixo',
+    category: 'tabaco_vape'
+  },
+  {
+    id: 'marlboro_menthol',
+    name: 'marlboro_menthol',
+    displayName: 'Marlboro Menthol',
+    icon: '🚬',
+    space: 1,
+    baseCost: 14,
+    baseStreetPrice: 19,
+    currentPrice: 19,
+    priceDirection: 'stable',
+    riskLevel: 'baixo',
+    category: 'tabaco_vape'
+  },
+  {
+    id: 'marlboro_gold',
+    name: 'marlboro_gold',
+    displayName: 'Marlboro Gold',
+    icon: '🚬',
+    space: 1,
+    baseCost: 14,
+    baseStreetPrice: 19,
+    currentPrice: 19,
+    priceDirection: 'stable',
+    riskLevel: 'baixo',
+    category: 'tabaco_vape'
+  },
+  // =====================================================
+  // VARIAÇÕES DE SABORES — Smirnoffa
+  // =====================================================
+  {
+    id: 'smirnoffa_frutas',
+    name: 'smirnoffa_frutas',
+    displayName: 'Smirnoffa Frutas Vermelhas',
+    icon: '🍒',
+    space: 1,
+    baseCost: 20,
+    baseStreetPrice: 27,
+    currentPrice: 27,
+    priceDirection: 'stable',
+    riskLevel: 'baixo',
+    category: 'bebidas'
+  },
+  {
+    id: 'smirnoffa_limao',
+    name: 'smirnoffa_limao',
+    displayName: 'Smirnoffa Limão',
+    icon: '🍋',
+    space: 1,
+    baseCost: 19,
+    baseStreetPrice: 26,
+    currentPrice: 26,
+    priceDirection: 'stable',
+    riskLevel: 'baixo',
+    category: 'bebidas'
+  },
+  {
+    id: 'smirnoffa_tropical',
+    name: 'smirnoffa_tropical',
+    displayName: 'Smirnoffa Tropical',
+    icon: '🍍',
+    space: 1,
+    baseCost: 20,
+    baseStreetPrice: 27,
+    currentPrice: 27,
+    priceDirection: 'stable',
+    riskLevel: 'baixo',
+    category: 'bebidas'
   }
 ];
 
@@ -447,8 +702,8 @@ export const INITIAL_VEHICLES: Vehicle[] = [
     assigned: true,
     driverId: 'felipe', // Felipe já atribuído
     active: false,
-    tripDuration: 22.5,
-    breakdownChance: 0.05 // 5% chance de quebra
+    tripDuration: 33.75, // +50% (22.5 -> 33.75)
+    breakdownChance: 0.10 // +5% (0.05 -> 0.10)
   }
 ];
 
@@ -481,7 +736,8 @@ export const MARKETPLACE_VEHICLES: MarketplaceItem[] = [
     description: 'Preto • Doc atrasado • Passagem por leilão',
     seller: 'Paulo Vitor',
     condition: 'Baixa quilometragem',
-    specs: { capacity: 200, fuelCost: 300, tripDuration: 22.5, breakdownChance: 0.05 }
+    specs: { capacity: 200, fuelCost: 300, tripDuration: 33.75, breakdownChance: 0.10 },
+    levelRequirement: 1
   },
   {
     id: 'uno',
@@ -491,8 +747,9 @@ export const MARKETPLACE_VEHICLES: MarketplaceItem[] = [
     description: 'Vermelho • Tenho recibo • Precisa só de uma tinta',
     seller: 'Paulo Vitor',
     condition: 'Bem conservado',
-    specs: { capacity: 80, fuelCost: 150, tripDuration: 17.25, breakdownChance: 0.08 },
-    unlockRequirement: 0
+    specs: { capacity: 80, fuelCost: 150, tripDuration: 25.88, breakdownChance: 0.13 },
+    unlockRequirement: 0,
+    levelRequirement: 2
   },
   {
     id: 'kombi',
@@ -502,8 +759,9 @@ export const MARKETPLACE_VEHICLES: MarketplaceItem[] = [
     description: 'Branca • Baixa quilometragem • Revisão vencida',
     seller: 'Paulo Vitor',
     condition: 'Para reforma',
-    specs: { capacity: 300, fuelCost: 400, tripDuration: 25.5, breakdownChance: 0.07 },
-    unlockRequirement: 25000
+    specs: { capacity: 300, fuelCost: 400, tripDuration: 38.25, breakdownChance: 0.12 },
+    unlockRequirement: 25000,
+    levelRequirement: 8
   },
   {
     id: 'courier',
@@ -513,8 +771,9 @@ export const MARKETPLACE_VEHICLES: MarketplaceItem[] = [
     description: 'Branca • Era da Aços FM • Não transfere',
     seller: 'Paulo Vitor',
     condition: 'Motor revisado',
-    specs: { capacity: 250, fuelCost: 350, tripDuration: 19.5, breakdownChance: 0.06 },
-    unlockRequirement: 50000
+    specs: { capacity: 250, fuelCost: 350, tripDuration: 29.25, breakdownChance: 0.11 },
+    unlockRequirement: 50000,
+    levelRequirement: 12
   },
   {
     id: 'van',
@@ -524,8 +783,9 @@ export const MARKETPLACE_VEHICLES: MarketplaceItem[] = [
     description: 'Branca • Diesel • Para transportadora',
     seller: 'Paulo Vitor',
     condition: 'Excelente estado',
-    specs: { capacity: 500, fuelCost: 600, tripDuration: 28.5, breakdownChance: 0.04 },
-    unlockRequirement: 100000
+    specs: { capacity: 500, fuelCost: 600, tripDuration: 42.75, breakdownChance: 0.09 },
+    unlockRequirement: 100000,
+    levelRequirement: 20
   },
   {
     id: 'escort',
@@ -535,8 +795,9 @@ export const MARKETPLACE_VEHICLES: MarketplaceItem[] = [
     description: 'Roxo • Hot Wheels • Sonho do 13BPM',
     seller: 'Paulo Vitor',
     condition: 'Restaurado',
-    specs: { capacity: 400, fuelCost: 500, tripDuration: 12, breakdownChance: 0.03 },
-    unlockRequirement: 80000
+    specs: { capacity: 400, fuelCost: 500, tripDuration: 18, breakdownChance: 0.08 },
+    unlockRequirement: 80000,
+    levelRequirement: 30
   },
   {
     id: 'fiat500',
@@ -546,8 +807,9 @@ export const MARKETPLACE_VEHICLES: MarketplaceItem[] = [
     description: 'Rosa • Compacto • Carro de menina',
     seller: 'Paulo Vitor',
     condition: 'Bem conservado',
-    specs: { capacity: 150, fuelCost: 200, tripDuration: 15, breakdownChance: 0.05 },
-    unlockRequirement: 30000
+    specs: { capacity: 150, fuelCost: 200, tripDuration: 22.5, breakdownChance: 0.10 },
+    unlockRequirement: 30000,
+    levelRequirement: 5
   },
   {
     id: 'jetta',
@@ -557,8 +819,9 @@ export const MARKETPLACE_VEHICLES: MarketplaceItem[] = [
     description: 'Preto • Preparado para racha • Motor turbinado',
     seller: 'Paulo Vitor',
     condition: 'Modificado',
-    specs: { capacity: 250, fuelCost: 500, tripDuration: 15, breakdownChance: 0.09 },
-    unlockRequirement: 40000
+    specs: { capacity: 250, fuelCost: 500, tripDuration: 22.5, breakdownChance: 0.14 },
+    unlockRequirement: 40000,
+    levelRequirement: 15
   },
   {
     id: 'bmw320i',
@@ -568,8 +831,9 @@ export const MARKETPLACE_VEHICLES: MarketplaceItem[] = [
     description: 'Azul escuro • O terror do Jetta • Recuperada de financiamento',
     seller: 'Paulo Vitor',
     condition: 'Impecável',
-    specs: { capacity: 350, fuelCost: 450, tripDuration: 14, breakdownChance: 0.02 },
-    unlockRequirement: 70000
+    specs: { capacity: 350, fuelCost: 450, tripDuration: 21, breakdownChance: 0.07 },
+    unlockRequirement: 70000,
+    levelRequirement: 40
   },
   {
     id: 'amarok',
@@ -579,8 +843,9 @@ export const MARKETPLACE_VEHICLES: MarketplaceItem[] = [
     description: 'Branca • Motor recém feito • Sem garantia • Não tem garantia • Se estragar não me ligue',
     seller: 'Paulo Vitor',
     condition: 'Robusta',
-    specs: { capacity: 400, fuelCost: 550, tripDuration: 19, breakdownChance: 0.1 },
-    unlockRequirement: 50000
+    specs: { capacity: 400, fuelCost: 550, tripDuration: 28.5, breakdownChance: 0.15 },
+    unlockRequirement: 50000,
+    levelRequirement: 25
   },
   {
     id: 'bell206',
@@ -590,8 +855,9 @@ export const MARKETPLACE_VEHICLES: MarketplaceItem[] = [
     description: 'Azul • Era de garimpo ilegal • Documentação regularizada',
     seller: 'Paulo Vitor',
     condition: 'Operacional',
-    specs: { capacity: 800, fuelCost: 2000, tripDuration: 7, breakdownChance: 0.01 },
-    unlockRequirement: 1500000
+    specs: { capacity: 800, fuelCost: 2000, tripDuration: 10.5, breakdownChance: 0.06 },
+    unlockRequirement: 1500000,
+    levelRequirement: 85
   },
   {
     id: 'fh540',
@@ -601,8 +867,9 @@ export const MARKETPLACE_VEHICLES: MarketplaceItem[] = [
     description: 'Azul • Caminhão pesado • Capacidade máxima de carga',
     seller: 'Paulo Vitor',
     condition: 'Excelente estado',
-    specs: { capacity: 2800, fuelCost: 1500, tripDuration: 38, breakdownChance: 0.02 },
-    unlockRequirement: 800000
+    specs: { capacity: 2800, fuelCost: 1500, tripDuration: 57, breakdownChance: 0.07 },
+    unlockRequirement: 800000,
+    levelRequirement: 75
   },
   {
     id: 'scania440',
@@ -612,8 +879,9 @@ export const MARKETPLACE_VEHICLES: MarketplaceItem[] = [
     description: 'Cinza • Caminhão robusto • Ideal para cargas pesadas',
     seller: 'Paulo Vitor',
     condition: 'Bem conservado',
-    specs: { capacity: 1500, fuelCost: 1200, tripDuration: 32, breakdownChance: 0.03 },
-    unlockRequirement: 500000
+    specs: { capacity: 1500, fuelCost: 1200, tripDuration: 48, breakdownChance: 0.08 },
+    unlockRequirement: 500000,
+    levelRequirement: 55
   },
 
 
@@ -629,7 +897,8 @@ export const MARKETPLACE_DRIVERS: MarketplaceItem[] = [
     description: 'Ex-marceneiro, tem 4 filhos com 4 mulheres diferentes. Busca uma renda extra.',
     vehicles: ['Monza', 'Uno'],
     trait: 'Confiável mas inexperiente',
-    specs: { dailyWage: 257, repairDiscount: 0, breakdownChanceModifier: 0.1, seizureChanceModifier: 0.1, speedModifier: 0.05, experience: 'iniciante' }
+    specs: { dailyWage: 257, repairDiscount: 0, breakdownChanceModifier: 0.1, seizureChanceModifier: 0.1, speedModifier: 0.05, experience: 'iniciante' },
+    levelRequirement: 1
   },
   {
     id: 'will',
@@ -641,7 +910,8 @@ export const MARKETPLACE_DRIVERS: MarketplaceItem[] = [
     vehicles: ['Kombi', 'Ford Courier'],
     trait: 'Confiável mas distraído',
     specs: { dailyWage: 314, repairDiscount: 0.1, breakdownChanceModifier: 0.05, seizureChanceModifier: 0, speedModifier: 0, experience: 'experiente' },
-    unlockRequirement: 15000
+    unlockRequirement: 15000,
+    levelRequirement: 5
   },
   {
     id: 'pedro',
@@ -653,7 +923,8 @@ export const MARKETPLACE_DRIVERS: MarketplaceItem[] = [
     vehicles: ['Ford Courier', 'Caminhões'],
     trait: 'Conhece atalhos',
     specs: { dailyWage: 400, repairDiscount: 0.15, breakdownChanceModifier: -0.1, seizureChanceModifier: -0.15, speedModifier: -0.1, experience: 'experiente' },
-    unlockRequirement: 25000
+    unlockRequirement: 25000,
+    levelRequirement: 12
   },
   {
     id: 'guizin',
@@ -665,7 +936,8 @@ export const MARKETPLACE_DRIVERS: MarketplaceItem[] = [
     vehicles: ['Sedans'],
     trait: 'Discreto e rápido',
     specs: { dailyWage: 343, repairDiscount: 0.2, breakdownChanceModifier: -0.15, seizureChanceModifier: -0.2, speedModifier: -0.15, experience: 'experiente' },
-    unlockRequirement: 35000
+    unlockRequirement: 35000,
+    levelRequirement: 22
   },
   {
     id: 'alife',
@@ -677,7 +949,8 @@ export const MARKETPLACE_DRIVERS: MarketplaceItem[] = [
     vehicles: ['Sedans'],
     trait: 'Velocidade + Risco',
     specs: { dailyWage: 371, repairDiscount: -0.1, breakdownChanceModifier: 0.25, seizureChanceModifier: 0.05, speedModifier: -0.15, experience: 'experiente' },
-    unlockRequirement: 30000
+    unlockRequirement: 30000,
+    levelRequirement: 18
   },
   {
     id: 'bruno',
@@ -689,7 +962,8 @@ export const MARKETPLACE_DRIVERS: MarketplaceItem[] = [
     vehicles: ['Sedans', 'Caminhões'],
     trait: 'Especialista em eletrônicos',
     specs: { dailyWage: 457, repairDiscount: 0.25, breakdownChanceModifier: -0.2, seizureChanceModifier: -0.25, speedModifier: -0.2, experience: 'experiente' },
-    unlockRequirement: 60000
+    unlockRequirement: 60000,
+    levelRequirement: 35
   },
   {
     id: 'bemba',
@@ -701,7 +975,8 @@ export const MARKETPLACE_DRIVERS: MarketplaceItem[] = [
     vehicles: ['Pickups', 'Caminhões'],
     trait: 'Veterano problemático',
     specs: { dailyWage: 357, repairDiscount: 0.05, breakdownChanceModifier: 0.15, seizureChanceModifier: 0.1, speedModifier: -0.05, experience: 'experiente' },
-    unlockRequirement: 40000
+    unlockRequirement: 40000,
+    levelRequirement: 28
   },
   {
     id: 'neguin',
@@ -713,7 +988,8 @@ export const MARKETPLACE_DRIVERS: MarketplaceItem[] = [
     vehicles: ['Todos'],
     trait: 'Trabalhador dedicado',
     specs: { dailyWage: 286, repairDiscount: 0, breakdownChanceModifier: 0.2, seizureChanceModifier: 0.15, speedModifier: 0.1, experience: 'iniciante' },
-    unlockRequirement: 20000
+    unlockRequirement: 20000,
+    levelRequirement: 8
   },
   {
       id: 'catitu',
@@ -725,7 +1001,8 @@ export const MARKETPLACE_DRIVERS: MarketplaceItem[] = [
       vehicles: ['Todos'],
       trait: 'Veterano conhecido',
       specs: { dailyWage: 543, repairDiscount: 0.4, breakdownChanceModifier: -0.2, seizureChanceModifier: 0.5, speedModifier: -0.05, experience: 'experiente' },
-      unlockRequirement: 80000
+      unlockRequirement: 80000,
+      levelRequirement: 60
     },
     {
       id: 'diego',
@@ -737,7 +1014,8 @@ export const MARKETPLACE_DRIVERS: MarketplaceItem[] = [
       vehicles: ['Todos'],
       trait: 'Cara limpa',
       specs: { dailyWage: 429, repairDiscount: 0.5, breakdownChanceModifier: -0.5, seizureChanceModifier: -0.8, speedModifier: 0.05, experience: 'experiente' },
-      unlockRequirement: 50000
+      unlockRequirement: 50000,
+      levelRequirement: 45
     }
 ];
 
@@ -745,34 +1023,56 @@ export const WAREHOUSES: Warehouse[] = [
   {
     id: 'rua36',
     name: 'Galpão da Rua 36',
-    capacity: 1440, // Aumentado 20% (1200 -> 1440)
-    weeklyCost: 2240, // Aumentado 180% (800 -> 2240)
+    capacity: 1080, // Reduzido 25% (1440 -> 1080)
+    weeklyCost: 2240,
     unlockRequirement: 0,
+    levelRequirement: 1,
     description: 'Seu primeiro galpão. Localização discreta e boa para começar.'
   },
   {
     id: 'sublime',
     name: 'Galpão Sublime',
-    capacity: 3600, // Aumentado 20% (3000 -> 3600)
-    weeklyCost: 4480, // Aumentado 180% (1600 -> 4480)
+    capacity: 2700, // Reduzido 25% (3600 -> 2700)
+    weeklyCost: 4480,
     unlockRequirement: 200000,
+    levelRequirement: 10,
     description: 'Galpão de médio porte com melhor estrutura e segurança.'
   },
   {
     id: 'manelino',
     name: 'Complexo de Galpões do Manelino',
-    capacity: 8640, // Aumentado 20% (7200 -> 8640)
-    weeklyCost: 11200, // Aumentado 180% (4000 -> 11200)
+    capacity: 6480, // Reduzido 25% (8640 -> 6480)
+    weeklyCost: 11200,
     unlockRequirement: 500000,
+    levelRequirement: 25,
     description: 'Complexo avançado com múltiplos galpões e infraestrutura completa.'
   },
   {
     id: 'pedeboi',
     name: 'Galpão do Pé de Boi',
-    capacity: 20000,
+    capacity: 15000, // Reduzido 25% (20000 -> 15000)
     weeklyCost: 22400,
     unlockRequirement: 1000000,
+    levelRequirement: 45,
     description: 'O maior galpão da região. Capacidade massiva para operações de grande escala.'
+  },
+  {
+    id: 'vale_industrial',
+    name: 'Galpão Industrial do Vale',
+    capacity: 28000,
+    weeklyCost: 42000,
+    unlockRequirement: 2500000,
+    levelRequirement: 70,
+    description: 'Galpão industrial blindado, contratado por empresários discretos. Segurança máxima.'
+  },
+  {
+    id: 'mega_logistico',
+    name: 'Mega Complexo Logístico',
+    capacity: 48000,
+    weeklyCost: 75000,
+    unlockRequirement: 5000000,
+    levelRequirement: 90,
+    description: 'O topo do topo. Estrutura de transportadora premium com múltiplas docas e câmeras.'
   }
 ];
 
@@ -781,7 +1081,7 @@ export const INITIAL_GAME_STATE: GameState = {
   vehicles: INITIAL_VEHICLES,
   drivers: INITIAL_DRIVERS,
   stock: {},
-  warehouseCapacity: 1440, // Aumentado 20% (1200 -> 1440)
+  warehouseCapacity: 1080, // Reduzido 25% (1440 -> 1080)
   currentWarehouse: 'rua36',
   lastPriceUpdate: 0,
   lastWeeklyCostPaid: 1, // Start with day 1
@@ -810,6 +1110,8 @@ export const INITIAL_GAME_STATE: GameState = {
   /** Estatísticas acumuladas por produto (preço médio, último preço, etc). */
   productStats: {},
   // Lojas
-  stores: INITIAL_STORES
+  stores: INITIAL_STORES,
+  // Reputação / Nível
+  reputation: { ...INITIAL_REPUTATION }
 
 };

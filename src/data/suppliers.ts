@@ -31,7 +31,9 @@ export interface Supplier {
   /** Distância até Goianésia em km (usado pra viagem/combustível) */
   distanceKm: number;
   /** “Vibe” da loja, usado no card (ex: oficial / contrabando / boca) */
-  tag: 'oficial' | 'contrabando' | 'camelo' | 'boca' | 'atacado';
+  tag: 'oficial' | 'contrabando' | 'camelo' | 'boca' | 'atacado' | 'premium';
+  /** Nível mínimo de reputação para aparecer desbloqueado (opcional — default 1). */
+  levelRequirement?: number;
   catalog: SupplierItem[];
 }
 
@@ -168,6 +170,105 @@ export const SUPPLIERS: Supplier[] = [
       { productId: 'bobigude',          priceMultiplier: 0.90 },
     ],
   },
+
+  /* --------------------------------------------------------- */
+  {
+    id: 'mercadinho_vila',
+    name: 'Mercadinho da Vila',
+    emoji: '🏪',
+    shortDescription: 'Padaria/mercado do bairro: variado e barato.',
+    distanceKm: 15,
+    tag: 'atacado',
+    catalog: [
+      // Variedades do dia a dia
+      { productId: 'marlboro',          priceMultiplier: 1.00 },
+      { productId: 'pods',              priceMultiplier: 1.02 },
+      { productId: 'smirnoffa',         priceMultiplier: 0.98 },
+      { productId: 'bobigude',          priceMultiplier: 0.95 },
+      { productId: 'tadalafila',        priceMultiplier: 1.05 },
+      { productId: 'nobesio_extra_forte', priceMultiplier: 0.97 },
+    ],
+  },
+
+  /* --------------------------------------------------------- */
+  {
+    id: 'porto_santos',
+    name: 'Porto de Santos',
+    emoji: '🚢',
+    shortDescription: 'Container que caiu do navio: eletrônicos premium.',
+    distanceKm: 920,
+    tag: 'contrabando',
+    levelRequirement: 15,
+    catalog: [
+      { productId: 'celulares',         priceMultiplier: 0.65 },
+      { productId: 'smart_watch',       priceMultiplier: 0.62 },
+      { productId: 'notebook',          priceMultiplier: 0.60 },
+      { productId: 'tv_80_pl',          priceMultiplier: 0.58 },
+      { productId: 'starlinks',         priceMultiplier: 0.68 },
+      { productId: 'patinete_eletrico', priceMultiplier: 0.70 },
+      { productId: 'perfumes',          priceMultiplier: 0.72 },
+    ],
+  },
+
+  /* --------------------------------------------------------- */
+  {
+    id: 'fazenda_capao',
+    name: 'Fazenda Capão Alto',
+    emoji: '🚜',
+    shortDescription: 'Plantação remota. Pega direto com o dono.',
+    distanceKm: 180,
+    tag: 'boca',
+    levelRequirement: 8,
+    catalog: [
+      { productId: 'prensadao',   priceMultiplier: 0.85 },
+      { productId: 'ice_weed',    priceMultiplier: 0.88 },
+      { productId: 'escama',      priceMultiplier: 0.95 },
+      { productId: 'bala',        priceMultiplier: 1.00 },
+      // Ferramentas e pecas (fachada)
+      { productId: 'ferramentas', priceMultiplier: 0.95 },
+    ],
+  },
+
+  /* --------------------------------------------------------- */
+  {
+    id: 'shopping_camelo',
+    name: 'Shopping do Camelô',
+    emoji: '🛍️',
+    shortDescription: 'Camelódromo urbano: moda e calçados baratinho.',
+    distanceKm: 90,
+    tag: 'camelo',
+    catalog: [
+      { productId: 'camiseta_peruana',    priceMultiplier: 0.80 },
+      { productId: 'tenis_mike',          priceMultiplier: 0.82 },
+      { productId: 'perfumes',            priceMultiplier: 0.85 },
+      { productId: 'md_rosa',             priceMultiplier: 0.88 },
+      { productId: 'nobesio_extra_forte', priceMultiplier: 0.90 },
+      { productId: 'bobigude',            priceMultiplier: 0.88 },
+      { productId: 'smart_watch',         priceMultiplier: 0.92 },
+    ],
+  },
+
+  /* --------------------------------------------------------- */
+  /* SUPPLIER ESPECIAL: somente caixas, preço 6% abaixo do base */
+  {
+    id: 'distribuidor_caixas_premium',
+    name: 'Distribuidor de Caixas Premium',
+    emoji: '📦',
+    shortDescription: 'Atacadista VIP: só caixas grandes, preço quebrado. Nv 25+.',
+    distanceKm: 350,
+    tag: 'premium',
+    levelRequirement: 25,
+    catalog: [
+      // Todas as caixas — priceMultiplier 0.94 (6% off do baseCost da CAIXA)
+      { productId: 'caixa_pods',              priceMultiplier: 0.94 },
+      { productId: 'caixa_smirnoffa',         priceMultiplier: 0.94 },
+      { productId: 'caixa_marlboro',          priceMultiplier: 0.94 },
+      { productId: 'caixa_perfumes',          priceMultiplier: 0.94 },
+      { productId: 'caixa_starlinks',         priceMultiplier: 0.94 },
+      { productId: 'caixa_camiseta_peruana',  priceMultiplier: 0.94 },
+      { productId: 'caixa_perfumes_grande',   priceMultiplier: 0.94 },
+    ],
+  },
 ];
 
 /* =============================================================
@@ -195,6 +296,7 @@ export const SUPPLIER_TAG_LABEL: Record<Supplier['tag'], string> = {
   camelo: 'Camelô',
   boca: 'Boca',
   atacado: 'Atacado',
+  premium: 'Premium',
 };
 
 /** Cor/estilo por tag (Tailwind utility color), pra card iOS. */
@@ -207,4 +309,5 @@ export const SUPPLIER_TAG_STYLE: Record<
   camelo:       { bg: 'hsl(135 59% 49% / 0.12)',  fg: 'hsl(135 59% 32%)'  },
   boca:         { bg: 'hsl(4 100% 61% / 0.10)',   fg: 'hsl(4 100% 45%)'   },
   atacado:      { bg: 'hsl(264 80% 60% / 0.10)',  fg: 'hsl(264 80% 45%)'  },
+  premium:      { bg: 'hsl(45 100% 50% / 0.14)',  fg: 'hsl(38 90% 38%)'   },
 };

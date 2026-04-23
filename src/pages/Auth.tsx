@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { useAuth, LOCAL_TEST_USER } from '@/hooks/useAuth';
+import { useAuth } from '@/hooks/useAuth';
 import { useNavigate } from 'react-router-dom';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
@@ -9,16 +9,18 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Badge } from '@/components/ui/badge';
 
 const AuthPage = () => {
-  const { user, signIn, signUp, loading, signInLocalTest } = useAuth();
+  const { user, signIn, signUp, loading } = useAuth();
   const navigate = useNavigate();
   const [isLoading, setIsLoading] = useState(false);
+  const [activeTab, setActiveTab] = useState<'login' | 'signup'>('login');
 
-  // Form states (pre-preenchidos com credenciais de teste local)
-  const [loginEmail, setLoginEmail] = useState(LOCAL_TEST_USER.email);
-  const [loginPassword, setLoginPassword] = useState(LOCAL_TEST_USER.password);
+  // Form states
+  const [loginEmail, setLoginEmail] = useState('');
+  const [loginPassword, setLoginPassword] = useState('');
   const [signupEmail, setSignupEmail] = useState('');
   const [signupPassword, setSignupPassword] = useState('');
   const [displayName, setDisplayName] = useState('');
+  const [signupNotice, setSignupNotice] = useState<string | null>(null);
 
   // Redirect authenticated users to home
   useEffect(() => {
@@ -31,16 +33,6 @@ const AuthPage = () => {
     e.preventDefault();
     if (!loginEmail || !loginPassword) return;
 
-    // Interceptar credenciais de teste local (alife / 123) — não bate no Supabase
-    if (
-      loginEmail.trim().toLowerCase() === LOCAL_TEST_USER.email.toLowerCase() &&
-      loginPassword === LOCAL_TEST_USER.password
-    ) {
-      signInLocalTest();
-      navigate('/');
-      return;
-    }
-
     setIsLoading(true);
     const { error } = await signIn(loginEmail, loginPassword);
 
@@ -50,20 +42,32 @@ const AuthPage = () => {
     setIsLoading(false);
   };
 
-  const handleLocalTestClick = () => {
-    signInLocalTest();
-    navigate('/');
-  };
-
   const handleSignUp = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!signupEmail || !signupPassword || !displayName) return;
 
     setIsLoading(true);
-    const { error } = await signUp(signupEmail, signupPassword, displayName);
-    
+    setSignupNotice(null);
+    const { error, needsEmailConfirmation } = await signUp(
+      signupEmail,
+      signupPassword,
+      displayName
+    );
+
     if (!error) {
-      navigate('/');
+      if (needsEmailConfirmation) {
+        // Não navega: mantém o usuário na tela pra ver o aviso
+        setSignupNotice(
+          'Enviamos um link de confirmação para ' +
+            signupEmail +
+            '. Confirme seu email e depois volte aqui pra fazer login.'
+        );
+        // Pré-preenche o email na aba de login pra facilitar
+        setLoginEmail(signupEmail);
+        setActiveTab('login');
+      } else {
+        navigate('/');
+      }
     }
     setIsLoading(false);
   };
@@ -84,7 +88,7 @@ const AuthPage = () => {
       <Card className="w-full max-w-md">
         <CardHeader className="text-center">
           <CardTitle className="text-3xl font-bold bg-gradient-to-r from-primary to-accent bg-clip-text text-transparent">
-            Trafic Game
+            GSIA TRAFICS
           </CardTitle>
           <CardDescription>
             Entre ou crie sua conta para começar a jogar
@@ -95,14 +99,24 @@ const AuthPage = () => {
             <Badge variant="secondary">🏪 Lojas</Badge>
           </div>
         </CardHeader>
-        
+
         <CardContent>
-          <Tabs defaultValue="login" className="w-full">
+          {signupNotice && (
+            <div className="mb-4 rounded-md border border-primary/30 bg-primary/10 p-3 text-sm text-foreground">
+              ✉️ {signupNotice}
+            </div>
+          )}
+
+          <Tabs
+            value={activeTab}
+            onValueChange={(v) => setActiveTab(v as 'login' | 'signup')}
+            className="w-full"
+          >
             <TabsList className="grid w-full grid-cols-2">
               <TabsTrigger value="login">Entrar</TabsTrigger>
               <TabsTrigger value="signup">Cadastrar</TabsTrigger>
             </TabsList>
-            
+
             <TabsContent value="login">
               <form onSubmit={handleSignIn} className="space-y-4">
                 <div className="space-y-2">
@@ -113,10 +127,11 @@ const AuthPage = () => {
                     placeholder="seu@email.com"
                     value={loginEmail}
                     onChange={(e) => setLoginEmail(e.target.value)}
+                    autoComplete="email"
                     required
                   />
                 </div>
-                
+
                 <div className="space-y-2">
                   <Label htmlFor="login-password">Senha</Label>
                   <Input
@@ -125,10 +140,11 @@ const AuthPage = () => {
                     placeholder="••••••••"
                     value={loginPassword}
                     onChange={(e) => setLoginPassword(e.target.value)}
+                    autoComplete="current-password"
                     required
                   />
                 </div>
-                
+
                 <Button
                   type="submit"
                   className="w-full"
@@ -136,31 +152,9 @@ const AuthPage = () => {
                 >
                   {isLoading ? 'Entrando...' : 'Entrar'}
                 </Button>
-
-                <div className="relative my-2">
-                  <div className="absolute inset-0 flex items-center">
-                    <span className="w-full border-t border-border" />
-                  </div>
-                  <div className="relative flex justify-center text-xs uppercase">
-                    <span className="bg-card px-2 text-muted-foreground">ou</span>
-                  </div>
-                </div>
-
-                <Button
-                  type="button"
-                  variant="outline"
-                  className="w-full"
-                  onClick={handleLocalTestClick}
-                  disabled={isLoading}
-                >
-                  🧪 Entrar como Teste Local ({LOCAL_TEST_USER.email} / {LOCAL_TEST_USER.password})
-                </Button>
-                <p className="text-[11px] text-muted-foreground text-center">
-                  Modo teste salva no navegador, sem tocar no Supabase.
-                </p>
               </form>
             </TabsContent>
-            
+
             <TabsContent value="signup">
               <form onSubmit={handleSignUp} className="space-y-4">
                 <div className="space-y-2">
@@ -171,10 +165,11 @@ const AuthPage = () => {
                     placeholder="Seu nome no jogo"
                     value={displayName}
                     onChange={(e) => setDisplayName(e.target.value)}
+                    autoComplete="nickname"
                     required
                   />
                 </div>
-                
+
                 <div className="space-y-2">
                   <Label htmlFor="signup-email">Email</Label>
                   <Input
@@ -183,10 +178,11 @@ const AuthPage = () => {
                     placeholder="seu@email.com"
                     value={signupEmail}
                     onChange={(e) => setSignupEmail(e.target.value)}
+                    autoComplete="email"
                     required
                   />
                 </div>
-                
+
                 <div className="space-y-2">
                   <Label htmlFor="signup-password">Senha</Label>
                   <Input
@@ -195,6 +191,7 @@ const AuthPage = () => {
                     placeholder="••••••••"
                     value={signupPassword}
                     onChange={(e) => setSignupPassword(e.target.value)}
+                    autoComplete="new-password"
                     required
                     minLength={6}
                   />
@@ -202,10 +199,10 @@ const AuthPage = () => {
                     Mínimo de 6 caracteres
                   </p>
                 </div>
-                
-                <Button 
-                  type="submit" 
-                  className="w-full" 
+
+                <Button
+                  type="submit"
+                  className="w-full"
                   disabled={isLoading || !signupEmail || !signupPassword || !displayName}
                 >
                   {isLoading ? 'Cadastrando...' : 'Criar Conta'}
@@ -213,7 +210,7 @@ const AuthPage = () => {
               </form>
             </TabsContent>
           </Tabs>
-          
+
           <div className="mt-6 text-center">
             <p className="text-sm text-muted-foreground">
               🎮 Seu progresso será salvo automaticamente na nuvem

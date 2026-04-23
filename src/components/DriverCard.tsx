@@ -12,6 +12,10 @@ interface DriverCardProps {
   isUnlocked: boolean;
   isOwned: boolean;
   money: number;
+  /** Se está bloqueado por nível de reputação insuficiente. */
+  levelLocked?: boolean;
+  /** Nível atual do jogador (pra mostrar diferença no badge). */
+  currentLevel?: number;
 }
 
 export const DriverCard: React.FC<DriverCardProps> = ({
@@ -20,7 +24,9 @@ export const DriverCard: React.FC<DriverCardProps> = ({
   canAfford,
   isUnlocked,
   isOwned,
-  money
+  money,
+  levelLocked = false,
+  currentLevel = 1,
 }) => {
   const formatMoney = (value: number) => {
     return new Intl.NumberFormat('pt-BR', {
@@ -29,10 +35,13 @@ export const DriverCard: React.FC<DriverCardProps> = ({
     }).format(value);
   };
 
+  const requiredLevel = driver.levelRequirement ?? 1;
+  const effectivelyLocked = levelLocked || !isUnlocked;
+
   return (
     <Card className={cn(
       "game-card p-4 transition-all duration-300 hover:scale-105 font-game-ui",
-      !isUnlocked ? 'opacity-50' : '',
+      effectivelyLocked ? 'opacity-60' : '',
       isOwned ? 'glow-primary border-primary' : 'hover:glow-secondary'
     )}>
       <div className="flex gap-4">
@@ -61,7 +70,12 @@ export const DriverCard: React.FC<DriverCardProps> = ({
             </div>
             <div className="text-right ml-2">
               <div className="font-game-title font-bold text-lg text-green-500">{formatMoney(driver.price)}</div>
-              {!isUnlocked && driver.unlockRequirement && (
+              {levelLocked && (
+                <div className="text-xs text-orange-500 font-semibold">
+                  🔒 Nível {requiredLevel} (você Nv {currentLevel})
+                </div>
+              )}
+              {!levelLocked && !isUnlocked && driver.unlockRequirement && (
                 <div className="text-xs text-warning">
                   Desbloqueado com {formatMoney(driver.unlockRequirement)}
                 </div>
@@ -99,16 +113,17 @@ export const DriverCard: React.FC<DriverCardProps> = ({
           </div>
           
           {/* Action Button */}
-          <Button 
+          <Button
             onClick={() => onHire(driver)}
-            disabled={!isUnlocked || !canAfford || isOwned}
-            variant={canAfford && isUnlocked && !isOwned ? "default" : "outline"}
+            disabled={effectivelyLocked || !canAfford || isOwned}
+            variant={canAfford && !effectivelyLocked && !isOwned ? "default" : "outline"}
             className="w-full text-sm"
             size="sm"
           >
-            {isOwned ? '✓ Contratado' : 
+            {isOwned ? '✓ Contratado' :
+             levelLocked ? `🔒 Nível ${requiredLevel} necessário` :
              !isUnlocked ? '💰 Saldo Insuficiente' :
-             !canAfford ? '💰 Sem grana' : 
+             !canAfford ? '💰 Sem grana' :
              'Contratar'}
           </Button>
         </div>

@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback, useRef } from 'react';
+import { useState, useEffect, useCallback, useRef, useMemo } from 'react';
 import { GameState, Product, Vehicle, Driver, Stock, Warehouse, PoliceInterception, VehicleSale, PendingPickup, ProductStats } from '@/types/game';
 import { INITIAL_GAME_STATE, PRODUCTS, MARKETPLACE_VEHICLES, MARKETPLACE_DRIVERS, WAREHOUSES } from '@/data/gameData';
 import { INITIAL_STORES } from '@/data/stores';
@@ -26,6 +26,7 @@ import { GAME_FEATURES, isFeatureEnabled } from '@/config/gameFeatures';
 import { calculateTripRisks, rollBreakdownCheck, rollSeizureCheck } from '@/utils/tripRisks';
 import { useAudio } from '@/hooks/useAudio';
 import { updateProductPrices, shouldUpdatePrices } from '@/utils/priceVariation';
+import { addXp, ensureReputation, INITIAL_REPUTATION, MAX_LEVEL, meetsLevelRequirement } from '@/lib/reputation';
 
 // Declaração global para acessar gameLogic durante logout
 declare global {
@@ -37,6 +38,47 @@ declare global {
     };
   }
 }
+
+/* ----------------------------------------------------------------
+ * Box decomposition helpers
+ *
+ * Um produto pode ser uma CAIXA (tem `boxContents`). Quando isso
+ * acontece:
+ *  - Ocupa `boxContents.units` slots no veículo/galpão (não 1).
+ *  - Ao chegar no estoque, se desmembra em N unidades do produto base.
+ *
+ * Essas funções ficam fora do hook porque PRODUCTS é estático.
+ * ---------------------------------------------------------------- */
+
+/** Quantas unidades de espaço (no veículo/galpão) uma quantidade de produto ocupa. */
+const getOccupiedUnits = (productId: string, qty: number): number => {
+  const product = PRODUCTS.find((p) => p.id === productId);
+  const unitsPerItem = product?.boxContents?.units ?? 1;
+  return qty * unitsPerItem;
+};
+
+/**
+ * Converte (productId, qty) em entradas pra somar no stock, desmembrando
+ * caixas no produto base. Retorna array de {productId, quantity}.
+ *
+ * Ex: decomposeStockDelta('caixa_starlinks', 2) → [{productId:'starlinks', quantity:10}]
+ *     decomposeStockDelta('pods', 3)            → [{productId:'pods', quantity:3}]
+ */
+const decomposeStockDelta = (
+  productId: string,
+  qty: number
+): Array<{ productId: string; quantity: number }> => {
+  const product = PRODUCTS.find((p) => p.id === productId);
+  if (product?.boxContents) {
+    return [
+      {
+        productId: product.boxContents.productId,
+        quantity: qty * product.boxContents.units,
+      },
+    ];
+  }
+  return [{ productId, quantity: qty }];
+};
 
 export const useGameLogic = () => {
   const [gameState, setGameState] = useState<GameState>({
@@ -51,6 +93,39 @@ export const useGameLogic = () => {
   const saveTimeoutRef = useRef<NodeJS.Timeout | null>(null);
   const user = null;
   const { playMoneySound } = useAudio();
+
+  /* ----------------------------------------------------------------
+   * Reputação: helper `awardXp(amount)`
+   * Atualiza reputation no gameState e dispara toast em level-up.
+   * ---------------------------------------------------------------- */
+  const awardXp = useCallback(
+    (amount: number, reason?: string) => {
+      if (!amount || amount <= 0) return;
+      setGameState((prev) => {
+        const result = addXp(prev.reputation, amount);
+
+        // Disparar toast fora do updater (level-ups só)
+        if (result.levelsGained > 0) {
+          const newLevel = result.reputation.level;
+          // Executar no próximo tick pra não causar warning
+          queueMicrotask(() => {
+            toast({
+              title: `⭐ Nível ${newLevel}!`,
+              description:
+                newLevel >= MAX_LEVEL
+                  ? 'Reputação máxima atingida — lenda do corre.'
+                  : result.levelsGained > 1
+                    ? `Você subiu ${result.levelsGained} níveis de reputação!`
+                    : 'Sua reputação no corre subiu. Novos recursos podem ter sido desbloqueados.',
+            });
+          });
+        }
+
+        return { ...prev, reputation: result.reputation };
+      });
+    },
+    []
+  );
 
   // Atualizar refs quando o estado mudar
   useEffect(() => {
@@ -642,8 +717,18 @@ export const useGameLogic = () => {
   }, [generateBuyerInstance]);
 
   // ─── Constantes do sistema drip ───
-  /** Slots máximos de compradores simultâneos. */
-  const MAX_BUYERS = 4;
+  /**
+   * Slots máximos de compradores simultâneos — escala com reputação:
+   *   Lv 1-4:   2 slots
+   *   Lv 5-9:   3 slots
+   *   Lv 10-14: 4 slots
+   *   ...
+   *   Lv 30+:   8 slots (máximo)
+   */
+  const MAX_BUYERS = useMemo(() => {
+    const level = ensureReputation(gameState.reputation).level;
+    return Math.min(8, 2 + Math.floor(level / 5));
+  }, [gameState.reputation]);
   /** Mínimo desejado antes de spawnar imediato. */
   const MIN_BUYERS = 2;
   /** Intervalo entre chegadas em ms (~28s). */
@@ -724,7 +809,7 @@ export const useGameLogic = () => {
     }, 1000); // Tick de 1s para smooth patience + drip
 
     return () => clearInterval(interval);
-  }, [gameLoaded, generateBuyerInstance]);
+  }, [gameLoaded, generateBuyerInstance, MAX_BUYERS]);
 
   // Gerar comprador aleatório com pedidos variados baseado na progressão
   const generateRandomBuyer = useCallback(() => {
@@ -861,6 +946,9 @@ export const useGameLogic = () => {
         productSales: [...prev.productSales, saleRecord]
       };
     });
+
+    // +1 XP de reputação por venda concluída
+    awardXp(1, 'venda');
 
     // Atualizar lista de compradores
     setBuyers(prev => {
@@ -1215,8 +1303,10 @@ export const useGameLogic = () => {
           title: "Viagem concluída!",
           description: `${vehicle.name} voltou com ${quantity} ${product.name}`,
         });
+        // +1 XP por viagem completada sem quebra nem apreensão
+        awardXp(1, 'viagem-ok');
       }
-      
+
       console.log(`✅ [TRIP] Viagem processada para veículo ${vehicleId}. Quebra: ${vehicleBrokeDown}, Apreensão: ${merchandiseSeized}`);
     }, tripDurationMs);
     
@@ -1396,13 +1486,15 @@ export const useGameLogic = () => {
           const product = products.find(p => p.id === sp.productId);
           return `${sp.quantity}x ${product?.name || 'Produto'}`;
         }).join(', ');
-        
+
         toast({
           title: "Viagem concluída!",
           description: `${vehicle.name} voltou com: ${productNames}`,
         });
+        // +1 XP por viagem completada sem quebra nem apreensão
+        awardXp(1, 'viagem-ok');
       }
-      
+
       console.log(`✅ [TRIP] Viagem múltipla processada para veículo ${vehicleId}. Quebra: ${vehicleBrokeDown}, Apreensão: ${merchandiseSeized}`);
     }, tripDurationMs);
     
@@ -1467,6 +1559,18 @@ export const useGameLogic = () => {
         toast({
           title: 'Fornecedor não encontrado',
           description: 'Esse fornecedor não existe.',
+          variant: 'destructive',
+        });
+        return false;
+      }
+
+      // Gate por nível de reputação
+      const currentLevel = ensureReputation(gameStateRef.current.reputation).level;
+      const requiredLevel = supplier.levelRequirement ?? 1;
+      if (!meetsLevelRequirement(currentLevel, requiredLevel)) {
+        toast({
+          title: '🔒 Fornecedor bloqueado',
+          description: `${supplier.name} requer Nível ${requiredLevel}. Seu nível atual: ${currentLevel}.`,
           variant: 'destructive',
         });
         return false;
@@ -1622,12 +1726,21 @@ export const useGameLogic = () => {
 
     for (const pickup of pool) {
       if (remaining <= 0) break;
-      const take = Math.min(pickup.quantity, remaining);
+      // Cada item pode ser caixa (ocupa N slots). Respeita os slots disponíveis.
+      const slotsPerItem = getOccupiedUnits(pickup.productId, 1);
+      if (slotsPerItem <= 0) continue;
+      const maxByCapacity = Math.floor(remaining / slotsPerItem);
+      if (maxByCapacity <= 0) continue;
+      const take = Math.min(pickup.quantity, maxByCapacity);
       taken.push({ pickup, qty: take });
-      remaining -= take;
+      remaining -= take * slotsPerItem;
     }
 
-    const totalQty = taken.reduce((s, t) => s + t.qty, 0);
+    // totalQty = unidades após desmembramento (1 caixa de 5 un = 5)
+    const totalQty = taken.reduce(
+      (s, t) => s + getOccupiedUnits(t.pickup.productId, t.qty),
+      0
+    );
     const supplierIds = Array.from(new Set(taken.map((t) => t.pickup.supplierId)));
 
     // Distância = maior distância entre fornecedores da rota
@@ -1809,10 +1922,13 @@ export const useGameLogic = () => {
 
           if (vehicleBrokeDown) {
             // Mesmo com quebra, os produtos chegam ao estoque
+            // Caixas se desmembram em unidades do produto base.
             const updatedStock = { ...prev.stock };
             selectedProducts.forEach((sp) => {
-              updatedStock[sp.productId] =
-                (updatedStock[sp.productId] || 0) + sp.quantity;
+              decomposeStockDelta(sp.productId, sp.quantity).forEach((d) => {
+                updatedStock[d.productId] =
+                  (updatedStock[d.productId] || 0) + d.quantity;
+              });
             });
 
             updatedState = {
@@ -1868,10 +1984,13 @@ export const useGameLogic = () => {
           }
 
           // Sucesso — adicionar mercadoria ao estoque
+          // Caixas se desmembram em unidades do produto base.
           const updatedStock = { ...prev.stock };
           selectedProducts.forEach((sp) => {
-            updatedStock[sp.productId] =
-              (updatedStock[sp.productId] || 0) + sp.quantity;
+            decomposeStockDelta(sp.productId, sp.quantity).forEach((d) => {
+              updatedStock[d.productId] =
+                (updatedStock[d.productId] || 0) + d.quantity;
+            });
           });
 
           updatedState = {
@@ -1907,6 +2026,8 @@ export const useGameLogic = () => {
             title: 'Retirada concluída!',
             description: `${vehicle.name} trouxe: ${summary}`,
           });
+          // +1 XP por viagem completada sem quebra nem apreensão
+          awardXp(1, 'retirada-ok');
         }
       }, tripDurationMs);
 
@@ -1941,6 +2062,18 @@ export const useGameLogic = () => {
         toast({
           title: "Erro na compra",
           description: "Dados do veículo inválidos",
+          variant: "destructive"
+        });
+        return false;
+      }
+
+      // Gate por nível de reputação
+      const currentLevel = ensureReputation(gameState.reputation).level;
+      const requiredLevel = vehicleItem.levelRequirement ?? 1;
+      if (!meetsLevelRequirement(currentLevel, requiredLevel)) {
+        toast({
+          title: "🔒 Nível insuficiente",
+          description: `Este veículo requer Nível ${requiredLevel}. Seu nível atual: ${currentLevel}.`,
           variant: "destructive"
         });
         return false;
@@ -2011,7 +2144,7 @@ export const useGameLogic = () => {
       });
       return false;
     }
-  }, [gameState.money, gameState.vehicles]);
+  }, [gameState.money, gameState.vehicles, gameState.overdraftLimit, gameState.reputation]);
 
 
 
@@ -2144,6 +2277,18 @@ export const useGameLogic = () => {
       return false;
     }
 
+    // Gate por nível de reputação
+    const currentLevel = ensureReputation(gameState.reputation).level;
+    const requiredLevel = targetWarehouse.levelRequirement ?? 1;
+    if (!meetsLevelRequirement(currentLevel, requiredLevel)) {
+      toast({
+        title: "🔒 Nível insuficiente",
+        description: `Este galpão requer Nível ${requiredLevel}. Seu nível atual: ${currentLevel}.`,
+        variant: "destructive"
+      });
+      return false;
+    }
+
     // Verificar se pode usar cheque especial
     const newBalance = gameState.money - targetWarehouse.unlockRequirement;
     if (newBalance < gameState.overdraftLimit) {
@@ -2201,7 +2346,7 @@ export const useGameLogic = () => {
     console.log(`🏢 [WAREHOUSE] Galpão atualizado para: ${targetWarehouse.name} (${targetWarehouse.capacity} unidades)`);
     
     return true;
-  }, [gameState.money, gameState.currentWarehouse, gameState.overdraftLimit]);
+  }, [gameState.money, gameState.currentWarehouse, gameState.overdraftLimit, gameState.reputation]);
 
   const payLawyer = useCallback((vehicleId: string) => {
     // Verificar se a funcionalidade de apreensão está habilitada
@@ -2694,18 +2839,24 @@ export const useGameLogic = () => {
     if (vehicle.productId && vehicle.quantity) {
       const product = products.find(p => p.id === vehicle.productId);
       if (product) {
-        updatedStock[vehicle.productId] = (updatedStock[vehicle.productId] || 0) + vehicle.quantity;
+        // Caixas desmembram em unidades do produto base
+        decomposeStockDelta(vehicle.productId, vehicle.quantity).forEach(d => {
+          updatedStock[d.productId] = (updatedStock[d.productId] || 0) + d.quantity;
+        });
         productsRecovered.push(`${vehicle.quantity} ${product.name}`);
         console.log(`📦 [FORCE RESET] Recuperando ${vehicle.quantity} ${product.name}`);
       }
     }
-    
+
     // Verificar se há produtos para recuperar (viagem múltipla)
     if (vehicle.selectedProducts && vehicle.selectedProducts.length > 0) {
       vehicle.selectedProducts.forEach(sp => {
         const product = products.find(p => p.id === sp.productId);
         if (product) {
-          updatedStock[sp.productId] = (updatedStock[sp.productId] || 0) + sp.quantity;
+          // Caixas desmembram em unidades do produto base
+          decomposeStockDelta(sp.productId, sp.quantity).forEach(d => {
+            updatedStock[d.productId] = (updatedStock[d.productId] || 0) + d.quantity;
+          });
           productsRecovered.push(`${sp.quantity} ${product.name}`);
           console.log(`📦 [FORCE RESET] Recuperando ${sp.quantity} ${product.name}`);
         }
@@ -2762,6 +2913,18 @@ export const useGameLogic = () => {
         toast({
           title: "Erro na contratação",
           description: "Dados do motorista inválidos",
+          variant: "destructive"
+        });
+        return false;
+      }
+
+      // Gate por nível de reputação
+      const currentLevel = ensureReputation(gameState.reputation).level;
+      const requiredLevel = driver.levelRequirement ?? 1;
+      if (!meetsLevelRequirement(currentLevel, requiredLevel)) {
+        toast({
+          title: "🔒 Nível insuficiente",
+          description: `Este motorista requer Nível ${requiredLevel}. Seu nível atual: ${currentLevel}.`,
           variant: "destructive"
         });
         return false;
@@ -2832,7 +2995,7 @@ export const useGameLogic = () => {
       });
       return false;
     }
-  }, [gameState.money, gameState.drivers]);
+  }, [gameState.money, gameState.drivers, gameState.overdraftLimit, gameState.reputation]);
 
   // Função para vender tudo para um comprador - VERSÃO MELHORADA
   const sellAll = useCallback((buyerId: string) => {
@@ -3273,9 +3436,9 @@ export const useGameLogic = () => {
               return;
             }
             
-            // Calcular lucro da venda
+            // Calcular lucro da venda (reduzido 50% — lojas compradas na aba "Mais")
             const salePrice = product.currentPrice * store.profitMultiplier;
-            const profit = salePrice - product.baseCost;
+            const profit = (salePrice - product.baseCost) * 0.5;
             
             // Atualizar estado - remover 1 unidade do produto vendido
             const updatedStores = prev.stores.map(s => {
@@ -3569,6 +3732,8 @@ export const useGameLogic = () => {
     updateProductStats,
     cancelPendingPickup,
     pickupExpirationMs: PICKUP_EXPIRATION_MS,
+    /** Slots máximos de compradores no tick atual (varia com o nível). */
+    maxBuyers: MAX_BUYERS,
   };
 
   // Expor instância globalmente para acesso durante logout (otimizado)

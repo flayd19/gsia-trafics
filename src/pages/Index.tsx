@@ -30,7 +30,7 @@ const Index = () => {
       return;
     }
   }, [user, loading, navigate]);
-  const [currentTab, setCurrentTab] = useState('home');
+  const [currentTab, setCurrentTab] = useState('warehouse');
 
 
   const { toast } = useToast();
@@ -90,6 +90,7 @@ const Index = () => {
     getSupplierUnitPrice,
     cancelPendingPickup,
     pickupExpirationMs,
+    maxBuyers,
    } = useGameLogic();
 
 
@@ -280,6 +281,7 @@ const Index = () => {
             gameState={gameState}
             products={products}
             buyers={buyers}
+            maxBuyers={maxBuyers}
             onSellToBuyer={sellToBuyer}
             onRejectBuyer={rejectBuyer}
             onBargain={tryBargain}
@@ -366,6 +368,7 @@ const Index = () => {
         currentTab={currentTab}
         isSyncing={isSyncing}
         user={user}
+        reputation={gameState.reputation}
         onLogout={async () => {
           const { supabase } = await import('@/integrations/supabase/client');
           await supabase.auth.signOut();
