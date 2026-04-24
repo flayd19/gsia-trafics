@@ -11,7 +11,7 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import type { GameState } from '@/types/game';
 import type { GlobalCar } from '@/hooks/useGlobalMarketplace';
-import { conditionLabel, conditionColor, conditionValueFactor, type CarCategory } from '@/data/cars';
+import { conditionLabel, conditionColor, conditionValueFactor, fmtKm, type CarCategory } from '@/data/cars';
 
 interface FornecedoresCarrosScreenProps {
   gameState: GameState;
@@ -232,7 +232,9 @@ function CarDetailSheet({
           <div className="text-[16px] font-semibold text-foreground mt-1">
             {car.brand} {car.model} {car.trim}
           </div>
-          <div className="text-[13px] text-muted-foreground mt-0.5">{car.year} · 📍 {car.seller}</div>
+          <div className="text-[13px] text-muted-foreground mt-0.5">
+            {car.year} · {fmtKm(car.mileage)} · 📍 {car.seller}
+          </div>
         </div>
 
         {/* FIPE comparison */}
@@ -397,7 +399,7 @@ function MarketplaceCard({
           {fmt(car.askingPrice)}
         </div>
         <div className="text-[11px] font-semibold text-foreground leading-tight truncate">{car.brand} {car.model}</div>
-        <div className="text-[10px] text-muted-foreground truncate">{car.trim} · {car.year}</div>
+        <div className="text-[10px] text-muted-foreground truncate">{car.trim} · {car.year} · {fmtKm(car.mileage)}</div>
         <div className="text-[10px] text-muted-foreground truncate">📍 {car.seller}</div>
         {!isSold && !hasGarageSpace && <div className="text-[9px] text-orange-500 font-semibold mt-0.5">Garagem cheia</div>}
         {!isSold && !canAfford && hasGarageSpace && <div className="text-[9px] text-red-500 font-semibold mt-0.5">Saldo insuficiente</div>}

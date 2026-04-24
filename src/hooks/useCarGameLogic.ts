@@ -443,6 +443,7 @@ export function useCarGameLogic() {
       brand: car.brand, model: car.model, trim: car.trim,
       year: car.year, icon: car.icon,
       fipePrice: car.fipePrice, condition: car.condition,
+      mileage: car.mileage,
       purchasePrice: car.askingPrice, purchasedAt: Date.now(),
       completedRepairs: [],
       attributes: generateAttributes(car.condition),

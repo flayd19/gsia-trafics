@@ -7,7 +7,7 @@ import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { Progress } from '@/components/ui/progress';
 import type { GameState, OwnedCar, GarageSlot } from '@/types/game';
-import { GARAGE_SLOTS, conditionLabel, conditionColor, garageSlotDailyCost } from '@/data/cars';
+import { GARAGE_SLOTS, conditionLabel, conditionColor, garageSlotDailyCost, fmtKm } from '@/data/cars';
 
 interface GaragemScreenProps {
   gameState: GameState;
@@ -35,6 +35,9 @@ function CarCard({ car, slotId, onRepair }: { car: OwnedCar; slotId: number; onR
             </div>
             <div className="text-[12px] text-muted-foreground">
               {car.trim} · {car.year}
+              {car.mileage != null && (
+                <span className="ml-1.5 text-muted-foreground/70">· {fmtKm(car.mileage)}</span>
+              )}
             </div>
           </div>
         </div>

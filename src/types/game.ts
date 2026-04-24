@@ -43,6 +43,8 @@ export interface OwnedCar {
   fipePrice: number;
   /** Condição 0-100 */
   condition: number;
+  /** Quilometragem do veículo */
+  mileage?: number;
   /** Preço pago na aquisição */
   purchasePrice: number;
   /** Soma acumulada dos gastos com oficina neste veículo */

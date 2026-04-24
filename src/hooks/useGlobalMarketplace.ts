@@ -30,6 +30,7 @@ interface MarketplaceRow {
   fipe_price: number;
   asking_price: number;
   condition_pct: number;
+  mileage: number;
   icon: string;
   category: string;
   seller_name: string;
@@ -54,6 +55,7 @@ function rowToGlobalCar(row: MarketplaceRow): GlobalCar {
     year:         row.year,
     fipePrice:    row.fipe_price,
     condition:    row.condition_pct,
+    mileage:      row.mileage ?? 0,
     askingPrice:  row.asking_price,
     icon:         row.icon,
     category:     row.category as GlobalCar['category'],
@@ -78,6 +80,7 @@ function carsToRows(cars: MarketplaceCar[], batchId: number) {
     fipe_price:    car.fipePrice,
     asking_price:  car.askingPrice,
     condition_pct: car.condition,
+    mileage:       car.mileage,
     icon:          car.icon,
     category:      car.category,
     seller_name:   car.seller,

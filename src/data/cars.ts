@@ -1115,6 +1115,17 @@ function buildOneCar(model: CarModel): MarketplaceCar {
     ? Math.floor(15 + Math.random() * 25)  // 15-40  (ruim)       25%
     : Math.floor(1  + Math.random() * 15); //  1-15  (sucata)      5%
 
+  // Quilometragem baseada na idade do veículo (~15.000 km/ano) com variação ±60%
+  // Carros em pior condição tendem a ter mais km
+  const currentYear = new Date().getFullYear();
+  const age = Math.max(0, currentYear - variant.year);
+  const conditionMultiplier = condition >= 70 ? 0.6 : condition >= 40 ? 1.0 : 1.5;
+  const rawKm = age === 0
+    ? Math.floor(Math.random() * 5_000)           // 0–5k para 0 km
+    : age * 15_000 * conditionMultiplier * (0.5 + Math.random() * 1.0);
+  // Arredonda a 1.000 km (mínimo 1.000 para carros usados)
+  const mileage = age === 0 ? Math.round(rawKm / 500) * 500 : Math.max(1_000, Math.round(rawKm / 1_000) * 1_000);
+
   return {
     id:           `mp_${variant.id}_${Date.now()}_${Math.random().toString(36).slice(2, 6)}`,
     modelId:      model.id,
@@ -1125,6 +1136,7 @@ function buildOneCar(model: CarModel): MarketplaceCar {
     year:         variant.year,
     fipePrice:    variant.fipePrice,
     condition,
+    mileage,
     askingPrice:  calcMarketAskingPrice(variant.fipePrice, condition),
     icon:         model.icon,
     category:     model.category,
@@ -1246,9 +1258,16 @@ export interface MarketplaceCar {
   year: number;
   fipePrice: number;
   condition: number;
+  /** Quilometragem do veículo */
+  mileage: number;
   askingPrice: number;
   icon: string;
   category: CarCategory;
   seller: string;
   pendingOffer: number | null; // valor da oferta enviada (null = sem oferta)
+}
+
+/** Formata quilometragem no padrão brasileiro: "45.000 km" */
+export function fmtKm(km: number): string {
+  return new Intl.NumberFormat('pt-BR').format(km) + ' km';
 }

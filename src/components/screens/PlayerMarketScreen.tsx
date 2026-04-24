@@ -123,26 +123,36 @@ function ListingCard({
 
       {/* Condição do veículo */}
       {condition !== undefined && (
-        <div className="flex items-center gap-2">
-          <div className="flex-1 h-1.5 bg-muted rounded-full overflow-hidden">
-            <div
-              className="h-full rounded-full"
-              style={{
-                width: `${condition}%`,
-                background: condition >= 60
-                  ? 'var(--gradient-primary, #22c55e)'
-                  : condition >= 35
-                  ? 'linear-gradient(90deg,#f59e0b,#f97316)'
-                  : 'linear-gradient(90deg,#ef4444,#dc2626)',
-              }}
-            />
+        <div className="space-y-1.5">
+          <div className="flex items-center gap-2">
+            <div className="flex-1 h-1.5 bg-muted rounded-full overflow-hidden">
+              <div
+                className="h-full rounded-full"
+                style={{
+                  width: `${condition}%`,
+                  background: condition >= 60
+                    ? 'var(--gradient-primary, #22c55e)'
+                    : condition >= 35
+                    ? 'linear-gradient(90deg,#f59e0b,#f97316)'
+                    : 'linear-gradient(90deg,#ef4444,#dc2626)',
+                }}
+              />
+            </div>
+            <Badge
+              variant="outline"
+              className={`text-[10px] font-bold shrink-0 ${conditionBadgeClass(condition)}`}
+            >
+              {conditionLabel(condition)} · {condition}%
+            </Badge>
           </div>
-          <Badge
-            variant="outline"
-            className={`text-[10px] font-bold shrink-0 ${conditionBadgeClass(condition)}`}
-          >
-            {conditionLabel(condition)} · {condition}%
-          </Badge>
+          {listing.car_data?.mileage != null && (
+            <div className="text-[11px] text-muted-foreground flex items-center gap-1">
+              <span>🛣️</span>
+              <span className="tabular-nums font-medium">
+                {new Intl.NumberFormat('pt-BR').format(listing.car_data.mileage)} km
+              </span>
+            </div>
+          )}
         </div>
       )}
 
