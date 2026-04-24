@@ -531,30 +531,21 @@ export function useCarGameLogic() {
         carBuyers:       prev.carBuyers.map(b => b.id === buyerId ? { ...b, state: 'accepted' as const, finalPrice: buyer.playerOffer } : b),
         carSales:        [...prev.carSales, saleRecord],
         totalRevenue:    (prev.totalRevenue ?? 0) + buyer.playerOffer,
-        totalCarsSold:   (prev.totalCarsSold ?? 0) + 1,
-        completedOrders: (prev.completedOrders ?? 0) + 1,
+        salesHistory:    [...(prev.salesHistory ?? []), saleRecord],
+        totalProfit:     (prev.totalProfit ?? 0) + profit,
         reputation:      addXp(prev.reputation, 3).reputation,
       };
     });
 
     setTimeout(() => void saveGame(), 400);
-    return { success: true, accepted: true, finalPrice: buyer.playerOffer, message: `${buyer.name} comprou por ${formatMoney(buyer.playerOffer)}! Lucro: ${formatMoney(profit)}` };
+    return { success: true, accepted: true, message: `Venda confirmada! Lucro: ${formatMoney(profit)}` };
   }, [saveGame]);
 
   const dismissBuyer = useCallback((buyerId: string) => {
-    setGameState(prev => ({ ...prev, carBuyers: prev.carBuyers.filter(b => b.id !== buyerId) }));
-  }, []);
-
-  const addMoney = useCallback((amount: number) => {
-    setGameState(prev => ({ ...prev, money: prev.money + amount }));
-    setTimeout(() => void saveGame(), 400);
-  }, [saveGame]);
-
-  const spendMoney = useCallback((amount: number): boolean => {
-    const state = stateRef.current;
-    if (state.money - amount < state.overdraftLimit) return false;
-    setGameState(prev => ({ ...prev, money: prev.money - amount }));
-    return true;
+    setGameState(prev => ({
+      ...prev,
+      carBuyers: prev.carBuyers.filter(b => b.id !== buyerId),
+    }));
   }, []);
 
   const refreshMarketplace = useCallback(() => {
@@ -565,38 +556,84 @@ export function useCarGameLogic() {
     }));
   }, []);
 
-  // ── Getters ──────────────────────────────────────────────────
-  const garageCarCount   = gameState.garage.filter(s => s.car).length;
-  const totalGarageSlots = gameState.garage.filter(s => s.unlocked).length;
-  const nextSlotToUnlock = GARAGE_SLOTS.find(s => !gameState.garage.some(gs => gs.id === s.id && gs.unlocked));
-  const reputation       = ensureReputation(gameState.reputation);
+  const addMoney = useCallback((amount: number) => {
+    setGameState(prev => ({ ...prev, money: prev.money + amount }));
+  }, []);
 
+  const spendMoney = useCallback((amount: number): boolean => {
+    const state = stateRef.current;
+    if (state.money - amount < state.overdraftLimit) return false;
+    setGameState(prev => ({ ...prev, money: prev.money - amount }));
+    return true;
+  }, []);
+
+  /**
+   * addCarFromGlobal — adiciona carro comprado no marketplace global à garagem.
+   * Chamado APÓS a compra ser confirmada no Supabase (buy_marketplace_car RPC).
+   */
+  const addCarFromGlobal = useCallback((car: MarketplaceCar, finalPrice: number): { success: boolean; message: string } => {
+    const state    = stateRef.current;
+    const emptySlot = state.garage.find(s => s.unlocked && !s.car);
+    if (!emptySlot) return { success: false, message: 'Garagem cheia! Libere uma vaga primeiro.' };
+    if (state.money - finalPrice < state.overdraftLimit)
+      return { success: false, message: 'Saldo insuficiente.' };
+
+    const owned: OwnedCar = {
+      instanceId:    generateId(),
+      modelId:       car.modelId,
+      variantId:     car.variantId,
+      fullName:      `${car.brand} ${car.model} ${car.trim}`,
+      brand:         car.brand,
+      model:         car.model,
+      trim:          car.trim,
+      year:          car.year,
+      icon:          car.icon,
+      fipePrice:     car.fipePrice,
+      condition:     car.condition,
+      purchasePrice: finalPrice,
+      purchasedAt:   Date.now(),
+      completedRepairs: [],
+    };
+
+    setGameState(prev => ({
+      ...prev,
+      money:           prev.money - finalPrice,
+      garage:          prev.garage.map(s => s.id === emptySlot.id ? { ...s, car: owned } : s),
+      reputation:      addXp(prev.reputation, 1).reputation,
+      totalCarsBought: (prev.totalCarsBought ?? 0) + 1,
+      totalSpent:      (prev.totalSpent ?? 0) + finalPrice,
+    }));
+
+    setTimeout(() => void saveGame(), 400);
+    return { success: true, message: `${car.brand} ${car.model} adicionado à garagem!` };
+  }, [saveGame]);
+
+  // ── Expõe estado e ações ──────────────────────────────────────
   return {
     gameState,
     gameLoaded,
     isSyncing,
     saveStatus,
     formatGameTime,
-    formatMoney,
-    reputation,
-    garageCarCount,
-    totalGarageSlots,
-    nextSlotToUnlock,
 
     buyCarFromMarketplace,
     makeOfferOnMarketplace,
+    addCarFromGlobal,
+
     unlockGarageSlot,
     startRepair,
+
     sendOfferToBuyer,
     resolveBuyerDecision,
     dismissBuyer,
+
     refreshMarketplace,
     addMoney,
     spendMoney,
     saveGame,
     resetGame,
 
-    repairTypes:    REPAIR_TYPES,
+    repairTypes:   REPAIR_TYPES,
     garageSlotDefs: GARAGE_SLOTS,
   };
 }

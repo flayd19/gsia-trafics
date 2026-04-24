@@ -243,6 +243,130 @@ $$;
 
 GRANT EXECUTE ON FUNCTION collect_market_payouts() TO authenticated;
 
+-- ── marketplace_meta ──────────────────────────────────────────
+-- Singleton que controla qual batch está ativo e quando foi gerado
+CREATE TABLE marketplace_meta (
+  id           int  PRIMARY KEY DEFAULT 1 CHECK (id = 1),
+  batch_id     int  NOT NULL DEFAULT 0,
+  last_refresh timestamptz DEFAULT '2000-01-01'
+);
+
+-- Linha inicial (timestamp antigo força refresh imediato no primeiro acesso)
+INSERT INTO marketplace_meta (id, batch_id, last_refresh) VALUES (1, 0, '2000-01-01');
+
+ALTER TABLE marketplace_meta ENABLE ROW LEVEL SECURITY;
+
+-- Leitura pública (todos os autenticados precisam saber o batch atual)
+CREATE POLICY "public_read_meta" ON marketplace_meta
+  FOR SELECT USING (auth.uid() IS NOT NULL);
+
+-- ── marketplace_global ─────────────────────────────────────────
+-- Carros visíveis para todos — atualizados a cada 30 minutos
+CREATE TABLE marketplace_global (
+  id            text PRIMARY KEY,      -- {variantId}_b{batchId}
+  model_id      text NOT NULL,
+  variant_id    text NOT NULL,
+  brand         text NOT NULL,
+  model         text NOT NULL,
+  trim          text NOT NULL,
+  year          int  NOT NULL,
+  fipe_price    numeric NOT NULL,
+  asking_price  numeric NOT NULL,
+  condition_pct int  NOT NULL,
+  icon          text,
+  category      text,
+  seller_name   text,
+  status        text NOT NULL DEFAULT 'available'
+                  CHECK (status IN ('available', 'sold')),
+  buyer_name    text,
+  buyer_id      uuid REFERENCES auth.users(id),
+  sold_at       timestamptz,
+  batch_id      int  NOT NULL DEFAULT 0
+);
+
+ALTER TABLE marketplace_global ENABLE ROW LEVEL SECURITY;
+
+-- Leitura pública para todos os autenticados
+CREATE POLICY "read_marketplace" ON marketplace_global
+  FOR SELECT USING (auth.uid() IS NOT NULL);
+
+-- Insert/Delete via funções SECURITY DEFINER (sem policy de escrita direta)
+CREATE POLICY "insert_marketplace" ON marketplace_global
+  FOR INSERT WITH CHECK (auth.uid() IS NOT NULL);
+
+CREATE POLICY "delete_marketplace" ON marketplace_global
+  FOR DELETE USING (auth.uid() IS NOT NULL);
+
+-- Update apenas via RPC — permite que SECURITY DEFINER funcione sem policy extra
+CREATE POLICY "update_marketplace" ON marketplace_global
+  FOR UPDATE USING (auth.uid() IS NOT NULL);
+
+-- ── try_claim_marketplace_refresh ──────────────────────────────
+-- Tenta "ganhar" o slot de refresh (apenas o primeiro cliente a chamar
+-- após 30 min bem-sucede; os demais recebem NULL).
+-- Retorna o novo batch_id se ganhou, NULL se outro cliente já atualizou.
+CREATE OR REPLACE FUNCTION try_claim_marketplace_refresh()
+RETURNS int
+LANGUAGE plpgsql SECURITY DEFINER
+AS $$
+DECLARE
+  v_new_batch int;
+BEGIN
+  UPDATE marketplace_meta
+  SET batch_id     = batch_id + 1,
+      last_refresh = now()
+  WHERE id = 1
+    AND now() - last_refresh >= interval '30 minutes'
+  RETURNING batch_id INTO v_new_batch;
+
+  RETURN v_new_batch; -- NULL se nenhuma linha foi atualizada (outro cliente ganhou)
+END;
+$$;
+
+GRANT EXECUTE ON FUNCTION try_claim_marketplace_refresh() TO authenticated;
+
+-- ── buy_marketplace_car ────────────────────────────────────────
+-- Compra atômica: só funciona se o carro ainda está 'available'.
+-- Impede que dois jogadores comprem o mesmo carro.
+CREATE OR REPLACE FUNCTION buy_marketplace_car(p_car_id text, p_buyer_name text)
+RETURNS jsonb
+LANGUAGE plpgsql SECURITY DEFINER
+AS $$
+DECLARE
+  v_car marketplace_global%ROWTYPE;
+BEGIN
+  -- Bloqueia a linha para escrita exclusiva
+  SELECT * INTO v_car
+  FROM marketplace_global
+  WHERE id = p_car_id AND status = 'available'
+  FOR UPDATE;
+
+  IF NOT FOUND THEN
+    RETURN jsonb_build_object(
+      'success', false,
+      'message', 'Carro não disponível — pode ter sido comprado por outro jogador.'
+    );
+  END IF;
+
+  -- Marca como vendido
+  UPDATE marketplace_global
+  SET status     = 'sold',
+      buyer_name = p_buyer_name,
+      buyer_id   = auth.uid(),
+      sold_at    = now()
+  WHERE id = p_car_id;
+
+  RETURN jsonb_build_object(
+    'success', true,
+    'message', 'Compra realizada!',
+    'brand',   v_car.brand,
+    'model',   v_car.model
+  );
+END;
+$$;
+
+GRANT EXECUTE ON FUNCTION buy_marketplace_car(text, text) TO authenticated;
+
 -- ================================================================
 -- 5. VERIFICAÇÃO FINAL
 -- ================================================================
@@ -254,7 +378,11 @@ BEGIN
     (SELECT COUNT(*) FROM information_schema.tables WHERE table_name = 'player_profiles');
   RAISE NOTICE '✓ player_market_listings criada: %',
     (SELECT COUNT(*) FROM information_schema.tables WHERE table_name = 'player_market_listings');
-  RAISE NOTICE '✓ Funções: ensure_user_bootstrap, purchase_market_listing, cancel_market_listing, collect_market_payouts';
+  RAISE NOTICE '✓ marketplace_meta criada: %',
+    (SELECT COUNT(*) FROM information_schema.tables WHERE table_name = 'marketplace_meta');
+  RAISE NOTICE '✓ marketplace_global criada: %',
+    (SELECT COUNT(*) FROM information_schema.tables WHERE table_name = 'marketplace_global');
+  RAISE NOTICE '✓ Funções: ensure_user_bootstrap, purchase_market_listing, cancel_market_listing, collect_market_payouts, try_claim_marketplace_refresh, buy_marketplace_car';
   RAISE NOTICE '✓ Reset concluido! Supabase pronto para GSIA Carros.';
 END;
 $$;

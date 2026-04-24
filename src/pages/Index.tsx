@@ -11,6 +11,8 @@ import { PlayerMarketScreen } from '@/components/screens/PlayerMarketScreen';
 import RankingScreen from '@/components/screens/RankingScreen';
 import { SettingsScreen } from '@/components/screens/SettingsScreen';
 import { useCarGameLogic } from '@/hooks/useCarGameLogic';
+import { useGlobalMarketplace, type GlobalCar } from '@/hooks/useGlobalMarketplace';
+import { supabase } from '@/integrations/supabase/client';
 import { toast } from 'sonner';
 
 const Index = () => {
@@ -18,10 +20,25 @@ const Index = () => {
   const navigate = useNavigate();
   const [currentTab, setCurrentTab] = useState('garagem');
   const [oficinaPendingCar, setOficinaPendingCar] = useState<string | null>(null);
+  const [playerName, setPlayerName] = useState('Jogador');
 
   useEffect(() => {
     if (!loading && !user) navigate('/auth');
   }, [user, loading, navigate]);
+
+  // Fetch display name once user is known
+  useEffect(() => {
+    if (!user) return;
+    supabase
+      .from('player_profiles')
+      .select('display_name')
+      .eq('user_id', user.id)
+      .maybeSingle()
+      .then(({ data }) => {
+        const name = data?.display_name || user.email?.split('@')[0] || 'Jogador';
+        setPlayerName(name.length > 20 ? name.substring(0, 20) : name);
+      });
+  }, [user]);
 
   const {
     gameState,
@@ -29,18 +46,15 @@ const Index = () => {
     isSyncing,
     saveStatus,
     formatGameTime,
-    formatMoney,
     reputation,
     garageCarCount,
 
-    buyCarFromMarketplace,
-    makeOfferOnMarketplace,
+    addCarFromGlobal,
     unlockGarageSlot,
     startRepair,
     sendOfferToBuyer,
     resolveBuyerDecision,
     dismissBuyer,
-    refreshMarketplace,
     addMoney,
     spendMoney,
     saveGame,
@@ -50,18 +64,48 @@ const Index = () => {
     garageSlotDefs,
   } = useCarGameLogic();
 
-  const handleBuyCar = (car: any) => {
-    const result = buyCarFromMarketplace(car);
-    result.success ? toast.success(result.message) : toast.error(result.message);
+  const {
+    listings: globalCars,
+    minsLeft,
+    loadMarketplace,
+    buyGlobal,
+    makeOfferGlobal,
+  } = useGlobalMarketplace();
+
+  // ── Buy at asking price ──────────────────────────────────────────
+  const handleBuyCar = async (car: GlobalCar) => {
+    const result = await buyGlobal(car.id, playerName);
+    if (result.success) {
+      const addResult = addCarFromGlobal(car, car.askingPrice);
+      addResult.success ? toast.success(addResult.message) : toast.error(addResult.message);
+    } else {
+      toast.error(result.message);
+    }
     return result;
   };
 
-  const handleMakeOffer = (carId: string, value: number) => {
-    const result = makeOfferOnMarketplace(carId, value);
-    result.success ? toast.success(result.message) : toast.error(result.message);
+  // ── Make offer / negotiate ───────────────────────────────────────
+  const handleMakeOffer = async (carId: string, value: number) => {
+    const result = await makeOfferGlobal(
+      carId,
+      value,
+      playerName,
+      gameState.money,
+      (gameState as any).overdraftLimit ?? -50_000
+    );
+    if (result.success && result.finalPrice != null) {
+      const car = globalCars.find(c => c.id === carId);
+      if (car) {
+        const addResult = addCarFromGlobal(car, result.finalPrice);
+        addResult.success ? toast.success(result.message) : toast.error(addResult.message);
+      }
+    } else if (!result.success) {
+      toast.error(result.message);
+    }
     return result;
   };
 
+  // ── Other handlers ───────────────────────────────────────────────
   const handleUnlockSlot = (slotId: number) => {
     const result = unlockGarageSlot(slotId);
     result.success ? toast.success(result.message) : toast.error(result.message);
@@ -81,7 +125,7 @@ const Index = () => {
 
   const handleResolveDecision = (buyerId: string) => {
     const result = resolveBuyerDecision(buyerId);
-    if (result.accepted)     toast.success(result.message);
+    if (result.accepted)      toast.success(result.message);
     else if (!result.success) toast.error(result.message);
     else                      toast.warning(result.message);
     return result;
@@ -109,6 +153,7 @@ const Index = () => {
 
   const gameTime = { day: gameState.gameTime.day, time: formatGameTime() };
 
+  // ── Screen router ────────────────────────────────────────────────
   const renderCurrentScreen = () => {
     switch (currentTab) {
       case 'home':
@@ -137,9 +182,11 @@ const Index = () => {
         return (
           <FornecedoresCarrosScreen
             gameState={gameState}
+            globalCars={globalCars}
+            minsLeft={minsLeft}
             onBuyCar={handleBuyCar}
             onMakeOffer={handleMakeOffer}
-            onRefreshMarketplace={refreshMarketplace}
+            onRefreshMarketplace={loadMarketplace}
           />
         );
 
@@ -214,9 +261,9 @@ const Index = () => {
       user={user}
       reputation={gameState.reputation}
       onLogout={async () => {
-        await saveGame(); // salva antes de sair
-        const { supabase } = await import('@/integrations/supabase/client');
-        await supabase.auth.signOut();
+        await saveGame();
+        const { supabase: sb } = await import('@/integrations/supabase/client');
+        await sb.auth.signOut();
         navigate('/auth');
       }}
     >
