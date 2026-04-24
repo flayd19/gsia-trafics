@@ -120,6 +120,12 @@ export interface CarBuyerNPC {
   playerOffer?: number;
   /** Inclui trade-in? */
   playerIncludedTradeIn?: boolean;
+  /**
+   * Valor que o jogador atribuiu ao veículo de troca.
+   * Se undefined + playerIncludedTradeIn=true, usa buyer.tradeInValue.
+   * Limitado a 0 … tradeInCar.fipePrice × conditionFactor (sem exploit).
+   */
+  playerTradeInValuation?: number;
   /** Resultado final */
   finalPrice?: number;
   targetCarInstanceId?: string; // qual carro da garagem quer comprar

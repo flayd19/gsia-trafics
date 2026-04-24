@@ -49,17 +49,14 @@ function OfferPanel({
   onClose: () => void;
 }) {
   const [offerValue, setOfferValue] = useState('');
-  const minOffer   = Math.round(car.askingPrice * 0.55);
-  const suggested  = Math.round(car.askingPrice * 0.85);
-
-  const handleOffer = () => {
-    const parsed = parseInt(offerValue.replace(/\D/g, ''));
-    if (!isNaN(parsed) && parsed >= minOffer) onOffer(parsed);
-  };
 
   const parsed   = parseInt(offerValue.replace(/\D/g, '')) || 0;
-  const isValid  = parsed >= minOffer;
+  const canSend  = parsed > 0;
   const discount = parsed > 0 ? Math.round(((car.askingPrice - parsed) / car.askingPrice) * 100) : 0;
+
+  const handleOffer = () => {
+    if (canSend) onOffer(parsed);
+  };
 
   return (
     <div className="ios-surface rounded-[16px] p-4 space-y-4 border border-blue-500/20">
@@ -70,18 +67,13 @@ function OfferPanel({
         </button>
       </div>
 
-      <div className="text-[12px] text-muted-foreground space-y-1">
+      <div className="text-[12px] text-muted-foreground">
         <div className="flex justify-between">
           <span>Preço pedido:</span>
           <span className="font-semibold text-foreground">{fmt(car.askingPrice)}</span>
         </div>
-        <div className="flex justify-between">
-          <span>Proposta mínima (~45% desc.):</span>
-          <span className="font-semibold text-orange-500">{fmt(minOffer)}</span>
-        </div>
-        <div className="flex justify-between">
-          <span>Sugestão razoável (~15% desc.):</span>
-          <span className="font-semibold text-emerald-500">{fmt(suggested)}</span>
+        <div className="mt-1 text-[11px] text-muted-foreground/70 italic">
+          O vendedor pode aceitar ou recusar dependendo da proposta.
         </div>
       </div>
 
@@ -90,23 +82,19 @@ function OfferPanel({
           type="text"
           inputMode="numeric"
           pattern="[0-9]*"
-          placeholder={`Mínimo ${fmt(minOffer)}`}
+          placeholder="Digite sua proposta…"
           value={offerValue}
           onChange={e => setOfferValue(e.target.value.replace(/\D/g, ''))}
           className="text-[15px] font-bold h-11"
           autoFocus
         />
         {parsed > 0 && (
-          <div className={`text-[11px] font-semibold text-center ${
-            isValid
-              ? discount > 15 ? 'text-orange-500' : 'text-emerald-500'
-              : 'text-red-500'
-          }`}>
-            {!isValid
-              ? `Muito baixo — mínimo ${fmt(minOffer)}`
-              : discount > 15
-              ? `Desconto de ${discount}% — pode ser recusado`
-              : `Desconto de ${discount}% — boa chance de aceite`}
+          <div className="text-[11px] font-semibold text-center text-muted-foreground">
+            {discount > 0
+              ? `Desconto de ${discount}% sobre o preço pedido`
+              : discount < 0
+              ? `${Math.abs(discount)}% acima do preço pedido`
+              : 'Igual ao preço pedido'}
           </div>
         )}
       </div>
@@ -130,7 +118,7 @@ function OfferPanel({
         <Button
           size="sm"
           onClick={handleOffer}
-          disabled={!hasGarageSpace || !isValid}
+          disabled={!hasGarageSpace || !canSend}
           className="bg-blue-600 hover:bg-blue-700 text-white"
         >
           Enviar proposta

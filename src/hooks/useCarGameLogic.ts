@@ -9,6 +9,7 @@ import {
   buildMarketplaceInventory,
   garageSlotDailyCost,
   CAR_MODELS,
+  conditionValueFactor,
   type MarketplaceCar,
 } from '@/data/cars';
 import { REPAIR_TYPES } from '@/data/repairTypes';
@@ -639,6 +640,7 @@ export function useCarGameLogic() {
   const sendOfferToBuyer = useCallback((
     buyerId: string, carInstanceId: string,
     askingPrice: number, includeTradeIn: boolean,
+    playerTradeInValuation?: number,
   ): { success: boolean; message: string } => {
     const state = stateRef.current;
     const buyer = state.carBuyers.find(b => b.id === buyerId);
@@ -668,6 +670,36 @@ export function useCarGameLogic() {
       }
     }
 
+    // Valida trade-in: FIPE do veículo de troca não pode superar FIPE do carro vendido.
+    // Impede que o comprador entregue um carro mais valioso em troca, gerando lucro injusto.
+    if (includeTradeIn && buyer.tradeInCar) {
+      if (buyer.tradeInCar.fipePrice > car.fipePrice) {
+        return {
+          success: false,
+          message: 'O carro de troca tem valor FIPE superior ao que está sendo vendido. Troca não permitida.',
+        };
+      }
+
+      // Valida valoração customizada do trade-in (se fornecida)
+      if (playerTradeInValuation !== undefined) {
+        if (playerTradeInValuation < 0) {
+          return { success: false, message: 'Valoração do trade-in não pode ser negativa.' };
+        }
+        const tradeInMarketValue = buyer.tradeInCar.fipePrice * conditionValueFactor(buyer.tradeInCar.condition);
+        if (playerTradeInValuation > tradeInMarketValue * 1.05) {
+          return {
+            success: false,
+            message: 'Valoração do trade-in não pode superar o valor de mercado do veículo.',
+          };
+        }
+      }
+    }
+
+    const effectiveTradeInValuation =
+      includeTradeIn && buyer.tradeInCar && playerTradeInValuation !== undefined
+        ? playerTradeInValuation
+        : undefined;
+
     setGameState(prev => ({
       ...prev,
       carBuyers: prev.carBuyers.map(b =>
@@ -678,6 +710,7 @@ export function useCarGameLogic() {
               thinkingStartedAt: Date.now(),
               playerOffer: askingPrice,
               playerIncludedTradeIn: includeTradeIn && !!b.tradeInCar,
+              playerTradeInValuation: effectiveTradeInValuation,
               targetCarInstanceId: carInstanceId,
             }
           : b
@@ -721,7 +754,12 @@ export function useCarGameLogic() {
     let finalPrice = buyer.playerOffer;
     let tradeInCar: OwnedCar | undefined;
     if (buyer.playerIncludedTradeIn && buyer.tradeInCar && buyer.tradeInValue) {
-      finalPrice = Math.max(0, buyer.playerOffer - buyer.tradeInValue);
+      // Usa a valoração personalizada do jogador; se ausente, usa a do comprador.
+      const rawValuation = buyer.playerTradeInValuation ?? buyer.tradeInValue;
+      // Segurança em profundidade: cap em 95 % do valor de mercado do carro vendido.
+      const carMarketValue = car.fipePrice * conditionValueFactor(car.condition);
+      const safeTradeInValue = Math.min(rawValuation, carMarketValue * 0.95);
+      finalPrice = Math.max(0, buyer.playerOffer - safeTradeInValue);
       tradeInCar = { ...buyer.tradeInCar, completedRepairs: buyer.tradeInCar.completedRepairs ?? [] };
     }
 

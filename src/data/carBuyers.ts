@@ -318,6 +318,13 @@ function genCycleId(): string {
  * Instancia um comprador para um slot de ciclo específico.
  * requirementType determina se busca categoria inteira ou modelo exato.
  * playerLevel filtra categorias e preços de acordo com a progressão do jogador.
+ *
+ * Regras de troca (trade-in):
+ * - O target (modelo ou categoria) é determinado ANTES da geração do trade-in,
+ *   para que o teto de FIPE do trade-in seja calculado com base no que o comprador quer comprar.
+ * - Trade-in FIPE ≤ 90 % do menor FIPE do modelo desejado (pedido de modelo)
+ *   ou ≤ 80 % do teto do tier (pedido de categoria).
+ * - Isso garante que a troca nunca gere vantagem econômica injusta para o comprador.
  */
 export function spawnCycleBuyer(
   slotIndex: number,
@@ -333,24 +340,14 @@ export function spawnCycleBuyer(
   const templatePool = eligibleTemplates.length > 0 ? eligibleTemplates : BUYER_TEMPLATES;
   const template = templatePool[Math.floor(Math.random() * templatePool.length)];
 
-  const tradeInCar = template.hasTradeIn && Math.random() > 0.4
-    ? generateTradeInCar()
-    : undefined;
-  const tradeInValue = tradeInCar
-    ? Math.round(
-        tradeInCar.fipePrice *
-        conditionValueFactor(tradeInCar.condition) *
-        (0.85 + Math.random() * 0.15)
-      )
-    : undefined;
-
+  // ── 1. Determina o target ANTES do trade-in ──────────────────────
   let targetModelIds:   string[] = [];
   let targetCategories: string[] = [];
   let targetModelId:    string | undefined;
   let targetModelName:  string | undefined;
+  let maxTradeInFipe:   number;
 
   if (requirementType === 'model') {
-    // Filtra modelos dentro das categorias e faixa de preço do tier
     const eligibleModels = CAR_MODELS.filter(m =>
       tier.allowedCategories.includes(m.category) &&
       Math.min(...m.variants.map(v => v.fipePrice)) <= tier.maxFipePrice,
@@ -360,13 +357,29 @@ export function spawnCycleBuyer(
     targetModelIds  = [model.id];
     targetModelId   = model.id;
     targetModelName = `${model.brand} ${model.model}`;
+    // Teto do trade-in: 90 % do menor FIPE do modelo solicitado
+    // O comprador só pode trazer algo menos valioso do que o que quer comprar.
+    maxTradeInFipe = Math.min(...model.variants.map(v => v.fipePrice)) * 0.9;
   } else {
-    // Usa uma categoria do template que esteja dentro do tier (fallback: qualquer do tier)
     const cats = template.targetCategories.filter(c => tier.allowedCategories.includes(c));
     const catPool = cats.length > 0 ? cats : tier.allowedCategories;
     const cat = catPool[Math.floor(Math.random() * catPool.length)];
     targetCategories = [cat];
+    // Teto do trade-in: 80 % do teto do tier (Infinity → cap absoluto de R$ 500 k)
+    maxTradeInFipe = (tier.maxFipePrice === Infinity ? 500_000 : tier.maxFipePrice) * 0.8;
   }
+
+  // ── 2. Gera trade-in com teto calculado a partir do target ───────
+  const tradeInCar = template.hasTradeIn && Math.random() > 0.4
+    ? generateTradeInCar(maxTradeInFipe)
+    : undefined;
+  const tradeInValue = tradeInCar
+    ? Math.round(
+        tradeInCar.fipePrice *
+        conditionValueFactor(tradeInCar.condition) *
+        (0.85 + Math.random() * 0.15)
+      )
+    : undefined;
 
   return {
     id:              genCycleId(),
@@ -426,10 +439,24 @@ export function generateCycleBuyers(
 // Gerador de instância de comprador (legado — mantido para compat)
 // ─────────────────────────────────────────────────────────────────
 
-/** Gera um OwnedCar simples para ser usado como trade-in de um NPC */
-function generateTradeInCar(): OwnedCar {
-  const model = CAR_MODELS[Math.floor(Math.random() * CAR_MODELS.length)];
-  const variant = model.variants[Math.floor(Math.random() * model.variants.length)];
+/**
+ * Gera um OwnedCar para ser usado como trade-in de um NPC.
+ * maxFipePrice: teto de FIPE — garante que o trade-in nunca valha mais
+ * do que o carro que o comprador quer adquirir.
+ */
+function generateTradeInCar(maxFipePrice: number): OwnedCar {
+  // Filtra modelos cujo menor preço de variante cabe no teto
+  const eligibleModels = CAR_MODELS.filter(m =>
+    Math.min(...m.variants.map(v => v.fipePrice)) <= maxFipePrice,
+  );
+  const modelPool = eligibleModels.length > 0 ? eligibleModels : CAR_MODELS;
+  const model = modelPool[Math.floor(Math.random() * modelPool.length)];
+
+  // Filtra variantes dentro do teto para garantia adicional
+  const eligibleVariants = model.variants.filter(v => v.fipePrice <= maxFipePrice);
+  const variantPool = eligibleVariants.length > 0 ? eligibleVariants : model.variants;
+  const variant = variantPool[Math.floor(Math.random() * variantPool.length)];
+
   const condition = Math.floor(20 + Math.random() * 60); // 20-80
   const factor = conditionValueFactor(condition);
   return {
@@ -449,28 +476,27 @@ function generateTradeInCar(): OwnedCar {
   };
 }
 
-/** Instancia um comprador aleatório */
+/**
+ * Instancia um comprador aleatório (legado — sem exigência específica).
+ * Compradores genéricos não oferecem troca de veículos: apenas pagamento em dinheiro.
+ */
 export function spawnBuyer(id: string): CarBuyerNPC {
   const template = BUYER_TEMPLATES[Math.floor(Math.random() * BUYER_TEMPLATES.length)];
-  const tradeInCar = template.hasTradeIn && Math.random() > 0.4 ? generateTradeInCar() : undefined;
-  const tradeInValue = tradeInCar
-    ? Math.round(tradeInCar.fipePrice * conditionValueFactor(tradeInCar.condition) * (0.85 + Math.random() * 0.15))
-    : undefined;
-
+  // Sem trade-in: compradores sem pedido específico não têm base para propor troca equilibrada.
   return {
     id,
-    name: template.name,
-    avatar: template.avatar,
-    personality: template.personality,
-    targetModelIds: [],
+    name:             template.name,
+    avatar:           template.avatar,
+    personality:      template.personality,
+    targetModelIds:   [],
     targetCategories: template.targetCategories,
-    payRange: template.payRange,
-    hasTradeIn: !!tradeInCar,
-    tradeInCar,
-    tradeInValue,
-    patience: template.patience,
-    arrivedAt: Date.now(),
-    state: 'waiting',
+    payRange:         template.payRange,
+    hasTradeIn:       false,
+    tradeInCar:       undefined,
+    tradeInValue:     undefined,
+    patience:         template.patience,
+    arrivedAt:        Date.now(),
+    state:            'waiting',
   };
 }
 

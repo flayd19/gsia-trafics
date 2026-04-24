@@ -1,8 +1,8 @@
 // =====================================================================
 // CarSalesScreen — Venda de carros para NPCs (ciclos de 30 min)
 // =====================================================================
-import { useState, useEffect } from 'react';
-import { Car, ArrowRight, CheckCircle, XCircle, User, Lock, Tag, Layers } from 'lucide-react';
+import { useState, useEffect, useMemo } from 'react';
+import { Car, ArrowRight, CheckCircle, XCircle, User, Lock, Tag, Layers, TrendingDown, TrendingUp } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { Switch } from '@/components/ui/switch';
@@ -18,7 +18,13 @@ import {
 
 interface CarSalesScreenProps {
   gameState: GameState;
-  onSendOffer: (buyerId: string, carInstanceId: string, price: number, includeTradeIn: boolean) => { success: boolean; message: string };
+  onSendOffer: (
+    buyerId: string,
+    carInstanceId: string,
+    price: number,
+    includeTradeIn: boolean,
+    playerTradeInValuation?: number,
+  ) => { success: boolean; message: string };
   onResolveDecision: (buyerId: string) => { success: boolean; accepted: boolean; message: string; finalPrice?: number };
   onDismissBuyer: (buyerId: string) => void;
 }
@@ -217,26 +223,60 @@ function BuyerCard({
 }: {
   buyer: CarBuyerNPC;
   carsInGarage: OwnedCar[];
-  onSendOffer:       (carId: string, price: number, includeTradeIn: boolean) => void;
+  onSendOffer: (
+    carId: string,
+    price: number,
+    includeTradeIn: boolean,
+    playerTradeInValuation?: number,
+  ) => void;
   onResolveDecision: () => { accepted: boolean; message: string; finalPrice?: number } | void;
-  onDismiss:         () => void;
+  onDismiss: () => void;
 }) {
   const compatibleCars = filterCompatibleCars(carsInGarage, buyer);
-  const [selectedCarId, setSelectedCarId] = useState<string>(compatibleCars[0]?.instanceId ?? '');
-  const [askingPrice, setAskingPrice]     = useState<string>('');
-  const [includeTradeIn, setIncludeTradeIn] = useState(false);
-  const [decided, setDecided]             = useState<{ accepted: boolean; message: string; finalPrice?: number } | null>(null);
 
-  const selectedCar   = compatibleCars.find(c => c.instanceId === selectedCarId)
-                     ?? carsInGarage.find(c => c.instanceId === selectedCarId);
+  const [selectedCarId, setSelectedCarId]   = useState<string>(compatibleCars[0]?.instanceId ?? '');
+  const [askingPrice, setAskingPrice]       = useState<string>('');
+  const [includeTradeIn, setIncludeTradeIn] = useState(false);
+  // Valoração do trade-in pelo jogador (em reais). null = usa valor do comprador.
+  const [tradeInValuation, setTradeInValuation] = useState<number | null>(null);
+  const [decided, setDecided] = useState<{ accepted: boolean; message: string; finalPrice?: number } | null>(null);
+
+  const selectedCar = compatibleCars.find(c => c.instanceId === selectedCarId)
+    ?? carsInGarage.find(c => c.instanceId === selectedCarId);
+
   const suggestedPrice = selectedCar
     ? Math.round(selectedCar.fipePrice * conditionValueFactor(selectedCar.condition) * 1.05)
     : 0;
 
+  // Teto e piso da valoração do trade-in
+  const tradeInMaxValue = useMemo(() => {
+    if (!buyer.tradeInCar) return 0;
+    return Math.round(buyer.tradeInCar.fipePrice * conditionValueFactor(buyer.tradeInCar.condition));
+  }, [buyer.tradeInCar]);
+
+  // Valoração efetiva: personalizada se definida, senão a do comprador
+  const effectiveTradeInVal = includeTradeIn && buyer.tradeInCar
+    ? (tradeInValuation ?? buyer.tradeInValue ?? 0)
+    : 0;
+
+  const numericAskingPrice = parseInt(askingPrice.replace(/\D/g, '') || '0');
+  const cashReceived       = Math.max(0, numericAskingPrice - effectiveTradeInVal);
+
+  // Quando deseleciona trade-in, limpa a valoração personalizada
+  const handleToggleTradeIn = (val: boolean) => {
+    setIncludeTradeIn(val);
+    if (!val) setTradeInValuation(null);
+  };
+
   const handleSendOffer = () => {
-    const price = parseInt(askingPrice.replace(/\D/g, ''));
-    if (!selectedCarId || isNaN(price) || price <= 0) return;
-    onSendOffer(selectedCarId, price, includeTradeIn && !!buyer.tradeInCar);
+    if (!selectedCarId || numericAskingPrice <= 0) return;
+    const useTradeIn = includeTradeIn && !!buyer.tradeInCar;
+    onSendOffer(
+      selectedCarId,
+      numericAskingPrice,
+      useTradeIn,
+      useTradeIn ? (tradeInValuation ?? buyer.tradeInValue ?? undefined) : undefined,
+    );
   };
 
   const handleTimeUp = () => {
@@ -244,10 +284,7 @@ function BuyerCard({
     if (result) setDecided(result);
   };
 
-  const tradeInValue       = buyer.tradeInCar && includeTradeIn ? (buyer.tradeInValue ?? 0) : 0;
-  const effectiveReceiving = Math.max(0, parseInt(askingPrice.replace(/\D/g, '') || '0') - tradeInValue);
-
-  // ── estados terminais ───────────────────────────────────────────
+  // ── estados terminais ────────────────────────────────────────────
   if (buyer.state === 'accepted' && !decided) {
     return (
       <div className="ios-surface rounded-[16px] p-4 space-y-3">
@@ -287,7 +324,7 @@ function BuyerCard({
         {decided.accepted && decided.finalPrice && (
           <div className="bg-emerald-500/10 rounded-[10px] px-3 py-2">
             <span className="text-[14px] font-bold text-emerald-500">{fmt(decided.finalPrice)}</span>
-            <span className="text-[11px] text-muted-foreground ml-2">recebido</span>
+            <span className="text-[11px] text-muted-foreground ml-2">recebido em dinheiro</span>
           </div>
         )}
         <Button variant="outline" size="sm" className="w-full" onClick={onDismiss}>Próximo</Button>
@@ -298,6 +335,7 @@ function BuyerCard({
   // ── estado normal (waiting / thinking) ──────────────────────────
   return (
     <div className="ios-surface rounded-[16px] p-4 space-y-4">
+
       {/* Comprador info */}
       <div className="flex items-start gap-3">
         <div className="w-11 h-11 rounded-[14px] bg-primary/10 flex items-center justify-center text-2xl">
@@ -316,34 +354,117 @@ function BuyerCard({
       {/* Barra de tempo do ciclo */}
       {buyer.state === 'waiting' && <CycleRemainingBar buyer={buyer} />}
 
-      {/* Trade-in */}
+      {/* ── Seção de trade-in ──────────────────────────────────────── */}
       {buyer.tradeInCar && (
-        <div className="space-y-2">
-          <div className="bg-blue-500/10 border border-blue-500/20 rounded-[12px] px-3 py-2.5 space-y-1">
+        <div className="space-y-3">
+          {/* Info do carro oferecido */}
+          <div className="bg-blue-500/10 border border-blue-500/20 rounded-[12px] px-3 py-2.5 space-y-1.5">
             <div className="flex items-center gap-2">
               <Car size={13} className="text-blue-500" />
               <span className="text-[12px] font-semibold text-blue-500">Tem carro para dar na troca</span>
             </div>
-            <div className="text-[13px] font-bold text-foreground">
+            <div className="text-[13px] font-bold text-foreground leading-tight">
               {buyer.tradeInCar.brand} {buyer.tradeInCar.model} {buyer.tradeInCar.trim}
             </div>
             <div className="flex items-center justify-between">
               <span className={`text-[11px] font-medium ${conditionColor(buyer.tradeInCar.condition)}`}>
                 {conditionLabel(buyer.tradeInCar.condition)} · {buyer.tradeInCar.condition}%
               </span>
-              <span className="text-[13px] font-bold text-foreground">{fmt(buyer.tradeInValue ?? 0)}</span>
+              <div className="text-right">
+                <div className="text-[10px] text-muted-foreground">FIPE {fmt(buyer.tradeInCar.fipePrice)}</div>
+                <div className="text-[12px] font-bold text-foreground">
+                  Mercado: {fmt(tradeInMaxValue)}
+                </div>
+              </div>
             </div>
           </div>
+
+          {/* Toggle: incluir ou não a troca */}
           <div className="flex items-center gap-2">
-            <Switch id={`tradein-${buyer.id}`} checked={includeTradeIn} onCheckedChange={setIncludeTradeIn} />
+            <Switch
+              id={`tradein-${buyer.id}`}
+              checked={includeTradeIn}
+              onCheckedChange={handleToggleTradeIn}
+            />
             <Label htmlFor={`tradein-${buyer.id}`} className="text-[12px]">
-              Aceitar troca como parte do pagamento
+              Incluir troca na negociação
             </Label>
           </div>
+
+          {/* Painel expandido quando troca está ativada */}
+          {includeTradeIn && (
+            <div className="bg-muted/30 rounded-[12px] p-3 space-y-3">
+              <div className="text-[11px] uppercase tracking-wider text-muted-foreground font-semibold">
+                Quanto você dá pelo carro do comprador?
+              </div>
+
+              {/* Slider de valoração */}
+              <input
+                type="range"
+                min={0}
+                max={tradeInMaxValue}
+                step={Math.max(500, Math.round(tradeInMaxValue / 200))}
+                value={tradeInValuation ?? (buyer.tradeInValue ?? 0)}
+                onChange={e => setTradeInValuation(Number(e.target.value))}
+                className="w-full accent-primary"
+              />
+
+              {/* Labels min / max */}
+              <div className="flex justify-between text-[10px] text-muted-foreground">
+                <span>R$ 0 (só dinheiro)</span>
+                <span>{fmt(tradeInMaxValue)} (máx.)</span>
+              </div>
+
+              {/* Valor atual + comparação com estimativa do comprador */}
+              <div className="flex items-center justify-between bg-background rounded-[10px] px-3 py-2 border border-border">
+                <div>
+                  <div className="text-[10px] text-muted-foreground">Sua avaliação</div>
+                  <div className="text-[15px] font-bold text-foreground tabular-nums">
+                    {fmt(tradeInValuation ?? (buyer.tradeInValue ?? 0))}
+                  </div>
+                </div>
+                {/* Indicador vs. estimativa do comprador */}
+                {(() => {
+                  const myVal   = tradeInValuation ?? (buyer.tradeInValue ?? 0);
+                  const buyerVal = buyer.tradeInValue ?? 0;
+                  if (myVal < buyerVal * 0.8) {
+                    return (
+                      <div className="flex items-center gap-1 text-amber-500 text-[11px] font-medium">
+                        <TrendingDown size={13} />
+                        Abaixo do esperado
+                      </div>
+                    );
+                  }
+                  if (myVal > buyerVal * 1.05) {
+                    return (
+                      <div className="flex items-center gap-1 text-emerald-500 text-[11px] font-medium">
+                        <TrendingUp size={13} />
+                        Generoso
+                      </div>
+                    );
+                  }
+                  return (
+                    <div className="text-[11px] text-muted-foreground">Estimativa justa</div>
+                  );
+                })()}
+              </div>
+
+              {/* Botão de atalho: usar estimativa do comprador */}
+              {buyer.tradeInValue && (
+                <button
+                  type="button"
+                  onClick={() => setTradeInValuation(buyer.tradeInValue ?? 0)}
+                  className="text-[11px] text-primary underline underline-offset-2 w-full text-center"
+                >
+                  Usar estimativa do comprador: {fmt(buyer.tradeInValue)}
+                </button>
+              )}
+            </div>
+          )}
         </div>
       )}
 
-      {/* Formulário de oferta */}
+      {/* ── Formulário de oferta ───────────────────────────────────── */}
       {buyer.state === 'waiting' && (
         <div className="space-y-3">
           <div className="text-[11px] uppercase tracking-wider text-muted-foreground font-semibold">
@@ -391,7 +512,7 @@ function BuyerCard({
           {selectedCar && compatibleCars.length > 0 && (
             <>
               <div className="text-[11px] uppercase tracking-wider text-muted-foreground font-semibold">
-                Quanto você quer receber?
+                Seu preço de venda
               </div>
               <div className="bg-muted/30 rounded-[10px] px-3 py-2 text-[11px] text-muted-foreground space-y-0.5">
                 <div>FIPE: <strong className="text-foreground">{fmt(selectedCar.fipePrice)}</strong></div>
@@ -417,19 +538,48 @@ function BuyerCard({
                 />
               </div>
 
-              <Button variant="ghost" size="sm" className="w-full text-[12px] text-primary" onClick={() => setAskingPrice(String(suggestedPrice))}>
+              <Button
+                variant="ghost"
+                size="sm"
+                className="w-full text-[12px] text-primary"
+                onClick={() => setAskingPrice(String(suggestedPrice))}
+              >
                 Usar preço sugerido: {fmt(suggestedPrice)}
               </Button>
 
-              {includeTradeIn && buyer.tradeInValue && (
-                <div className="bg-blue-500/10 rounded-[10px] px-3 py-2 text-[12px] text-blue-600 font-medium">
-                  Você receberá: {fmt(effectiveReceiving)} (pedido − trade-in)
+              {/* Resumo da negociação */}
+              <div className="bg-muted/20 border border-border rounded-[12px] px-3 py-3 space-y-2">
+                <div className="text-[10px] uppercase tracking-wider text-muted-foreground font-semibold">
+                  Resumo da proposta
                 </div>
-              )}
+                <div className="space-y-1.5 text-[12px]">
+                  <div className="flex justify-between">
+                    <span className="text-muted-foreground">Preço pedido pelo carro</span>
+                    <span className="font-semibold text-foreground">{numericAskingPrice > 0 ? fmt(numericAskingPrice) : '—'}</span>
+                  </div>
+                  {includeTradeIn && buyer.tradeInCar && effectiveTradeInVal > 0 && (
+                    <div className="flex justify-between text-blue-600">
+                      <span>Desconto (troca)</span>
+                      <span className="font-semibold">− {fmt(effectiveTradeInVal)}</span>
+                    </div>
+                  )}
+                  <div className="border-t border-border pt-1.5 flex justify-between font-bold">
+                    <span className="text-foreground">Você recebe em dinheiro</span>
+                    <span className={cashReceived > 0 ? 'text-emerald-500' : 'text-muted-foreground'}>
+                      {numericAskingPrice > 0 ? fmt(cashReceived) : '—'}
+                    </span>
+                  </div>
+                  {includeTradeIn && buyer.tradeInCar && effectiveTradeInVal > 0 && (
+                    <div className="text-[11px] text-blue-600">
+                      + carro de troca avaliado em {fmt(effectiveTradeInVal)}
+                    </div>
+                  )}
+                </div>
+              </div>
 
               <Button
                 className="w-full gap-2"
-                disabled={!askingPrice || compatibleCars.length === 0}
+                disabled={!askingPrice || numericAskingPrice <= 0 || compatibleCars.length === 0}
                 onClick={handleSendOffer}
               >
                 <ArrowRight size={15} />
@@ -578,7 +728,9 @@ export function CarSalesScreen({
                 key={buyer.id}
                 buyer={buyer}
                 carsInGarage={carsInGarage}
-                onSendOffer={(carId, price, includeTradeIn) => onSendOffer(buyer.id, carId, price, includeTradeIn)}
+                onSendOffer={(carId, price, includeTradeIn, playerTradeInValuation) =>
+                  onSendOffer(buyer.id, carId, price, includeTradeIn, playerTradeInValuation)
+                }
                 onResolveDecision={() => {
                   const result = onResolveDecision(buyer.id);
                   if ('accepted' in result) return result;
