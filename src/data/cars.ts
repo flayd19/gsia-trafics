@@ -46,18 +46,33 @@ export function conditionValueFactor(condition: number): number {
   return 0.35 + (condition / 100) * 0.65;
 }
 
-/** Slots da garagem com custo para desbloquear */
+/**
+ * Daily rental cost for a garage slot (charged only when occupied).
+ * Formula: 100 × 2^(n−1)
+ * Slot 1 → R$100/day · Slot 2 → R$200/day · Slot 10 → R$51 200/day …
+ */
+export function garageSlotDailyCost(slotIndex: number): number {
+  return 100 * Math.pow(2, slotIndex - 1);
+}
+
+/** Slots da garagem com custo para desbloquear — até 50 vagas */
 export const GARAGE_SLOTS: { id: number; unlockCost: number }[] = [
-  { id: 1, unlockCost: 0 },         // Começa com 1 vaga grátis
-  { id: 2, unlockCost: 20_000 },    // 2ª vaga
-  { id: 3, unlockCost: 40_000 },    // 3ª vaga
-  { id: 4, unlockCost: 80_000 },    // 4ª vaga
-  { id: 5, unlockCost: 150_000 },   // 5ª vaga
-  { id: 6, unlockCost: 280_000 },   // 6ª vaga
-  { id: 7, unlockCost: 500_000 },   // 7ª vaga
-  { id: 8, unlockCost: 850_000 },   // 8ª vaga
-  { id: 9, unlockCost: 1_400_000 }, // 9ª vaga
-  { id: 10, unlockCost: 2_200_000 },// 10ª vaga
+  // Slots 1–10: custos manuais calibrados
+  { id: 1,  unlockCost: 0 },
+  { id: 2,  unlockCost: 20_000 },
+  { id: 3,  unlockCost: 40_000 },
+  { id: 4,  unlockCost: 80_000 },
+  { id: 5,  unlockCost: 150_000 },
+  { id: 6,  unlockCost: 280_000 },
+  { id: 7,  unlockCost: 500_000 },
+  { id: 8,  unlockCost: 850_000 },
+  { id: 9,  unlockCost: 1_400_000 },
+  { id: 10, unlockCost: 2_200_000 },
+  // Slots 11–50: crescimento ×1.6 por slot (custo diário tornará a maioria inacessível)
+  ...Array.from({ length: 40 }, (_, i) => ({
+    id:          i + 11,
+    unlockCost:  Math.round(2_200_000 * Math.pow(1.6, i + 1)),
+  })),
 ];
 
 // =====================================================================

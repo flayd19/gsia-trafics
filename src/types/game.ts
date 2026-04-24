@@ -55,8 +55,8 @@ export interface OwnedCar {
   completedRepairs: string[];
   /** 4 atributos independentes (novo sistema de oficina) */
   attributes?: CarAttributes;
-  /** Diagnóstico pendente na oficina */
-  diagnosisResult?: DiagnosisResult | null;
+  /** Todos os reparos identificados no último diagnóstico */
+  diagnosisResult?: DiagnosisResult[] | null;
 }
 
 // ── Slots da garagem ─────────────────────────────────────────────
@@ -253,6 +253,8 @@ export interface GameState {
   /** Limite do cheque especial */
   overdraftLimit: number;
   lastInterestCalculation: number;
+  /** Último dia em que o aluguel diário das vagas foi cobrado */
+  lastRentCharge: number;
 
   completedOrders: number;
 
@@ -286,6 +288,7 @@ export function ensureGameState(raw: Partial<GameState>): GameState {
     gameTime: raw.gameTime ?? { day: 1, hour: 8, minute: 0, lastUpdate: Date.now() },
     overdraftLimit: raw.overdraftLimit ?? -30_000,
     lastInterestCalculation: raw.lastInterestCalculation ?? 0,
+    lastRentCharge: raw.lastRentCharge ?? 1,
     completedOrders: raw.completedOrders ?? 0,
   };
 }

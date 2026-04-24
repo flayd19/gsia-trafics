@@ -7,7 +7,7 @@ import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { Progress } from '@/components/ui/progress';
 import type { GameState, OwnedCar, GarageSlot } from '@/types/game';
-import { GARAGE_SLOTS, conditionLabel, conditionColor, conditionValueFactor } from '@/data/cars';
+import { GARAGE_SLOTS, conditionLabel, conditionColor, conditionValueFactor, garageSlotDailyCost } from '@/data/cars';
 
 interface GaragemScreenProps {
   gameState: GameState;
@@ -18,7 +18,7 @@ interface GaragemScreenProps {
 const fmt = (v: number) =>
   new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL', maximumFractionDigits: 0 }).format(v);
 
-function CarCard({ car, onRepair }: { car: OwnedCar; onRepair: () => void }) {
+function CarCard({ car, slotId, onRepair }: { car: OwnedCar; slotId: number; onRepair: () => void }) {
   const label = conditionLabel(car.condition);
   const colorClass = conditionColor(car.condition);
   const marketValue = Math.round(car.fipePrice * conditionValueFactor(car.condition));
@@ -99,6 +99,12 @@ function CarCard({ car, onRepair }: { car: OwnedCar; onRepair: () => void }) {
         </span>
       </div>
 
+      {/* Aluguel diário desta vaga */}
+      <div className="flex items-center justify-between text-[11px] px-1">
+        <span className="text-muted-foreground">Aluguel vaga {slotId}</span>
+        <span className="font-bold text-amber-500">{fmt(garageSlotDailyCost(slotId))}/dia</span>
+      </div>
+
       {/* Status de reparo */}
       {car.inRepair && car.repairCompletesAt && (
         <div className="flex items-center gap-2 bg-primary/10 rounded-[10px] px-3 py-2">
@@ -155,7 +161,10 @@ function LockedSlot({ slot, canAfford, onUnlock }: {
       </div>
       <div className="text-center space-y-1">
         <div className="text-[13px] font-semibold text-muted-foreground">Vaga {slot.id} bloqueada</div>
-        <div className="text-[12px] text-muted-foreground">{fmt(slot.unlockCost)}</div>
+        <div className="text-[12px] text-muted-foreground">Desbloquear: {fmt(slot.unlockCost)}</div>
+        <div className="text-[11px] text-amber-500 font-medium">
+          Aluguel: {fmt(garageSlotDailyCost(slot.id))}/dia
+        </div>
       </div>
       <Button
         size="sm"
@@ -180,6 +189,9 @@ export function GaragemScreen({ gameState, onUnlockSlot, onGoToOficina }: Garage
     if (!s.car) return sum;
     return sum + Math.round(s.car.fipePrice * conditionValueFactor(s.car.condition));
   }, 0);
+  const dailyRentTotal = unlockedSlots
+    .filter(s => s.car)
+    .reduce((sum, s) => sum + garageSlotDailyCost(s.id), 0);
 
   // Próximos slots a desbloquear (até 3 a mais)
   const lockedSlots = GARAGE_SLOTS.filter(def =>
@@ -208,6 +220,21 @@ export function GaragemScreen({ gameState, onUnlockSlot, onGoToOficina }: Garage
         </div>
       </div>
 
+      {/* Custo diário de aluguel */}
+      {dailyRentTotal > 0 && (
+        <div className="ios-surface rounded-[14px] p-3 flex items-center justify-between">
+          <div>
+            <div className="text-[11px] font-semibold text-foreground">Aluguel diário total</div>
+            <div className="text-[10px] text-muted-foreground mt-0.5">
+              Cobrado a cada dia do jogo por vaga ocupada
+            </div>
+          </div>
+          <div className="font-bold text-amber-500 tabular-nums text-[14px]">
+            {fmt(dailyRentTotal)}/dia
+          </div>
+        </div>
+      )}
+
       {/* Slots ocupados */}
       <div>
         <div className="text-[11px] uppercase tracking-wider text-muted-foreground font-semibold px-1 mb-3">
@@ -220,6 +247,7 @@ export function GaragemScreen({ gameState, onUnlockSlot, onGoToOficina }: Garage
                 <CarCard
                   key={slot.id}
                   car={slot.car}
+                  slotId={slot.id}
                   onRepair={() => onGoToOficina(slot.car!.instanceId)}
                 />
               );

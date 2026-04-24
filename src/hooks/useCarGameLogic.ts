@@ -7,6 +7,7 @@ import { ensureGameState } from '@/types/game';
 import {
   GARAGE_SLOTS,
   buildMarketplaceInventory,
+  garageSlotDailyCost,
   type MarketplaceCar,
 } from '@/data/cars';
 import { REPAIR_TYPES } from '@/data/repairTypes';
@@ -66,10 +67,11 @@ function calcRepairCost(baseCost: number, attrCondition: number): number {
 // ── Estado inicial ────────────────────────────────────────────────
 function buildInitialState(): GameState {
   return ensureGameState({
-    money: 50_000,
-    garage: [{ id: 1, unlocked: true, unlockCost: 0, car: undefined }],
-    marketplaceCars: buildMarketplaceInventory(),
+    money:                50_000,
+    garage:               [{ id: 1, unlocked: true, unlockCost: 0, car: undefined }],
+    marketplaceCars:      buildMarketplaceInventory(),
     marketplaceLastRefresh: Date.now(),
+    lastRentCharge:       1, // first charge fires on day 2
   });
 }
 
@@ -280,6 +282,18 @@ export function useCarGameLogic() {
             ...next,
             money: next.money - Math.abs(next.money) * INTEREST_RATE,
             lastInterestCalculation: day,
+          };
+        }
+
+        // Aluguel diário: cobrado apenas por vagas OCUPADAS (100 × 2^(slot-1) por dia)
+        if (day > next.lastRentCharge) {
+          const dailyRent = next.garage
+            .filter(s => s.unlocked && s.car)
+            .reduce((sum, slot) => sum + garageSlotDailyCost(slot.id), 0);
+          next = {
+            ...next,
+            money:          next.money - dailyRent,
+            lastRentCharge: day,
           };
         }
 
@@ -511,7 +525,7 @@ export function useCarGameLogic() {
             repairCompletesAt: now + repairType.durationSec * 1000,
             repairTypeId,
             repairGain:        gain,
-            diagnosisResult:   null,
+            diagnosisResult:   (s.car!.diagnosisResult ?? []).filter(d => d.repairTypeId !== repairTypeId),
             completedRepairs:  [...(s.car!.completedRepairs ?? []), repairTypeId],
           },
         };
@@ -534,48 +548,62 @@ export function useCarGameLogic() {
     return { success: true, message: `${repairType.name} iniciada! Pronto em ${repairType.durationSec}s.` };
   }, [saveGame]);
 
-  const runDiagnosis = useCallback((carInstanceId: string): { success: boolean; message: string; result?: DiagnosisResult } => {
+  const DIAGNOSIS_COST = 400;
+
+  const runDiagnosis = useCallback((carInstanceId: string): { success: boolean; message: string; results?: DiagnosisResult[] } => {
     const state = stateRef.current;
     const slot  = state.garage.find(s => s.car?.instanceId === carInstanceId);
-    if (!slot?.car)       return { success: false, message: 'Carro não encontrado.' };
+    if (!slot?.car)        return { success: false, message: 'Carro não encontrado.' };
     if (slot.car.inRepair) return { success: false, message: 'Carro está em reparo.' };
+    // Diagnóstico já foi realizado para este carro
+    if (slot.car.diagnosisResult !== undefined)
+      return { success: false, message: 'Diagnóstico já realizado para este carro.' };
+    if (state.money < DIAGNOSIS_COST)
+      return { success: false, message: `Saldo insuficiente. Diagnóstico custa ${formatMoney(DIAGNOSIS_COST)}.` };
 
     const car   = slot.car;
     const attrs = car.attributes ?? generateAttributes(car.condition);
 
-    // Atributos com problema (< 60)
-    const brokenAttrs = (Object.keys(attrs) as AttributeKey[]).filter(k => attrs[k] < 60);
-    if (brokenAttrs.length === 0)
-      return { success: false, message: 'O carro está em ótimas condições! Nenhum reparo necessário.' };
+    // Coleta TODOS os reparos disponíveis para TODOS os atributos com problema (< 60)
+    const results: DiagnosisResult[] = [];
+    (Object.keys(attrs) as AttributeKey[]).forEach(attr => {
+      if (attrs[attr] >= 60) return;
+      REPAIR_TYPES
+        .filter(r => r.attribute === attr && !r.isAlwaysAvailable)
+        .forEach(repair => {
+          results.push({
+            attribute:      attr,
+            attributeLabel: ATTR_LABELS[attr],
+            repairTypeId:   repair.id,
+            repairName:     repair.name,
+            repairIcon:     repair.icon,
+          });
+        });
+    });
 
-    // Escolhe atributo aleatório com problema
-    const chosenAttr = brokenAttrs[Math.floor(Math.random() * brokenAttrs.length)];
-
-    // Escolhe reparo disponível para esse atributo
-    const available = REPAIR_TYPES.filter(r => r.attribute === chosenAttr && !r.isAlwaysAvailable);
-    if (available.length === 0)
-      return { success: false, message: 'Nenhum reparo disponível para este atributo.' };
-
-    const chosenRepair = available[Math.floor(Math.random() * available.length)];
-    const result: DiagnosisResult = {
-      attribute:      chosenAttr,
-      attributeLabel: ATTR_LABELS[chosenAttr],
-      repairTypeId:   chosenRepair.id,
-      repairName:     chosenRepair.name,
-      repairIcon:     chosenRepair.icon,
-    };
-
+    // Sempre persiste o resultado ([] = sem problemas) e desconta o custo
     setGameState(prev => ({
       ...prev,
+      money: prev.money - DIAGNOSIS_COST,
       garage: prev.garage.map(s =>
         s.car?.instanceId === carInstanceId
-          ? { ...s, car: { ...s.car!, attributes: attrs, diagnosisResult: result } }
+          ? { ...s, car: { ...s.car!, attributes: attrs, diagnosisResult: results } }
           : s
       ),
     }));
 
-    return { success: true, message: `Diagnóstico: ${result.attributeLabel} precisa de atenção.`, result };
-  }, []);
+    setTimeout(() => void saveGame(), 400);
+
+    if (results.length === 0)
+      return { success: true, message: 'Carro em ótimas condições! Nenhum reparo necessário.', results: [] };
+
+    const brokenLabels = [...new Set(results.map(r => r.attributeLabel))].join(', ');
+    return {
+      success: true,
+      message: `${results.length} reparo(s) identificado(s): ${brokenLabels}.`,
+      results,
+    };
+  }, [saveGame]);
 
   const sendOfferToBuyer = useCallback((
     buyerId: string, carInstanceId: string,

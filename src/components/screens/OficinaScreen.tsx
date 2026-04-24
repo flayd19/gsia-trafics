@@ -2,7 +2,8 @@
 // OficinaScreen — Diagnóstico + reparos por atributo
 // =====================================================================
 import { useState, useEffect } from 'react';
-import { Wrench, Stethoscope, ChevronRight, AlertTriangle } from 'lucide-react';
+import { toast } from 'sonner';
+import { Wrench, Stethoscope, ChevronRight, AlertTriangle, CheckCircle2 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import type { GameState, OwnedCar, RepairType, DiagnosisResult, AttributeKey } from '@/types/game';
@@ -123,85 +124,106 @@ function RepairTimer({ completesAt }: { completesAt: number }) {
   );
 }
 
-/** Card do reparo recomendado após diagnóstico */
-function DiagnosisRepairCard({
-  diagnosis, repairTypes, car, money, onStart, onDiagnoseAgain,
+/** Lista completa de reparos retornados pelo diagnóstico, agrupados por atributo */
+function DiagnosisRepairList({
+  results, repairTypes, car, money, onStart, onDiagnoseAgain,
 }: {
-  diagnosis:      DiagnosisResult;
-  repairTypes:    RepairType[];
-  car:            OwnedCar;
-  money:          number;
-  onStart:        (id: string) => void;
-  onDiagnoseAgain: () => void;
+  results:     DiagnosisResult[];
+  repairTypes: RepairType[];
+  car:         OwnedCar;
+  money:       number;
+  onStart:     (id: string) => void;
 }) {
-  const repair  = repairTypes.find(r => r.id === diagnosis.repairTypeId);
-  const attrVal = car.attributes ? car.attributes[diagnosis.attribute] : car.condition;
-  const cost    = repair ? calcRepairCost(repair.baseCost, attrVal) : 0;
-  const canAfford = money >= cost;
+  // Agrupa por atributo preservando a ordem body → mechanical → electrical → interior
+  const attrOrder: AttributeKey[] = ['body', 'mechanical', 'electrical', 'interior'];
+  const groups = attrOrder
+    .map(attr => ({
+      attr,
+      items: results.filter(r => r.attribute === attr),
+    }))
+    .filter(g => g.items.length > 0);
 
   return (
-    <div className="space-y-3">
-      {/* Alerta de diagnóstico */}
+    <div className="space-y-4">
+      {/* Resumo */}
       <div className="flex items-center gap-2.5 bg-amber-500/10 rounded-[12px] px-4 py-3">
         <AlertTriangle size={16} className="text-amber-500 shrink-0" />
         <div>
           <div className="text-[12px] font-bold text-amber-600">
-            {diagnosis.attributeLabel} crítica — {attrVal}%
+            {results.length} reparo(s) identificado(s)
           </div>
           <div className="text-[11px] text-muted-foreground">
-            Reparo recomendado: {diagnosis.repairIcon} {diagnosis.repairName}
+            {groups.map(g => g.items[0].attributeLabel).join(' · ')}
           </div>
         </div>
       </div>
 
-      {/* Card do reparo */}
-      {repair && (
-        <div className="ios-surface rounded-[14px] p-4 space-y-3">
-          <div className="flex items-center gap-2.5">
-            <div className="w-10 h-10 rounded-[12px] bg-primary/10 flex items-center justify-center text-xl">
-              {repair.icon}
+      {/* Um grupo por atributo */}
+      {groups.map(({ attr, items }) => {
+        const attrVal = car.attributes ? car.attributes[attr] : car.condition;
+        return (
+          <div key={attr} className="space-y-2">
+            {/* Cabeçalho do atributo */}
+            <div className="flex items-center gap-2 px-1">
+              <span className="text-base">{ATTR_ICONS[attr]}</span>
+              <span className="text-[11px] uppercase tracking-wider text-muted-foreground font-semibold">
+                {ATTR_LABELS[attr]}
+              </span>
+              <span className="text-[11px] font-bold text-amber-500 ml-auto">{attrVal}%</span>
             </div>
-            <div>
-              <div className="font-bold text-[14px] text-foreground">{repair.name}</div>
-              <div className="text-[11px] text-muted-foreground">{repair.description}</div>
-            </div>
-          </div>
-          <div className="grid grid-cols-3 gap-2 text-center">
-            <div className="ios-surface-elevated rounded-[10px] p-2">
-              <div className="text-[9px] uppercase tracking-wider text-muted-foreground font-semibold">Custo</div>
-              <div className="text-[12px] font-bold text-foreground">{fmt(cost)}</div>
-            </div>
-            <div className="ios-surface-elevated rounded-[10px] p-2">
-              <div className="text-[9px] uppercase tracking-wider text-muted-foreground font-semibold">Ganho</div>
-              <div className="text-[12px] font-bold text-emerald-500">+5–28%</div>
-            </div>
-            <div className="ios-surface-elevated rounded-[10px] p-2">
-              <div className="text-[9px] uppercase tracking-wider text-muted-foreground font-semibold">Tempo</div>
-              <div className="text-[12px] font-bold text-foreground">{repair.durationSec}s</div>
-            </div>
-          </div>
-          <Button
-            size="sm"
-            className="w-full gap-2 text-[13px]"
-            disabled={!canAfford}
-            onClick={() => onStart(repair.id)}
-          >
-            <Wrench size={14} />
-            {canAfford ? 'Iniciar Reparo' : 'Sem saldo'}
-          </Button>
-        </div>
-      )}
 
-      {/* Novo diagnóstico */}
-      <Button
-        size="sm"
-        variant="ghost"
-        className="w-full text-[12px] text-muted-foreground"
-        onClick={onDiagnoseAgain}
-      >
-        <Stethoscope size={12} className="mr-1.5" />
-        Diagnosticar novamente
-      </Button>
+            {/* Cards de reparo */}
+            {items.map(diag => {
+              const repair    = repairTypes.find(r => r.id === diag.repairTypeId);
+              if (!repair) return null;
+              const cost      = calcRepairCost(repair.baseCost, attrVal);
+              const canAfford = money >= cost;
+              const alreadyDone = (car.completedRepairs ?? []).includes(repair.id);
+              return (
+                <div key={repair.id} className={`ios-surface rounded-[14px] p-4 space-y-3 ${alreadyDone ? 'opacity-50' : ''}`}>
+                  <div className="flex items-center gap-2.5">
+                    <div className="w-9 h-9 rounded-[11px] bg-primary/10 flex items-center justify-center text-lg">
+                      {repair.icon}
+                    </div>
+                    <div className="flex-1 min-w-0">
+                      <div className="font-bold text-[13px] text-foreground">{repair.name}</div>
+                      <div className="text-[10px] text-muted-foreground">{repair.description}</div>
+                    </div>
+                  </div>
+                  <div className="grid grid-cols-3 gap-2 text-center">
+                    <div className="ios-surface-elevated rounded-[10px] p-2">
+                      <div className="text-[9px] uppercase tracking-wider text-muted-foreground font-semibold">Custo</div>
+                      <div className="text-[12px] font-bold text-foreground">{fmt(cost)}</div>
+                    </div>
+                    <div className="ios-surface-elevated rounded-[10px] p-2">
+                      <div className="text-[9px] uppercase tracking-wider text-muted-foreground font-semibold">Ganho</div>
+                      <div className="text-[12px] font-bold text-emerald-500">+5–28%</div>
+                    </div>
+                    <div className="ios-surface-elevated rounded-[10px] p-2">
+                      <div className="text-[9px] uppercase tracking-wider text-muted-foreground font-semibold">Tempo</div>
+                      <div className="text-[12px] font-bold text-foreground">{repair.durationSec}s</div>
+                    </div>
+                  </div>
+                  {alreadyDone ? (
+                    <div className="text-center text-[11px] text-muted-foreground">Já realizado</div>
+                  ) : (
+                    <Button
+                      size="sm"
+                      className="w-full gap-2 text-[13px]"
+                      disabled={!canAfford}
+                      onClick={() => onStart(repair.id)}
+                    >
+                      <Wrench size={14} />
+                      {canAfford ? 'Iniciar Reparo' : 'Sem saldo'}
+                    </Button>
+                  )}
+                </div>
+              );
+            })}
+          </div>
+        );
+      })}
+
     </div>
   );
 }
@@ -215,38 +237,29 @@ export function OficinaScreen({
   const [selectedCarId, setSelectedCarId] = useState<string | null>(
     preSelectedCarId ?? (carsInGarage.length > 0 ? carsInGarage[0].instanceId : null)
   );
-  const [toast, setToast] = useState<string | null>(null);
 
-  const selectedCar = carsInGarage.find(c => c.instanceId === selectedCarId) ?? null;
+  const selectedCar    = carsInGarage.find(c => c.instanceId === selectedCarId) ?? null;
   const cleaningRepair = repairTypes.find(r => r.isAlwaysAvailable) ?? null;
-  const diagnosis: DiagnosisResult | null | undefined = selectedCar?.diagnosisResult;
-
-  const showToast = (msg: string) => {
-    setToast(msg);
-    setTimeout(() => setToast(null), 3000);
-  };
+  // undefined = nunca diagnosticado | [] = diagnosticado, nada encontrado | [...] = reparos pendentes
+  const diagnosis: DiagnosisResult[] | null | undefined = selectedCar?.diagnosisResult;
+  const neverDiagnosed = diagnosis === undefined || diagnosis === null;
 
   const handleDiagnose = () => {
     if (!selectedCar) return;
     const res = onRunDiagnosis(selectedCar.instanceId);
-    showToast(res.message);
+    if (res.success) toast.success(res.message);
+    else             toast.error(res.message);
   };
 
   const handleStartRepair = (repairTypeId: string) => {
     if (!selectedCar) return;
     const res = onStartRepair(selectedCar.instanceId, repairTypeId);
-    showToast(res.message);
+    if (res.success) toast.success(res.message);
+    else             toast.error(res.message);
   };
 
   return (
-    <div className="space-y-5 relative">
-      {/* Toast */}
-      {toast && (
-        <div className="fixed top-4 left-1/2 -translate-x-1/2 z-50 bg-foreground text-background text-[13px] font-semibold px-4 py-2 rounded-[20px] shadow-lg pointer-events-none">
-          {toast}
-        </div>
-      )}
-
+    <div className="space-y-5">
       {/* Header */}
       <div>
         <h2 className="font-game-title text-xl font-bold text-foreground tracking-tight">🔧 Oficina</h2>
@@ -415,7 +428,8 @@ export function OficinaScreen({
                       Diagnóstico
                     </div>
 
-                    {!diagnosis ? (
+                    {/* Nunca diagnosticado → mostra botão com custo */}
+                    {neverDiagnosed && (
                       <div className="ios-surface rounded-[14px] p-4 space-y-3">
                         <div className="flex items-center gap-2.5">
                           <div className="w-10 h-10 rounded-[12px] bg-amber-500/10 flex items-center justify-center">
@@ -424,7 +438,7 @@ export function OficinaScreen({
                           <div>
                             <div className="font-bold text-[14px] text-foreground">Diagnóstico Técnico</div>
                             <div className="text-[11px] text-muted-foreground">
-                              Identifica o atributo crítico e sugere o reparo ideal
+                              Identifica todos os reparos necessários · Uma execução por veículo
                             </div>
                           </div>
                         </div>
@@ -432,20 +446,34 @@ export function OficinaScreen({
                           size="sm"
                           variant="outline"
                           className="w-full gap-2 text-[13px] border-amber-500/40 text-amber-600"
+                          disabled={gameState.money < 400}
                           onClick={handleDiagnose}
                         >
                           <Stethoscope size={14} />
-                          Executar Diagnóstico
+                          {gameState.money >= 400 ? 'Executar Diagnóstico — R$ 400' : 'Sem saldo (R$ 400)'}
                         </Button>
                       </div>
-                    ) : (
-                      <DiagnosisRepairCard
-                        diagnosis={diagnosis}
+                    )}
+
+                    {/* Diagnosticado, nenhum reparo necessário */}
+                    {!neverDiagnosed && diagnosis!.length === 0 && (
+                      <div className="flex items-center gap-2.5 bg-emerald-500/10 rounded-[12px] px-4 py-3">
+                        <CheckCircle2 size={16} className="text-emerald-500 shrink-0" />
+                        <div>
+                          <div className="text-[12px] font-bold text-emerald-600">Carro em ótimas condições</div>
+                          <div className="text-[11px] text-muted-foreground">Nenhum reparo necessário no diagnóstico</div>
+                        </div>
+                      </div>
+                    )}
+
+                    {/* Diagnosticado com reparos pendentes */}
+                    {!neverDiagnosed && diagnosis!.length > 0 && (
+                      <DiagnosisRepairList
+                        results={diagnosis!}
                         repairTypes={repairTypes}
                         car={selectedCar}
                         money={gameState.money}
                         onStart={handleStartRepair}
-                        onDiagnoseAgain={handleDiagnose}
                       />
                     )}
                   </div>
