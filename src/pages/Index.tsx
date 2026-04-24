@@ -75,6 +75,7 @@ const Index = () => {
     loadMarketplace,
     buyGlobal,
     makeOfferGlobal,
+    errorMsg: marketplaceError,
   } = useGlobalMarketplace();
 
   // ── Buy at asking price ──────────────────────────────────────────
@@ -205,6 +206,7 @@ const Index = () => {
             globalCars={globalCars}
             loading={marketplaceLoading}
             isOnline={marketplaceOnline}
+            errorMsg={marketplaceError}
             minsLeft={minsLeft}
             onBuyCar={handleBuyCar}
             onMakeOffer={handleMakeOffer}
