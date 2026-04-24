@@ -1,9 +1,23 @@
-import { useEffect, useMemo, useState } from 'react';
-import { Card } from '@/components/ui/card';
+// =====================================================================
+// PlayerMarketScreen — Mercado P2P de Carros
+// Permite anunciar carros da garagem e comprar de outros jogadores
+// =====================================================================
+import { useEffect, useState } from 'react';
 import { Button } from '@/components/ui/button';
-import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
+import { Badge } from '@/components/ui/badge';
+import {
+  RefreshCw,
+  ShoppingBag,
+  PlusCircle,
+  Clock,
+  CheckCircle2,
+  Ban,
+  Hourglass,
+  Search,
+  X,
+  Car,
+} from 'lucide-react';
 import { Input } from '@/components/ui/input';
-import { Label } from '@/components/ui/label';
 import {
   Dialog,
   DialogContent,
@@ -13,37 +27,21 @@ import {
   DialogTitle,
   DialogTrigger,
 } from '@/components/ui/dialog';
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
-import { Badge } from '@/components/ui/badge';
 import { toast } from '@/hooks/use-toast';
-import { GameState, Product, PlayerMarketListing } from '@/types/game';
+import type { GameState, OwnedCar, PlayerMarketListing } from '@/types/game';
 import { usePlayerMarket } from '@/hooks/usePlayerMarket';
-import {
-  RefreshCw,
-  ShoppingBag,
-  PlusCircle,
-  Store as StoreIcon,
-  Coins,
-  Package,
-  Search,
-  X,
-  Clock,
-  CheckCircle2,
-  Ban,
-  Hourglass,
-} from 'lucide-react';
 
 interface PlayerMarketScreenProps {
   gameState: GameState;
-  products: Product[];
-  onReserveStock: (productId: string, quantity: number) => boolean;
-  onReturnStock: (productId: string, quantity: number) => void;
-  onReceiveStock: (productId: string, quantity: number) => boolean;
+  products: unknown[];        // mantido por compatibilidade — ignorado
+  onReserveStock: () => void;
+  onReturnStock: () => void;
+  onReceiveStock: () => void;
   onSpendMoney: (amount: number) => boolean;
   onAddMoney: (amount: number) => void;
 }
 
-const formatMoney = (v: number) =>
+const fmt = (v: number) =>
   new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL', maximumFractionDigits: 0 }).format(v);
 
 const relativeTime = (iso: string): string => {
@@ -53,25 +51,89 @@ const relativeTime = (iso: string): string => {
   if (mins < 60) return `${mins} min atrás`;
   const h = Math.floor(mins / 60);
   if (h < 24) return `${h}h atrás`;
-  const d = Math.floor(h / 24);
-  return `${d}d atrás`;
+  return `${Math.floor(h / 24)}d atrás`;
 };
 
-const statusLabel = (s: PlayerMarketListing['status']) => {
+const statusInfo = (s: PlayerMarketListing['status']) => {
   switch (s) {
-    case 'active': return { label: 'Ativa', color: 'bg-green-600/20 text-green-400 border-green-600/40', icon: <Clock className="w-3 h-3" /> };
-    case 'sold': return { label: 'Vendida', color: 'bg-primary/20 text-primary border-primary/40', icon: <CheckCircle2 className="w-3 h-3" /> };
-    case 'cancelled': return { label: 'Cancelada', color: 'bg-muted text-muted-foreground border-border', icon: <Ban className="w-3 h-3" /> };
-    case 'expired': return { label: 'Expirada', color: 'bg-orange-600/20 text-orange-400 border-orange-600/40', icon: <Hourglass className="w-3 h-3" /> };
+    case 'active':    return { label: 'Ativa',      color: 'bg-green-600/20 text-green-400 border-green-600/40',   icon: <Clock size={11} /> };
+    case 'sold':      return { label: 'Vendido',     color: 'bg-primary/20 text-primary border-primary/40',         icon: <CheckCircle2 size={11} /> };
+    case 'cancelled': return { label: 'Cancelado',   color: 'bg-muted text-muted-foreground border-border',          icon: <Ban size={11} /> };
+    case 'expired':   return { label: 'Expirado',    color: 'bg-orange-600/20 text-orange-400 border-orange-600/40', icon: <Hourglass size={11} /> };
   }
 };
 
+// ── Card de anúncio ───────────────────────────────────────────────
+function ListingCard({
+  listing,
+  isOwn,
+  canAfford,
+  onBuy,
+  onCancel,
+}: {
+  listing: PlayerMarketListing;
+  isOwn: boolean;
+  canAfford: boolean;
+  onBuy: () => void;
+  onCancel: () => void;
+}) {
+  const si = statusInfo(listing.status);
+  const isActive = listing.status === 'active';
+
+  return (
+    <div className="ios-surface rounded-[14px] p-4 space-y-3">
+      <div className="flex items-start gap-3">
+        <div className="w-12 h-12 rounded-[12px] bg-muted flex items-center justify-center text-2xl shrink-0">
+          {listing.product_icon ?? '🚗'}
+        </div>
+        <div className="flex-1 min-w-0">
+          <div className="font-bold text-[14px] text-foreground truncate">{listing.product_name}</div>
+          <div className="text-[11px] text-muted-foreground">
+            Vendedor: {listing.seller_name}
+          </div>
+          <div className="text-[10px] text-muted-foreground mt-0.5">{relativeTime(listing.created_at)}</div>
+        </div>
+        <Badge variant="outline" className={`text-[10px] flex items-center gap-1 ${si.color}`}>
+          {si.icon}
+          {si.label}
+        </Badge>
+      </div>
+
+      <div className="flex items-center justify-between">
+        <div>
+          <div className="font-game-title text-xl font-bold text-foreground tabular-nums">
+            {fmt(listing.total_price)}
+          </div>
+          {listing.category && (
+            <div className="text-[10px] text-muted-foreground uppercase tracking-wider">{listing.category}</div>
+          )}
+        </div>
+
+        {isActive && (
+          isOwn ? (
+            <Button variant="outline" size="sm" className="text-[12px] text-red-500 border-red-500/30" onClick={onCancel}>
+              Cancelar anúncio
+            </Button>
+          ) : (
+            <Button size="sm" className="text-[12px]" disabled={!canAfford} onClick={onBuy}>
+              {canAfford ? `Comprar` : 'Sem saldo'}
+            </Button>
+          )
+        )}
+      </div>
+
+      {listing.status === 'sold' && listing.buyer_name && (
+        <div className="text-[11px] text-muted-foreground">
+          Vendido para <span className="font-semibold">{listing.buyer_name}</span>
+        </div>
+      )}
+    </div>
+  );
+}
+
+// ── Tela principal ────────────────────────────────────────────────
 export const PlayerMarketScreen = ({
   gameState,
-  products,
-  onReserveStock,
-  onReturnStock,
-  onReceiveStock,
   onSpendMoney,
   onAddMoney,
 }: PlayerMarketScreenProps) => {
@@ -89,389 +151,309 @@ export const PlayerMarketScreen = ({
     collectPayouts,
   } = usePlayerMarket();
 
-  const [categoryFilter, setCategoryFilter] = useState<string>('all');
   const [search, setSearch] = useState('');
   const [creatingOpen, setCreatingOpen] = useState(false);
-  const [selectedProductId, setSelectedProductId] = useState<string>('');
-  const [quantity, setQuantity] = useState<number>(1);
-  const [pricePerUnit, setPricePerUnit] = useState<number>(0);
+  const [selectedCarId, setSelectedCarId] = useState<string>('');
+  const [askingPrice, setAskingPrice] = useState<string>('');
   const [busy, setBusy] = useState(false);
+  const [activeTab, setActiveTab] = useState<'mercado' | 'meus'>('mercado');
 
-  // Produtos que o jogador tem em estoque (podem ser anunciados)
-  const stockedProducts = useMemo(
-    () => products.filter(p => (gameState.stock[p.id] ?? 0) > 0),
-    [products, gameState.stock],
+  // Carros na garagem disponíveis para anunciar (não em reparo, não anunciados)
+  const carsInGarage: OwnedCar[] = gameState.garage
+    .filter(s => s.unlocked && s.car && !s.car.inRepair)
+    .map(s => s.car!);
+
+  // Verifica se um carro já está anunciado
+  const listedCarIds = new Set(
+    myListings.filter(l => l.status === 'active').map(l => l.product_id)
+  );
+  const availableCars = carsInGarage.filter(c => !listedCarIds.has(c.instanceId));
+
+  const filtered = activeListings.filter(l =>
+    !search || l.product_name.toLowerCase().includes(search.toLowerCase())
   );
 
-  // Coletar pagamentos pendentes ao abrir a tela e a cada 60s
+  // Pagamentos pendentes a recolher
+  const pendingPayouts = myListings.filter(
+    l => l.status === 'sold' && !l.paid_out_at
+  );
+  const pendingTotal = pendingPayouts.reduce((s, l) => s + l.total_price, 0);
+
   useEffect(() => {
-    if (!userId) return;
-    const run = async () => {
-      const result = await collectPayouts();
-      if (result.success && result.count > 0 && result.total > 0) {
-        onAddMoney(result.total);
-        toast({
-          title: `💰 ${result.count} venda${result.count > 1 ? 's' : ''} P2P paga${result.count > 1 ? 's' : ''}!`,
-          description: `Total recebido: ${formatMoney(result.total)}`,
-        });
-      }
-    };
-    run();
-    const itv = setInterval(run, 60_000);
-    return () => clearInterval(itv);
-  }, [userId, collectPayouts, onAddMoney]);
+    fetchActiveListings();
+    fetchMyListings();
+  }, []);
 
-  const categories = useMemo(() => {
-    const set = new Set<string>();
-    activeListings.forEach(l => l.category && set.add(l.category));
-    return Array.from(set);
-  }, [activeListings]);
-
-  const filteredActive = useMemo(() => {
-    return activeListings.filter(l => {
-      if (categoryFilter !== 'all' && l.category !== categoryFilter) return false;
-      if (search && !l.product_name.toLowerCase().includes(search.toLowerCase())) return false;
-      return true;
-    });
-  }, [activeListings, categoryFilter, search]);
-
-  // Sugerir preço ao abrir o dialog de criação
-  useEffect(() => {
-    if (!selectedProductId) return;
-    const p = products.find(p => p.id === selectedProductId);
-    if (p) {
-      setPricePerUnit(Math.max(1, Math.round(p.currentPrice * 0.85))); // sugere 85% do preço de rua
-      setQuantity(1);
-    }
-  }, [selectedProductId, products]);
+  const handleRefresh = () => {
+    fetchActiveListings();
+    fetchMyListings();
+  };
 
   const handleCreate = async () => {
-    const product = products.find(p => p.id === selectedProductId);
-    if (!product) {
-      toast({ title: 'Selecione um produto', variant: 'destructive' });
-      return;
-    }
-    const available = gameState.stock[product.id] ?? 0;
-    if (quantity <= 0 || quantity > available) {
-      toast({ title: 'Quantidade inválida', description: `Disponível: ${available}`, variant: 'destructive' });
-      return;
-    }
-    if (pricePerUnit <= 0) {
+    const car = availableCars.find(c => c.instanceId === selectedCarId);
+    if (!car || !askingPrice) return;
+    const price = parseInt(askingPrice.replace(/\D/g, ''));
+    if (isNaN(price) || price <= 0) {
       toast({ title: 'Preço inválido', variant: 'destructive' });
       return;
     }
-    setBusy(true);
-    // Reservar estoque localmente antes de criar a oferta
-    const reserved = onReserveStock(product.id, quantity);
-    if (!reserved) {
-      toast({ title: 'Falha ao reservar estoque', variant: 'destructive' });
-      setBusy(false);
-      return;
-    }
-    const listing = await createListing({
-      product_id: product.id,
-      product_name: product.displayName,
-      product_icon: product.icon ?? null,
-      category: product.category ?? null,
-      quantity,
-      price_per_unit: pricePerUnit,
-    });
-    if (!listing) {
-      // reverter reserva
-      onReturnStock(product.id, quantity);
-    }
-    setBusy(false);
-    if (listing) {
-      setCreatingOpen(false);
-      setSelectedProductId('');
-      setQuantity(1);
-      setPricePerUnit(0);
-    }
-  };
 
-  const handleBuy = async (l: PlayerMarketListing) => {
-    if (gameState.money - l.total_price < gameState.overdraftLimit) {
-      toast({ title: 'Saldo insuficiente', description: `Necessário: ${formatMoney(l.total_price)}`, variant: 'destructive' });
-      return;
-    }
-    // Verificar capacidade de galpão
-    const spaceUsed = Object.values(gameState.stock).reduce((a, b) => a + b, 0);
-    if (spaceUsed + l.quantity > gameState.warehouseCapacity) {
-      toast({ title: 'Galpão cheio', description: 'Libere espaço antes de comprar', variant: 'destructive' });
-      return;
-    }
     setBusy(true);
-    const result = await purchaseListing(l.id);
-    if (result.success) {
-      onSpendMoney(l.total_price);
-      onReceiveStock(l.product_id, l.quantity);
-      toast({
-        title: '🛒 Compra P2P realizada!',
-        description: `${l.quantity}x ${l.product_name} de ${l.seller_name}`,
+    try {
+      await createListing({
+        product_id: car.instanceId,
+        product_name: `${car.brand} ${car.model} ${car.trim} ${car.year}`,
+        product_icon: car.icon,
+        category: 'carro',
+        quantity: 1,
+        price_per_unit: price,
       });
-    } else {
-      toast({ title: 'Falha na compra', description: result.message, variant: 'destructive' });
-      await fetchActiveListings();
+      toast({ title: 'Anúncio criado!', description: `${car.brand} ${car.model} anunciado por ${fmt(price)}` });
+      setCreatingOpen(false);
+      setSelectedCarId('');
+      setAskingPrice('');
+      fetchMyListings();
+    } catch {
+      toast({ title: 'Erro ao criar anúncio', variant: 'destructive' });
+    } finally {
+      setBusy(false);
     }
-    setBusy(false);
   };
 
-  const handleCancel = async (l: PlayerMarketListing) => {
-    setBusy(true);
-    const ok = await cancelListing(l.id);
-    if (ok) {
-      onReturnStock(l.product_id, l.quantity);
+  const handleBuy = async (listing: PlayerMarketListing) => {
+    if (!onSpendMoney(listing.total_price)) {
+      toast({ title: 'Saldo insuficiente', variant: 'destructive' });
+      return;
     }
-    setBusy(false);
-  };
-
-  const handleRefresh = async () => {
     setBusy(true);
-    await Promise.all([fetchActiveListings(), fetchMyListings()]);
-    setBusy(false);
+    try {
+      await purchaseListing(listing.id, listing.total_price);
+      toast({ title: 'Compra realizada!', description: `Você comprou ${listing.product_name}` });
+      fetchActiveListings();
+    } catch {
+      toast({ title: 'Erro ao comprar', variant: 'destructive' });
+      onAddMoney(listing.total_price); // estorna
+    } finally {
+      setBusy(false);
+    }
   };
 
-  if (!userId) {
-    return (
-      <Card className="game-card p-6 text-center space-y-4">
-        <div className="text-5xl">🔒</div>
-        <h3 className="font-game-title text-xl text-primary">Mercado P2P Bloqueado</h3>
-        <p className="text-muted-foreground">
-          Entre com sua conta para negociar produtos com outros jogadores em tempo real.
-        </p>
-      </Card>
-    );
-  }
+  const handleCancel = async (listingId: string) => {
+    setBusy(true);
+    try {
+      await cancelListing(listingId);
+      toast({ title: 'Anúncio cancelado' });
+      fetchMyListings();
+      fetchActiveListings();
+    } catch {
+      toast({ title: 'Erro ao cancelar', variant: 'destructive' });
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const handleCollect = async () => {
+    setBusy(true);
+    try {
+      const result = await collectPayouts();
+      if (result.total > 0) {
+        onAddMoney(result.total);
+        toast({ title: `${fmt(result.total)} recebidos!`, description: `${result.count} venda(s) recebida(s)` });
+      }
+      fetchMyListings();
+    } catch {
+      toast({ title: 'Erro ao receber', variant: 'destructive' });
+    } finally {
+      setBusy(false);
+    }
+  };
 
   return (
-    <div className="space-y-4">
-      <div className="flex items-start justify-between gap-3 flex-wrap">
+    <div className="space-y-5">
+      {/* Header */}
+      <div className="flex items-end justify-between">
         <div>
-          <h2 className="text-2xl font-game-title font-bold flex items-center gap-2">
-            <StoreIcon className="w-6 h-6 text-primary" /> Mercado P2P
-          </h2>
-          <p className="text-sm text-muted-foreground">
-            Negocie produtos diretamente com outros jogadores • <span className="text-primary">{userName}</span>
+          <h2 className="font-game-title text-xl font-bold text-foreground tracking-tight">🤝 Mercado P2P</h2>
+          <p className="text-[12px] text-muted-foreground mt-0.5">
+            Compre e venda carros com outros jogadores
           </p>
         </div>
-        <div className="flex items-center gap-2">
-          <Button variant="outline" size="sm" onClick={handleRefresh} disabled={busy || loading}>
-            <RefreshCw className={`w-4 h-4 mr-2 ${loading ? 'animate-spin' : ''}`} /> Atualizar
+        <Button variant="ghost" size="sm" onClick={handleRefresh} disabled={loading} className="gap-1.5 text-[12px]">
+          <RefreshCw size={13} className={loading ? 'animate-spin' : ''} />
+          Atualizar
+        </Button>
+      </div>
+
+      {/* Receber pagamentos */}
+      {pendingPayouts.length > 0 && (
+        <div
+          className="bg-emerald-500/10 border border-emerald-500/30 rounded-[12px] px-4 py-3 flex items-center justify-between cursor-pointer"
+          onClick={handleCollect}
+        >
+          <div>
+            <div className="font-semibold text-[14px] text-emerald-600">
+              {pendingPayouts.length} venda(s) para receber
+            </div>
+            <div className="text-[11px] text-emerald-600/80">{fmt(pendingTotal)} disponíveis</div>
+          </div>
+          <Button size="sm" className="bg-emerald-500 hover:bg-emerald-600 text-white text-[12px]" disabled={busy}>
+            Receber
           </Button>
+        </div>
+      )}
+
+      {/* Tabs */}
+      <div className="flex gap-1 bg-muted rounded-[12px] p-1">
+        {(['mercado', 'meus'] as const).map(tab => (
+          <button
+            key={tab}
+            onClick={() => setActiveTab(tab)}
+            className={`flex-1 py-2 rounded-[10px] text-[12px] font-semibold transition-all ${
+              activeTab === tab ? 'bg-background text-foreground shadow-sm' : 'text-muted-foreground'
+            }`}
+          >
+            {tab === 'mercado' ? `🏪 Mercado (${activeListings.length})` : `📋 Meus anúncios (${myListings.filter(l => l.status === 'active').length})`}
+          </button>
+        ))}
+      </div>
+
+      {activeTab === 'mercado' && (
+        <>
+          {/* Busca */}
+          <div className="relative">
+            <Search size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground" />
+            <Input
+              placeholder="Buscar carro…"
+              value={search}
+              onChange={e => setSearch(e.target.value)}
+              className="pl-9 text-[14px]"
+            />
+            {search && (
+              <button onClick={() => setSearch('')} className="absolute right-3 top-1/2 -translate-y-1/2">
+                <X size={14} className="text-muted-foreground" />
+              </button>
+            )}
+          </div>
+
+          {/* Anunciar carro */}
           <Dialog open={creatingOpen} onOpenChange={setCreatingOpen}>
             <DialogTrigger asChild>
-              <Button className="btn-luxury" size="sm">
-                <PlusCircle className="w-4 h-4 mr-2" /> Nova Oferta
+              <Button className="w-full gap-2" disabled={availableCars.length === 0}>
+                <PlusCircle size={15} />
+                {availableCars.length === 0 ? 'Nenhum carro disponível para anunciar' : 'Anunciar meu carro'}
               </Button>
             </DialogTrigger>
-            <DialogContent className="max-w-md">
+            <DialogContent className="max-w-sm">
               <DialogHeader>
-                <DialogTitle>Publicar Oferta</DialogTitle>
+                <DialogTitle>Anunciar carro</DialogTitle>
                 <DialogDescription>
-                  O estoque é reservado ao publicar e devolvido se cancelar.
+                  Escolha um carro da garagem e defina o preço de venda.
                 </DialogDescription>
               </DialogHeader>
-              <div className="space-y-4">
-                <div>
-                  <Label>Produto</Label>
-                  <Select value={selectedProductId} onValueChange={setSelectedProductId}>
-                    <SelectTrigger>
-                      <SelectValue placeholder={stockedProducts.length ? 'Selecione um produto' : 'Sem produtos em estoque'} />
-                    </SelectTrigger>
-                    <SelectContent>
-                      {stockedProducts.map(p => (
-                        <SelectItem key={p.id} value={p.id}>
-                          <span className="flex items-center gap-2">
-                            <span>{p.icon}</span>
-                            {p.displayName}
-                            <span className="text-muted-foreground text-xs">
-                              (Est: {gameState.stock[p.id]})
-                            </span>
-                          </span>
-                        </SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
-                </div>
-                <div className="grid grid-cols-2 gap-3">
-                  <div>
-                    <Label>Quantidade</Label>
-                    <Input
-                      type="number"
-                      min={1}
-                      max={selectedProductId ? gameState.stock[selectedProductId] : 1}
-                      value={quantity}
-                      onChange={e => setQuantity(Math.max(1, parseInt(e.target.value) || 1))}
-                    />
-                  </div>
-                  <div>
-                    <Label>Preço/un (R$)</Label>
-                    <Input
-                      type="number"
-                      min={1}
-                      value={pricePerUnit}
-                      onChange={e => setPricePerUnit(Math.max(0, parseFloat(e.target.value) || 0))}
-                    />
+              <div className="space-y-4 py-2">
+                {/* Seletor de carro */}
+                <div className="space-y-2">
+                  <div className="text-[12px] font-semibold text-muted-foreground uppercase tracking-wider">Carro</div>
+                  <div className="space-y-2 max-h-48 overflow-y-auto">
+                    {availableCars.map(car => (
+                      <button
+                        key={car.instanceId}
+                        onClick={() => setSelectedCarId(car.instanceId)}
+                        className={`w-full flex items-center gap-3 p-3 rounded-[12px] border text-left transition-all ${
+                          selectedCarId === car.instanceId
+                            ? 'border-primary/50 bg-primary/5'
+                            : 'border-border bg-muted/20 hover:bg-muted/40'
+                        }`}
+                      >
+                        <span className="text-xl">{car.icon}</span>
+                        <div className="flex-1 min-w-0">
+                          <div className="font-semibold text-[13px] truncate">{car.brand} {car.model} {car.trim}</div>
+                          <div className="text-[10px] text-muted-foreground">{car.year} · Condição {car.condition}%</div>
+                        </div>
+                      </button>
+                    ))}
                   </div>
                 </div>
-                {selectedProductId && (
-                  <div className="text-sm p-2 rounded bg-muted/40 border border-border">
-                    Total: <span className="font-bold text-primary">{formatMoney(quantity * pricePerUnit)}</span>
-                  </div>
-                )}
+
+                {/* Preço */}
+                <div className="space-y-1.5">
+                  <div className="text-[12px] font-semibold text-muted-foreground uppercase tracking-wider">Preço de venda</div>
+                  <Input
+                    type="number"
+                    placeholder="R$ 0"
+                    value={askingPrice}
+                    onChange={e => setAskingPrice(e.target.value)}
+                    className="text-[15px] font-bold"
+                  />
+                  {selectedCarId && (() => {
+                    const car = availableCars.find(c => c.instanceId === selectedCarId);
+                    return car ? (
+                      <div className="text-[10px] text-muted-foreground">
+                        FIPE de referência: {fmt(car.fipePrice)} · Condição: {car.condition}%
+                      </div>
+                    ) : null;
+                  })()}
+                </div>
               </div>
               <DialogFooter>
-                <Button variant="outline" onClick={() => setCreatingOpen(false)} disabled={busy}>Cancelar</Button>
-                <Button className="btn-luxury" onClick={handleCreate} disabled={busy || !selectedProductId}>
-                  {busy ? 'Publicando…' : 'Publicar'}
+                <Button variant="outline" onClick={() => setCreatingOpen(false)}>Cancelar</Button>
+                <Button onClick={handleCreate} disabled={busy || !selectedCarId || !askingPrice}>
+                  Publicar anúncio
                 </Button>
               </DialogFooter>
             </DialogContent>
           </Dialog>
-        </div>
-      </div>
 
-      <Tabs defaultValue="browse" className="w-full">
-        <TabsList className="grid w-full grid-cols-2">
-          <TabsTrigger value="browse" className="flex items-center gap-2">
-            <ShoppingBag className="w-4 h-4" /> Ofertas Ativas ({filteredActive.length})
-          </TabsTrigger>
-          <TabsTrigger value="mine" className="flex items-center gap-2">
-            <Package className="w-4 h-4" /> Minhas Ofertas ({myListings.length})
-          </TabsTrigger>
-        </TabsList>
-
-        <TabsContent value="browse" className="space-y-3">
-          {/* Filtros */}
-          <Card className="game-card p-3 flex gap-2 flex-wrap items-center">
-            <div className="relative flex-1 min-w-[140px]">
-              <Search className="w-4 h-4 absolute left-2 top-1/2 -translate-y-1/2 text-muted-foreground" />
-              <Input
-                value={search}
-                onChange={e => setSearch(e.target.value)}
-                placeholder="Buscar produto…"
-                className="pl-8"
-              />
+          {/* Listagens */}
+          {loading ? (
+            <div className="text-center py-10 text-muted-foreground text-[13px]">Carregando…</div>
+          ) : filtered.length === 0 ? (
+            <div className="text-center py-12 space-y-3">
+              <div className="text-5xl">🤝</div>
+              <div className="text-[14px] font-semibold text-muted-foreground">
+                {search ? 'Nenhum carro encontrado' : 'Nenhum anúncio no momento'}
+              </div>
+              <div className="text-[11px] text-muted-foreground">Seja o primeiro a anunciar um carro!</div>
             </div>
-            <Select value={categoryFilter} onValueChange={setCategoryFilter}>
-              <SelectTrigger className="w-[160px]">
-                <SelectValue placeholder="Categoria" />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="all">Todas categorias</SelectItem>
-                {categories.map(c => (
-                  <SelectItem key={c} value={c}>{c}</SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-          </Card>
-
-          {filteredActive.length === 0 && !loading && (
-            <Card className="game-card p-8 text-center text-muted-foreground">
-              <div className="text-4xl mb-2">🕊️</div>
-              Nenhuma oferta disponível no momento. Seja o primeiro a publicar!
-            </Card>
+          ) : (
+            <div className="space-y-3">
+              {filtered.map(listing => (
+                <ListingCard
+                  key={listing.id}
+                  listing={listing}
+                  isOwn={listing.seller_id === userId}
+                  canAfford={gameState.money >= listing.total_price}
+                  onBuy={() => handleBuy(listing)}
+                  onCancel={() => handleCancel(listing.id)}
+                />
+              ))}
+            </div>
           )}
+        </>
+      )}
 
-          <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
-            {filteredActive.map(l => {
-              const ppuMarket = products.find(p => p.id === l.product_id)?.currentPrice ?? 0;
-              const discount = ppuMarket > 0 ? ((ppuMarket - l.price_per_unit) / ppuMarket) * 100 : 0;
-              const canAfford = gameState.money - l.total_price >= gameState.overdraftLimit;
-              return (
-                <Card key={l.id} className="game-card p-4 space-y-3">
-                  <div className="flex items-start justify-between gap-2">
-                    <div className="flex items-center gap-2">
-                      <span className="text-2xl">{l.product_icon || '📦'}</span>
-                      <div>
-                        <div className="font-bold">{l.product_name}</div>
-                        <div className="text-xs text-muted-foreground">
-                          por <span className="text-primary">{l.seller_name}</span> • {relativeTime(l.created_at)}
-                        </div>
-                      </div>
-                    </div>
-                    {discount > 0 && (
-                      <Badge className="bg-green-600/20 text-green-400 border-green-600/40">
-                        -{discount.toFixed(0)}%
-                      </Badge>
-                    )}
-                  </div>
-                  <div className="grid grid-cols-3 gap-2 text-xs">
-                    <div className="text-center p-1 rounded bg-muted/40">
-                      <div className="text-muted-foreground">Qtd</div>
-                      <div className="font-bold">{l.quantity}</div>
-                    </div>
-                    <div className="text-center p-1 rounded bg-muted/40">
-                      <div className="text-muted-foreground">Un.</div>
-                      <div className="font-bold">{formatMoney(l.price_per_unit)}</div>
-                    </div>
-                    <div className="text-center p-1 rounded bg-primary/10 border border-primary/30">
-                      <div className="text-muted-foreground">Total</div>
-                      <div className="font-bold text-primary">{formatMoney(l.total_price)}</div>
-                    </div>
-                  </div>
-                  <Button
-                    className="w-full btn-luxury"
-                    disabled={busy || !canAfford}
-                    onClick={() => handleBuy(l)}
-                  >
-                    <Coins className="w-4 h-4 mr-2" />
-                    {canAfford ? 'Comprar' : 'Saldo insuficiente'}
-                  </Button>
-                </Card>
-              );
-            })}
-          </div>
-        </TabsContent>
-
-        <TabsContent value="mine" className="space-y-3">
-          {myListings.length === 0 && (
-            <Card className="game-card p-8 text-center text-muted-foreground">
-              Você ainda não publicou ofertas.
-            </Card>
+      {activeTab === 'meus' && (
+        <div className="space-y-3">
+          {myListings.length === 0 ? (
+            <div className="text-center py-12 space-y-3">
+              <div className="text-5xl"><Car size={48} className="mx-auto text-muted-foreground" /></div>
+              <div className="text-[14px] font-semibold text-muted-foreground">Nenhum anúncio ainda</div>
+              <div className="text-[11px] text-muted-foreground">Anuncie um carro da sua garagem</div>
+            </div>
+          ) : (
+            myListings.map(listing => (
+              <ListingCard
+                key={listing.id}
+                listing={listing}
+                isOwn
+                canAfford={false}
+                onBuy={() => {}}
+                onCancel={() => handleCancel(listing.id)}
+              />
+            ))
           )}
-          <div className="grid gap-3 sm:grid-cols-2">
-            {myListings.map(l => {
-              const st = statusLabel(l.status);
-              return (
-                <Card key={l.id} className="game-card p-4 space-y-3">
-                  <div className="flex items-start justify-between gap-2">
-                    <div className="flex items-center gap-2">
-                      <span className="text-2xl">{l.product_icon || '📦'}</span>
-                      <div>
-                        <div className="font-bold">{l.product_name}</div>
-                        <div className="text-xs text-muted-foreground">
-                          {l.quantity}x • {formatMoney(l.price_per_unit)}/un
-                        </div>
-                      </div>
-                    </div>
-                    <Badge className={`${st.color} flex items-center gap-1`}>
-                      {st.icon} {st.label}
-                    </Badge>
-                  </div>
-                  <div className="text-sm flex items-center justify-between">
-                    <span className="text-muted-foreground">Total:</span>
-                    <span className="font-bold text-primary">{formatMoney(l.total_price)}</span>
-                  </div>
-                  {l.status === 'sold' && l.buyer_name && (
-                    <div className="text-xs text-muted-foreground">
-                      Vendida para <span className="text-primary">{l.buyer_name}</span>
-                      {l.paid_out_at ? ' • pago' : ' • será creditado na próxima atualização'}
-                    </div>
-                  )}
-                  {l.status === 'active' && (
-                    <Button variant="outline" size="sm" className="w-full" onClick={() => handleCancel(l)} disabled={busy}>
-                      <X className="w-4 h-4 mr-2" /> Cancelar e devolver ao galpão
-                    </Button>
-                  )}
-                </Card>
-              );
-            })}
-          </div>
-        </TabsContent>
-      </Tabs>
+        </div>
+      )}
     </div>
   );
 };
-
-export default PlayerMarketScreen;

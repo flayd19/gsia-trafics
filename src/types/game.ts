@@ -32,6 +32,8 @@ export interface OwnedCar {
   repairCompletesAt?: number; // timestamp
   repairTypeId?: string;
   repairGain?: number; // quanto de condição vai ganhar
+  /** IDs dos tipos de reparo já realizados neste carro — cada reparo só pode ser feito uma vez por carro */
+  completedRepairs: string[];
 }
 
 // ── Slots da garagem ─────────────────────────────────────────────
