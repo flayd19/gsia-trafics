@@ -262,3 +262,13 @@ export function ensureGameState(raw: Partial<GameState>): GameState {
     completedOrders: raw.completedOrders ?? 0,
   };
 }
+ought: raw.totalCarsBought ?? 0,
+    reputation: ensureReputation(raw.reputation),
+    gameTime: raw.gameTime ?? { day: 1, hour: 8, minute: 0, lastUpdate: Date.now() },
+    overdraftLimit: raw.overdraftLimit ?? -50_000,
+    lastInterestCalculation: raw.lastInterestCalculation ?? Date.now(),
+    completedOrders: raw.completedOrders ?? 0,
+  };
+}
+  };
+}
