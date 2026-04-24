@@ -31,7 +31,7 @@ function generateId(): string {
 // ── Estado inicial ────────────────────────────────────────────────
 function buildInitialState(): GameState {
   return ensureGameState({
-    money: 30_000,
+    money: 50_000,
     garage: [{ id: 1, unlocked: true, unlockCost: 0, car: undefined }],
     marketplaceCars: buildMarketplaceInventory(),
     marketplaceLastRefresh: Date.now(),
@@ -209,7 +209,7 @@ export function useCarGameLogic() {
     if (user) {
       await (supabase as any)
         .from('game_progress')
-        .update({ car_game_data: null, money: 30000, updated_at: new Date().toISOString() })
+        .update({ car_game_data: null, money: 50000, updated_at: new Date().toISOString() })
         .eq('user_id', user.id);
     }
     setGameState(buildInitialState());

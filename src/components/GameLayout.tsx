@@ -141,7 +141,7 @@ export const GameLayout = ({
                 GSIA Carros
               </span>
               <span className="text-[10px] text-muted-foreground font-medium">
-                Dia {gameTime.day} · {gameTime.time}
+                {gameTime.time}
                 {isSyncing && <span className="ml-1 opacity-70">· sync…</span>}
               </span>
             </div>
