@@ -260,6 +260,12 @@ export interface GameState {
    */
   buyerSlotLocks: number[];
 
+  /**
+   * Timestamp (ms) de quando o próximo ciclo de compradores deve ocorrer.
+   * Substitui buyerCycleEpoch para comparações de persistência entre sessões.
+   */
+  nextBuyerCycleAt: number;
+
   /** Histórico de vendas */
   carSales: CarSaleRecord[];
 
@@ -314,6 +320,7 @@ export function ensureGameState(raw: Partial<GameState>): GameState {
     newBuyersTimerDuration: raw.newBuyersTimerDuration ?? 30,
     buyerCycleEpoch: raw.buyerCycleEpoch ?? -1,
     buyerSlotLocks: raw.buyerSlotLocks ?? [],
+    nextBuyerCycleAt: raw.nextBuyerCycleAt ?? 0,
     carSales: raw.carSales ?? [],
     totalRevenue: raw.totalRevenue ?? 0,
     totalSpent: raw.totalSpent ?? 0,

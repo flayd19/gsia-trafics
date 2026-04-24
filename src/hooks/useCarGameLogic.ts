@@ -18,6 +18,7 @@ import {
   evaluatePlayerOffer,
   currentCycleEpoch,
   secondsUntilNextCycle,
+  nextCycleTimestamp,
   maxBuyerSlots,
   generateCycleBuyers,
 } from '@/data/carBuyers';
@@ -86,6 +87,7 @@ function buildInitialState(): GameState {
     carBuyers:              generateCycleBuyers(level, []),
     buyerCycleEpoch:        epoch,
     buyerSlotLocks:         new Array(totalSlots).fill(-1),
+    nextBuyerCycleAt:       nextCycleTimestamp(),
   });
 }
 
@@ -110,14 +112,15 @@ function applyLoadedSave(raw: unknown): GameState {
     saved.marketplaceLastRefresh = Date.now();
   }
 
-  // Regenera compradores se o ciclo avançou (jogador ficou offline)
-  const epoch = currentCycleEpoch();
-  if (epoch > saved.buyerCycleEpoch) {
+  // Regenera compradores apenas se o ciclo já encerrou (comparação por timestamp absoluto)
+  const now = Date.now();
+  if (now >= saved.nextBuyerCycleAt) {
     const level      = saved.reputation.level;
     const totalSlots = maxBuyerSlots(level);
-    saved.carBuyers      = generateCycleBuyers(level, []);
-    saved.buyerCycleEpoch = epoch;
+    saved.carBuyers       = generateCycleBuyers(level, []);
+    saved.buyerCycleEpoch = currentCycleEpoch();
     saved.buyerSlotLocks  = new Array(totalSlots).fill(-1);
+    saved.nextBuyerCycleAt = nextCycleTimestamp();
   }
 
   return saved;
@@ -355,17 +358,17 @@ export function useCarGameLogic() {
           next = { ...next, activeRepairs: pendingRepairs, garage: updatedGarage };
         }
 
-        // ── Ciclo de compradores (30 min) ─────────────────────────
-        const epoch = currentCycleEpoch();
-        if (epoch > next.buyerCycleEpoch) {
+        // ── Ciclo de compradores (10 min) ─────────────────────────
+        if (now >= next.nextBuyerCycleAt) {
           // Novo ciclo: regenera todos os slots (nenhum bloqueado no início do ciclo)
           const level      = next.reputation.level;
           const totalSlots = maxBuyerSlots(level);
           next = {
             ...next,
-            carBuyers:       generateCycleBuyers(level, []),
-            buyerCycleEpoch: epoch,
-            buyerSlotLocks:  new Array(totalSlots).fill(-1),
+            carBuyers:        generateCycleBuyers(level, []),
+            buyerCycleEpoch:  currentCycleEpoch(),
+            buyerSlotLocks:   new Array(totalSlots).fill(-1),
+            nextBuyerCycleAt: nextCycleTimestamp(),
           };
         }
 

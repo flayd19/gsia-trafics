@@ -226,6 +226,11 @@ export function secondsUntilNextCycle(): number {
   return Math.ceil((BUYER_CYCLE_MS - elapsed) / 1_000);
 }
 
+/** Timestamp (ms) do início do próximo ciclo de compradores */
+export function nextCycleTimestamp(): number {
+  return Math.ceil(Date.now() / BUYER_CYCLE_MS) * BUYER_CYCLE_MS;
+}
+
 /**
  * Número máximo de slots de comprador disponíveis para o nível do jogador.
  *   Nível 1  → 2 slots
