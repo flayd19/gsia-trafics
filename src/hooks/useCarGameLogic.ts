@@ -690,24 +690,3 @@ export function useCarGameLogic() {
     garageSlotDefs: GARAGE_SLOTS,
   };
 }
-
-    addOwnedCarToGarage,
-    removeCarFromGarage,
-
-    unlockGarageSlot,
-    startRepair,
-
-    sendOfferToBuyer,
-    resolveBuyerDecision,
-    dismissBuyer,
-
-    refreshMarketplace,
-    addMoney,
-    spendMoney,
-    saveGame,
-    resetGame,
-
-    repairTypes:    REPAIR_TYPES,
-    garageSlotDefs: GARAGE_SLOTS,
-  };
-}
