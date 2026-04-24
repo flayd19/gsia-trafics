@@ -112,8 +112,8 @@ export interface CarBuyerNPC {
   /** Quanto tempo o NPC fica disponível (segundos reais) */
   patience: number;
   arrivedAt: number; // timestamp
-  /** Estado: esperando oferta, pensando, decidido */
-  state: 'waiting' | 'thinking' | 'accepted' | 'rejected' | 'expired';
+  /** Estado: esperando oferta, pensando, aguardando resposta da contraoferta, decidido */
+  state: 'waiting' | 'thinking' | 'countering' | 'accepted' | 'rejected' | 'expired';
   /** Timestamp que entrou no estado thinking */
   thinkingStartedAt?: number;
   /** Oferta enviada pelo jogador */
@@ -128,6 +128,16 @@ export interface CarBuyerNPC {
   playerTradeInValuation?: number;
   /** Resultado final */
   finalPrice?: number;
+  /**
+   * Valor da contraoferta gerada pelo comprador (apenas quando state = 'countering').
+   * Representa o máximo real que o comprador está disposto a pagar.
+   */
+  counterOffer?: number;
+  /**
+   * Flag que impede loops: apenas 1 contraoferta por negociação.
+   * Após emitir a contraoferta, rejeições seguintes são diretas.
+   */
+  counterOfferMade?: boolean;
   targetCarInstanceId?: string; // qual carro da garagem quer comprar
 
   // ── Sistema de ciclos (30 min) ──────────────────────────────────

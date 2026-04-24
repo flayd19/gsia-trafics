@@ -23,7 +23,8 @@ interface CarSalesScreenProps {
     includeTradeIn: boolean,
     playerTradeInValuation?: number,
   ) => { success: boolean; message: string };
-  onResolveDecision: (buyerId: string) => { success: boolean; accepted: boolean; message: string; finalPrice?: number };
+  onResolveDecision: (buyerId: string) => { success: boolean; accepted: boolean; message: string; finalPrice?: number; counterOffer?: number };
+  onResolveCounterOffer: (buyerId: string, accept: boolean) => { success: boolean; message: string; finalPrice?: number };
   onDismissBuyer: (buyerId: string) => void;
 }
 
@@ -217,6 +218,7 @@ function BuyerCard({
   carsInGarage,
   onSendOffer,
   onResolveDecision,
+  onResolveCounterOffer,
   onDismiss,
 }: {
   buyer: CarBuyerNPC;
@@ -227,7 +229,8 @@ function BuyerCard({
     includeTradeIn: boolean,
     playerTradeInValuation?: number,
   ) => void;
-  onResolveDecision: () => { accepted: boolean; message: string; finalPrice?: number } | void;
+  onResolveDecision: () => { accepted: boolean; message: string; finalPrice?: number; counterOffer?: number } | void;
+  onResolveCounterOffer: (accept: boolean) => void;
   onDismiss: () => void;
 }) {
   const compatibleCars = filterCompatibleCars(carsInGarage, buyer);
@@ -273,7 +276,9 @@ function BuyerCard({
 
   const handleTimeUp = () => {
     const result = onResolveDecision();
-    if (result) setDecided(result);
+    // Quando há contraoferta, buyer.state muda para 'countering' e o componente
+    // re-renderiza para esse estado — não usar setDecided para evitar conflito.
+    if (result && !result.counterOffer) setDecided(result);
   };
 
   // ── estados terminais ────────────────────────────────────────────
@@ -301,6 +306,72 @@ function BuyerCard({
         </div>
         <p className="text-[12px] text-muted-foreground">{buyer.name} foi embora.</p>
         <Button variant="ghost" size="sm" className="w-full" onClick={onDismiss}>Remover</Button>
+      </div>
+    );
+  }
+
+  // ── Estado: contraoferta aguardando resposta do jogador ────────────
+  if (buyer.state === 'countering' && buyer.counterOffer !== undefined) {
+    const counterAmt       = buyer.counterOffer;
+    const tradeInVal       = buyer.tradeInCar ? (tradeInValuation ?? buyer.tradeInValue ?? 0) : 0;
+    const cashAfterCounter = Math.max(0, counterAmt - tradeInVal);
+    return (
+      <div className="ios-surface rounded-[16px] p-4 space-y-4">
+        {/* Comprador info */}
+        <div className="flex items-start gap-3">
+          <div className="w-11 h-11 rounded-[14px] bg-amber-500/10 flex items-center justify-center text-2xl">
+            {buyer.avatar}
+          </div>
+          <div className="flex-1 min-w-0">
+            <div className="font-bold text-foreground text-[15px]">{buyer.name}</div>
+            <div className="text-[11px] text-amber-500 font-medium">💬 Fez uma contraoferta</div>
+          </div>
+        </div>
+
+        {/* Contraoferta */}
+        <div className="bg-amber-500/10 border border-amber-500/20 rounded-[14px] px-4 py-3 space-y-1">
+          <div className="text-[10px] uppercase tracking-wider text-amber-500 font-semibold">
+            Contraoferta do comprador
+          </div>
+          <div className="text-[26px] font-bold text-foreground tabular-nums leading-tight">
+            {fmt(counterAmt)}
+          </div>
+          <div className="text-[11px] text-muted-foreground">
+            Este é o máximo que estou disposto a pagar.
+          </div>
+          {buyer.tradeInCar && tradeInVal > 0 && (
+            <div className="pt-1 border-t border-amber-500/20 flex justify-between text-[11px]">
+              <span className="text-muted-foreground">Troca ({buyer.tradeInCar.brand} {buyer.tradeInCar.model})</span>
+              <span className="text-blue-500 font-semibold">− {fmt(tradeInVal)}</span>
+            </div>
+          )}
+          {(tradeInVal > 0) && (
+            <div className="flex justify-between text-[12px] font-bold">
+              <span className="text-muted-foreground">Você recebe em dinheiro</span>
+              <span className="text-emerald-500">{fmt(cashAfterCounter)}</span>
+            </div>
+          )}
+        </div>
+
+        {/* Ações */}
+        <div className="grid grid-cols-2 gap-2">
+          <button
+            type="button"
+            onClick={() => onResolveCounterOffer(false)}
+            className="flex items-center justify-center gap-1.5 px-3 py-2.5 rounded-[12px] border border-red-500/30 text-red-500 text-[13px] font-semibold hover:bg-red-500/5 transition-colors"
+          >
+            <XCircle size={15} />
+            Recusar
+          </button>
+          <button
+            type="button"
+            onClick={() => onResolveCounterOffer(true)}
+            className="flex items-center justify-center gap-1.5 px-3 py-2.5 rounded-[12px] bg-emerald-500 text-white text-[13px] font-semibold hover:bg-emerald-600 transition-colors"
+          >
+            <CheckCircle size={15} />
+            Aceitar {fmt(counterAmt)}
+          </button>
+        </div>
       </div>
     );
   }
@@ -640,7 +711,7 @@ export function CarSalesScreen({
   const carsInGarage = gameState.garage.filter(s => s.unlocked && s.car).map(s => s.car!);
 
   const activeBuyers = gameState.carBuyers.filter(
-    b => b.state === 'waiting' || b.state === 'thinking' || b.state === 'accepted' || b.state === 'rejected',
+    b => b.state === 'waiting' || b.state === 'thinking' || b.state === 'countering' || b.state === 'accepted' || b.state === 'rejected',
   );
 
   const totalSold   = gameState.totalCarsSold ?? 0;
@@ -684,12 +755,10 @@ export function CarSalesScreen({
         </div>
       )}
 
-      {/* Nota sobre slots futuros */}
-      {level < 100 && (
+      {/* Nota sobre próximo desbloqueio de slot */}
+      {level % 10 !== 0 && (
         <div className="text-[11px] text-muted-foreground px-1">
-          {level < 30 && `Nível 30 → 3 slots · Nível 50 → 4 slots · Nível 100 → 5 slots`}
-          {level >= 30 && level < 50 && `Nível 50 → 4 slots · Nível 100 → 5 slots`}
-          {level >= 50 && level < 100 && `Nível 100 → 5 slots`}
+          {`Nível ${Math.ceil(level / 10) * 10} → ${2 + Math.ceil(level / 10)} slots`}
         </div>
       )}
 

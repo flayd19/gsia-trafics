@@ -56,6 +56,7 @@ const Index = () => {
     runDiagnosis,
     sendOfferToBuyer,
     resolveBuyerDecision,
+    resolveCounterOffer,
     dismissBuyer,
     addMoney,
     spendMoney,
@@ -134,9 +135,18 @@ const Index = () => {
 
   const handleResolveDecision = (buyerId: string) => {
     const result = resolveBuyerDecision(buyerId);
-    if (result.accepted)      toast.success(result.message);
-    else if (!result.success) toast.error(result.message);
-    else                      toast.warning(result.message);
+    if (result.accepted)        toast.success(result.message);
+    else if (result.counterOffer) toast.info(result.message);
+    else if (!result.success)   toast.error(result.message);
+    else                        toast.warning(result.message);
+    return result;
+  };
+
+  const handleResolveCounterOffer = (buyerId: string, accept: boolean) => {
+    const result = resolveCounterOffer(buyerId, accept);
+    if (!result.success)  toast.error(result.message);
+    else if (result.finalPrice !== undefined) toast.success(result.message);
+    else                  toast.info(result.message);
     return result;
   };
 
@@ -212,6 +222,7 @@ const Index = () => {
             gameState={gameState}
             onSendOffer={handleSendOffer}
             onResolveDecision={handleResolveDecision}
+            onResolveCounterOffer={handleResolveCounterOffer}
             onDismissBuyer={dismissBuyer}
           />
         );

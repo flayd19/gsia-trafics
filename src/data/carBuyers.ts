@@ -508,6 +508,13 @@ export function spawnBuyer(id: string): CarBuyerNPC {
   };
 }
 
+/**
+ * Multiplicador sobre o máximo do comprador a partir do qual ele faz uma contraoferta.
+ * Se playerOffer ≤ buyerMax × COUNTER_OFFER_RATIO → contraoferta.
+ * Se playerOffer > buyerMax × COUNTER_OFFER_RATIO → rejeição direta.
+ */
+export const COUNTER_OFFER_RATIO = 1.30;
+
 /** Calcula o valor que o comprador está disposto a pagar (com sorte) */
 export function calculateBuyerOffer(
   buyer: CarBuyerNPC,
