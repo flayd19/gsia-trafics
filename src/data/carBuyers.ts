@@ -267,34 +267,36 @@ interface BuyerTier {
  *
  * Níveis 1–5   → populares baratos (até R$ 100 k)
  * Níveis 6–15  → populares + médios (até R$ 160 k)
- * Níveis 16–29 → + SUVs e pickups básicas (até R$ 250 k)
- * Níveis 30–49 → + elétricos e veículos premium (até R$ 400 k)
- * Nível 50+    → + esportivos e supercarros (sem teto)
+ * Níveis 1–5   → populares e clássicos (até R$ 100 k)
+ * Níveis 6–15  → + médios (até R$ 160 k)
+ * Níveis 16–29 → + SUVs e pickups (até R$ 250 k)
+ * Níveis 30–49 → + elétricos e luxo (até R$ 400 k)
+ * Nível 50+    → + esportivos e todo o catálogo (sem teto)
  */
 const LEVEL_TIERS: BuyerTier[] = [
   {
     minLevel: 1,
-    allowedCategories: ['popular'],
+    allowedCategories: ['popular', 'classico'],
     maxFipePrice: 100_000,
   },
   {
     minLevel: 6,
-    allowedCategories: ['popular', 'medio'],
+    allowedCategories: ['popular', 'classico', 'medio'],
     maxFipePrice: 160_000,
   },
   {
     minLevel: 16,
-    allowedCategories: ['popular', 'medio', 'suv', 'pickup'],
+    allowedCategories: ['popular', 'classico', 'medio', 'suv', 'pickup'],
     maxFipePrice: 250_000,
   },
   {
     minLevel: 30,
-    allowedCategories: ['popular', 'medio', 'suv', 'pickup', 'eletrico'],
+    allowedCategories: ['popular', 'classico', 'medio', 'suv', 'pickup', 'eletrico', 'luxo'],
     maxFipePrice: 400_000,
   },
   {
     minLevel: 50,
-    allowedCategories: ['popular', 'medio', 'suv', 'pickup', 'eletrico', 'esportivo'],
+    allowedCategories: ['popular', 'classico', 'medio', 'suv', 'pickup', 'eletrico', 'esportivo', 'luxo'],
     maxFipePrice: Infinity,
   },
 ];

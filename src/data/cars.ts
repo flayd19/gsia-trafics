@@ -2,7 +2,7 @@
 // BANCO DE CARROS BRASILEIROS — 50 modelos com variações e preço FIPE
 // =====================================================================
 
-export type CarCategory = 'popular' | 'medio' | 'suv' | 'pickup' | 'esportivo' | 'eletrico';
+export type CarCategory = 'popular' | 'medio' | 'suv' | 'pickup' | 'esportivo' | 'eletrico' | 'classico' | 'luxo';
 export type CarConditionLabel = 'Novo' | 'Ótimo' | 'Bom' | 'Regular' | 'Ruim' | 'Sucata';
 
 export interface CarVariant {
@@ -736,6 +736,307 @@ export const CAR_MODELS: CarModel[] = [
     ],
   },
 
+
+  // ── CLÁSSICOS BRASILEIROS (1992–2002) ───────────────────────────────
+  {
+    id: 'chevette',
+    brand: 'Chevrolet',
+    model: 'Chevette',
+    icon: '🚗',
+    category: 'classico',
+    variants: [
+      { id: 'chevette_10_sl',   trim: '1.0 SL',      year: 1993, fipePrice: 22_000 },
+      { id: 'chevette_16_sle',  trim: '1.6 SL/E',    year: 1993, fipePrice: 29_000 },
+      { id: 'chevette_16_sl',   trim: '1.6 SL Hatch', year: 1992, fipePrice: 26_000 },
+    ],
+  },
+  {
+    id: 'monza',
+    brand: 'Chevrolet',
+    model: 'Monza',
+    icon: '🚗',
+    category: 'classico',
+    variants: [
+      { id: 'monza_20_classic', trim: '2.0 Classic',  year: 1995, fipePrice: 33_000 },
+      { id: 'monza_20_sle',     trim: '2.0 SL/E',     year: 1996, fipePrice: 41_000 },
+      { id: 'monza_18_sedan',   trim: '1.8 Sedan',    year: 1994, fipePrice: 28_000 },
+    ],
+  },
+  {
+    id: 'kadett',
+    brand: 'Chevrolet',
+    model: 'Kadett',
+    icon: '🚗',
+    category: 'classico',
+    variants: [
+      { id: 'kadett_18_gl',   trim: '1.8 GL',   year: 1997, fipePrice: 25_000 },
+      { id: 'kadett_18_gls',  trim: '1.8 GLS',  year: 1997, fipePrice: 31_000 },
+      { id: 'kadett_20_gsi',  trim: '2.0 GSi',  year: 1998, fipePrice: 38_000 },
+    ],
+  },
+  {
+    id: 'gol_g1',
+    brand: 'Volkswagen',
+    model: 'Gol G1',
+    icon: '🚗',
+    category: 'classico',
+    variants: [
+      { id: 'golg1_10_cl',  trim: '1.0 CL',   year: 1994, fipePrice: 16_000 },
+      { id: 'golg1_16_cl',  trim: '1.6 CL',   year: 1994, fipePrice: 22_000 },
+      { id: 'golg1_16_gli', trim: '1.6 GLi',  year: 1993, fipePrice: 28_000 },
+    ],
+  },
+  {
+    id: 'gol_g2',
+    brand: 'Volkswagen',
+    model: 'Gol G2',
+    icon: '🚗',
+    category: 'classico',
+    variants: [
+      { id: 'golg2_10_mi',  trim: '1.0 Mi 8V', year: 1997, fipePrice: 20_000 },
+      { id: 'golg2_16_mi',  trim: '1.6 Mi',    year: 1999, fipePrice: 26_000 },
+      { id: 'golg2_20_gti', trim: '2.0 GTi',   year: 1998, fipePrice: 42_000 },
+    ],
+  },
+  {
+    id: 'santana',
+    brand: 'Volkswagen',
+    model: 'Santana',
+    icon: '🚗',
+    category: 'classico',
+    variants: [
+      { id: 'santana_18_gl',  trim: '1.8 GL',  year: 1995, fipePrice: 22_000 },
+      { id: 'santana_20_gls', trim: '2.0 GLS', year: 1996, fipePrice: 30_000 },
+    ],
+  },
+  {
+    id: 'palio',
+    brand: 'Fiat',
+    model: 'Palio',
+    icon: '🚗',
+    category: 'classico',
+    variants: [
+      { id: 'palio_10_mpi', trim: '1.0 MPI',      year: 1997, fipePrice: 17_000 },
+      { id: 'palio_16_elx', trim: '1.6 ELX MPI',  year: 2001, fipePrice: 24_000 },
+      { id: 'palio_16_16v', trim: '1.6 16V',       year: 2000, fipePrice: 27_000 },
+    ],
+  },
+  {
+    id: 'uno_mille',
+    brand: 'Fiat',
+    model: 'Uno Mille',
+    icon: '🚗',
+    category: 'classico',
+    variants: [
+      { id: 'uno_mille_10_ep',   trim: '1.0 EP',   year: 1998, fipePrice: 14_000 },
+      { id: 'uno_mille_10_sx',   trim: '1.0 SX',   year: 2000, fipePrice: 16_000 },
+      { id: 'uno_mille_10_fire', trim: '1.0 Fire', year: 2002, fipePrice: 18_000 },
+    ],
+  },
+  {
+    id: 'tempra',
+    brand: 'Fiat',
+    model: 'Tempra',
+    icon: '🚗',
+    category: 'classico',
+    variants: [
+      { id: 'tempra_16_ie',    trim: '1.6 IE',       year: 1995, fipePrice: 24_000 },
+      { id: 'tempra_20_turbo', trim: '2.0 IE Turbo', year: 1996, fipePrice: 38_000 },
+    ],
+  },
+
+  // ── LUXO ──────────────────────────────────────────────────────────────
+  {
+    id: 'bmw_320i',
+    brand: 'BMW',
+    model: '320i',
+    icon: '🚗',
+    category: 'luxo',
+    variants: [
+      { id: 'bmw320i_20_gp',     trim: '2.0 Turbo GP',      year: 2023, fipePrice: 248_000 },
+      { id: 'bmw320i_20_msport', trim: '2.0 Turbo M Sport', year: 2023, fipePrice: 298_000 },
+      { id: 'bmw320i_20_gp22',   trim: '2.0 Turbo GP',      year: 2022, fipePrice: 228_000 },
+    ],
+  },
+  {
+    id: 'bmw_530i',
+    brand: 'BMW',
+    model: '530i',
+    icon: '🚗',
+    category: 'luxo',
+    variants: [
+      { id: 'bmw530i_20_msport',  trim: '2.0 Turbo M Sport', year: 2023, fipePrice: 435_000 },
+      { id: 'bmw530i_20_touring', trim: '2.0 Touring',       year: 2022, fipePrice: 398_000 },
+    ],
+  },
+  {
+    id: 'bmw_x1',
+    brand: 'BMW',
+    model: 'X1',
+    icon: '🚙',
+    category: 'luxo',
+    variants: [
+      { id: 'bmwx1_20_sdrive',  trim: 'sDrive20i 2.0',      year: 2023, fipePrice: 298_000 },
+      { id: 'bmwx1_20_xdrive',  trim: 'xDrive25e Plug-in',  year: 2023, fipePrice: 348_000 },
+    ],
+  },
+  {
+    id: 'bmw_x3',
+    brand: 'BMW',
+    model: 'X3',
+    icon: '🚙',
+    category: 'luxo',
+    variants: [
+      { id: 'bmwx3_20_xdrive',  trim: 'xDrive30i 2.0',      year: 2023, fipePrice: 395_000 },
+      { id: 'bmwx3_20_msport',  trim: 'xDrive30i M Sport',  year: 2023, fipePrice: 435_000 },
+    ],
+  },
+  {
+    id: 'mercedes_c200',
+    brand: 'Mercedes-Benz',
+    model: 'C 200',
+    icon: '🚗',
+    category: 'luxo',
+    variants: [
+      { id: 'mc200_15_avantgarde', trim: '1.5 EQ Boost Avantgarde', year: 2023, fipePrice: 298_000 },
+      { id: 'mc200_15_amgline',    trim: '1.5 EQ Boost AMG Line',   year: 2023, fipePrice: 335_000 },
+      { id: 'mc200_15_2022',       trim: '1.5 EQ Boost',            year: 2022, fipePrice: 275_000 },
+    ],
+  },
+  {
+    id: 'mercedes_c300',
+    brand: 'Mercedes-Benz',
+    model: 'C 300',
+    icon: '🚗',
+    category: 'luxo',
+    variants: [
+      { id: 'mc300_20_4matic',  trim: '2.0 Turbo 4Matic',      year: 2023, fipePrice: 388_000 },
+      { id: 'mc300_20_amgline', trim: '2.0 AMG Line 4Matic',   year: 2023, fipePrice: 425_000 },
+    ],
+  },
+  {
+    id: 'mercedes_gla',
+    brand: 'Mercedes-Benz',
+    model: 'GLA 200',
+    icon: '🚙',
+    category: 'luxo',
+    variants: [
+      { id: 'mgla_13_avantgarde', trim: '1.3 Turbo Avantgarde', year: 2023, fipePrice: 305_000 },
+      { id: 'mgla_13_amgline',    trim: '1.3 Turbo AMG Line',   year: 2023, fipePrice: 340_000 },
+    ],
+  },
+  {
+    id: 'mercedes_glc',
+    brand: 'Mercedes-Benz',
+    model: 'GLC 300',
+    icon: '🚙',
+    category: 'luxo',
+    variants: [
+      { id: 'mglc_20_4matic', trim: '2.0 Turbo 4Matic',  year: 2023, fipePrice: 448_000 },
+      { id: 'mglc_20_coupe',  trim: '2.0 Coupe 4Matic',  year: 2023, fipePrice: 498_000 },
+    ],
+  },
+  {
+    id: 'audi_a3',
+    brand: 'Audi',
+    model: 'A3 Sedan',
+    icon: '🚗',
+    category: 'luxo',
+    variants: [
+      { id: 'a3_14_tfsi',      trim: '1.4 TFSI',        year: 2023, fipePrice: 215_000 },
+      { id: 'a3_20_tfsi_sline',trim: '2.0 TFSI S Line', year: 2023, fipePrice: 248_000 },
+      { id: 'a3_14_tfsi_22',   trim: '1.4 TFSI',        year: 2022, fipePrice: 195_000 },
+    ],
+  },
+  {
+    id: 'audi_q3',
+    brand: 'Audi',
+    model: 'Q3',
+    icon: '🚙',
+    category: 'luxo',
+    variants: [
+      { id: 'q3_14_tfsi',       trim: '1.4 TFSI',         year: 2023, fipePrice: 292_000 },
+      { id: 'q3_14_tfsi_sline', trim: '1.4 TFSI S Line',  year: 2023, fipePrice: 325_000 },
+    ],
+  },
+  {
+    id: 'audi_q5',
+    brand: 'Audi',
+    model: 'Q5',
+    icon: '🚙',
+    category: 'luxo',
+    variants: [
+      { id: 'q5_20_tfsi',       trim: '2.0 TFSI',         year: 2023, fipePrice: 428_000 },
+      { id: 'q5_20_tfsi_sline', trim: '2.0 TFSI S Line',  year: 2023, fipePrice: 468_000 },
+    ],
+  },
+  {
+    id: 'lr_evoque',
+    brand: 'Land Rover',
+    model: 'Range Rover Evoque',
+    icon: '🚙',
+    category: 'luxo',
+    variants: [
+      { id: 'evoque_20_p200',  trim: 'P200 2.0 S',       year: 2023, fipePrice: 398_000 },
+      { id: 'evoque_20_rdyn',  trim: 'P200 R-Dynamic',   year: 2023, fipePrice: 448_000 },
+    ],
+  },
+  {
+    id: 'lr_discovery_sport',
+    brand: 'Land Rover',
+    model: 'Discovery Sport',
+    icon: '🚙',
+    category: 'luxo',
+    variants: [
+      { id: 'disc_sport_p200_s', trim: 'P200 S',          year: 2023, fipePrice: 378_000 },
+      { id: 'disc_sport_p200_r', trim: 'P200 R-Dynamic',  year: 2023, fipePrice: 428_000 },
+    ],
+  },
+  {
+    id: 'lr_defender',
+    brand: 'Land Rover',
+    model: 'Defender 110',
+    icon: '🚙',
+    category: 'luxo',
+    variants: [
+      { id: 'defender_p300_s',   trim: 'P300 S',  year: 2023, fipePrice: 695_000 },
+      { id: 'defender_p400_x',   trim: 'P400 X',  year: 2023, fipePrice: 848_000 },
+    ],
+  },
+  {
+    id: 'volvo_xc40',
+    brand: 'Volvo',
+    model: 'XC40',
+    icon: '🚙',
+    category: 'luxo',
+    variants: [
+      { id: 'xc40_b5_rdesign',  trim: 'B5 R-Design AWD',       year: 2023, fipePrice: 345_000 },
+      { id: 'xc40_recharge',    trim: 'Recharge Pure Electric', year: 2024, fipePrice: 395_000 },
+    ],
+  },
+  {
+    id: 'volvo_xc60',
+    brand: 'Volvo',
+    model: 'XC60',
+    icon: '🚙',
+    category: 'luxo',
+    variants: [
+      { id: 'xc60_b5_ultim',  trim: 'B5 Ultimate AWD',    year: 2023, fipePrice: 448_000 },
+      { id: 'xc60_recharge',  trim: 'Recharge Ultimate',  year: 2024, fipePrice: 498_000 },
+    ],
+  },
+  {
+    id: 'porsche_macan',
+    brand: 'Porsche',
+    model: 'Macan',
+    icon: '🏎️',
+    category: 'luxo',
+    variants: [
+      { id: 'macan_20_base', trim: '2.0 Turbo',      year: 2023, fipePrice: 545_000 },
+      { id: 'macan_s_29',    trim: 'S 2.9 Biturbo',  year: 2023, fipePrice: 698_000 },
+    ],
+  },
+
   // ── ESPORTIVOS ──────────────────────────────────────────────────
   {
     id: 'mustang',
@@ -891,7 +1192,7 @@ export function buildMarketplaceInventory(): MarketplaceCar[] {
   }
 
   const nonPopularCategories = (
-    ['medio', 'suv', 'pickup', 'esportivo', 'eletrico'] as CarCategory[]
+    ['medio', 'suv', 'pickup', 'esportivo', 'eletrico', 'classico', 'luxo'] as CarCategory[]
   ).filter(c => byCategory.has(c));
 
   // Total do ciclo: 40–60
