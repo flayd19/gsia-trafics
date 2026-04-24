@@ -119,6 +119,7 @@ export function useGlobalMarketplace() {
   const loadMarketplace = useCallback(async () => {
     if (!mountedRef.current) return;
     setLoading(true);
+    setErrorMsg(null); // Limpa erro anterior a cada tentativa
     try {
       // Le o meta (ultimo refresh)
       const { data: meta, error: metaErr } = await db()
@@ -133,24 +134,22 @@ export function useGlobalMarketplace() {
       const stale  = Date.now() - lastMs >= REFRESH_MS || !meta;
 
       if (stale) {
-        // Tenta "ganhar" o slot de refresh (UPDATE atomico -- apenas 1 jogador executa)
-        const { data: newBatch, error: rpcErr } = await db()
-          .rpc('try_claim_marketplace_refresh');
+        // Gera inventario client-side e envia para RPC SECURITY DEFINER
+        // (evita bloqueio de RLS no INSERT direto)
+        const freshCars = buildMarketplaceInventory();
+        // Usa batch_id temporario 0 -- a RPC vai substituir pelo batch_id real
+        const rows      = carsToRows(freshCars, 0);
 
-        if (rpcErr) throw new Error('try_claim_marketplace_refresh: ' + rpcErr.message);
+        const { data: rpcResult, error: rpcErr } = await db()
+          .rpc('populate_marketplace_batch', { p_rows: rows });
 
-        if (newBatch != null) {
-          // Ganhou: gera novo inventario e publica para todos
-          const freshCars = buildMarketplaceInventory();
-          const rows      = carsToRows(freshCars, newBatch as number);
+        if (rpcErr) throw new Error('populate_marketplace_batch: ' + rpcErr.message);
 
-          const { error: delErr } = await db()
-            .from('marketplace_global').delete().lt('batch_id', newBatch);
-          if (delErr) throw new Error('delete: ' + delErr.message);
+        const result = rpcResult as { claimed: boolean; batch_id: number; inserted?: number };
 
-          const { error: insErr } = await db()
-            .from('marketplace_global').insert(rows);
-          if (insErr) throw new Error('insert (' + rows.length + ' rows): ' + insErr.message);
+        if (!result.claimed) {
+          // Outro jogador esta fazendo o refresh -- aguarda 1.5s e tenta buscar
+          await new Promise(res => setTimeout(res, 1_500));
         }
       }
 
@@ -174,8 +173,12 @@ export function useGlobalMarketplace() {
           setListings(cars);
           setIsOnline(true);
         } else {
-          // Tabelas existem mas retornaram vazio -- mantem listagem atual se tiver
+          // Retornou vazio mesmo apos refresh -- mantem listagem atual se tiver
           setIsOnline(true);
+          if (listingsRef.current.length === 0) {
+            // Marketplace genuinamente vazio, exibe mensagem adequada
+            setErrorMsg(null);
+          }
         }
       }
     } catch (err: unknown) {
