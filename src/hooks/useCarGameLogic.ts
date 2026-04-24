@@ -577,6 +577,7 @@ export function useCarGameLogic() {
             repairCompletesAt: now + repairType.durationSec * 1000,
             repairTypeId,
             repairGain:        gain,
+            totalRepairCost:   (s.car!.totalRepairCost ?? 0) + cost,
             diagnosisResult:   (s.car!.diagnosisResult ?? []).filter(d => d.repairTypeId !== repairTypeId),
             completedRepairs:  [...(s.car!.completedRepairs ?? []), repairTypeId],
           },
@@ -779,20 +780,22 @@ export function useCarGameLogic() {
       const buyerMax = calculateBuyerOffer(buyer, car.fipePrice, car.condition);
 
       if (!buyer.counterOfferMade && playerOffer <= buyerMax * COUNTER_OFFER_RATIO) {
-        // ── Contraoferta: dentro da faixa negociável ──
+        // ── Contraoferta: sempre abaixo do preço pedido pelo jogador ──
+        // Usa o menor entre buyerMax e 95% do preço pedido, garantindo desconto visível
+        const counterValue = Math.min(buyerMax, Math.round(playerOffer * 0.95));
         setGameState(prev => ({
           ...prev,
           carBuyers: prev.carBuyers.map(b =>
             b.id === buyerId
-              ? { ...b, state: 'countering' as const, counterOffer: buyerMax, counterOfferMade: true }
+              ? { ...b, state: 'countering' as const, counterOffer: counterValue, counterOfferMade: true }
               : b
           ),
         }));
         return {
           success:      true,
           accepted:     false,
-          counterOffer: buyerMax,
-          message:      `${buyer.name} fez uma contraoferta de ${formatMoney(buyerMax)}.`,
+          counterOffer: counterValue,
+          message:      `${buyer.name} fez uma contraoferta de ${formatMoney(counterValue)}.`,
         };
       }
 

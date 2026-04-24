@@ -782,6 +782,7 @@ export function CarSalesScreen({
                   const result = onResolveDecision(buyer.id);
                   if ('accepted' in result) return result;
                 }}
+                onResolveCounterOffer={(accept) => onResolveCounterOffer(buyer.id, accept)}
                 onDismiss={() => onDismissBuyer(buyer.id)}
               />
             );

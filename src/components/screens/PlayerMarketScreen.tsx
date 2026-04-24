@@ -240,6 +240,8 @@ export const PlayerMarketScreen = ({
         price_per_unit: price,
         car_data:     car,   // ← dados completos para entrega ao comprador
       });
+      // Remove o carro da garagem do vendedor imediatamente ao anunciar
+      onSoldListing(car.instanceId);
       toast({ title: 'Anúncio criado!', description: `${car.brand} ${car.model} anunciado por ${fmt(price)}` });
       setCreatingOpen(false);
       setSelectedCarId('');
@@ -310,9 +312,14 @@ export const PlayerMarketScreen = ({
   };
 
   const handleCancel = async (listingId: string) => {
+    const listing = myListings.find(l => l.id === listingId);
     setBusy(true);
     try {
       await cancelListing(listingId);
+      // Devolve o carro para a garagem do vendedor ao cancelar o anúncio
+      if (listing?.car_data) {
+        onAddToGarage(listing.car_data, listing.car_data.purchasePrice);
+      }
       toast({ title: 'Anúncio cancelado' });
       fetchMyListings();
       fetchActiveListings();

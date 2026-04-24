@@ -45,6 +45,8 @@ export interface OwnedCar {
   condition: number;
   /** Preço pago na aquisição */
   purchasePrice: number;
+  /** Soma acumulada dos gastos com oficina neste veículo */
+  totalRepairCost?: number;
   purchasedAt: number; // timestamp
   /** Se está em reparo na oficina */
   inRepair?: boolean;

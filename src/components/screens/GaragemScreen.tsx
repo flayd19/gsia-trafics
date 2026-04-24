@@ -2,12 +2,12 @@
 // GaragemScreen — Garagem com slots progressivos
 // =====================================================================
 import { useState } from 'react';
-import { Lock, Plus, Wrench, TrendingUp, TrendingDown, Car } from 'lucide-react';
+import { Lock, Plus, Wrench, Car } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { Progress } from '@/components/ui/progress';
 import type { GameState, OwnedCar, GarageSlot } from '@/types/game';
-import { GARAGE_SLOTS, conditionLabel, conditionColor, conditionValueFactor, garageSlotDailyCost } from '@/data/cars';
+import { GARAGE_SLOTS, conditionLabel, conditionColor, garageSlotDailyCost } from '@/data/cars';
 
 interface GaragemScreenProps {
   gameState: GameState;
@@ -21,9 +21,7 @@ const fmt = (v: number) =>
 function CarCard({ car, slotId, onRepair }: { car: OwnedCar; slotId: number; onRepair: () => void }) {
   const label = conditionLabel(car.condition);
   const colorClass = conditionColor(car.condition);
-  const marketValue = Math.round(car.fipePrice * conditionValueFactor(car.condition));
-  const profitDiff = marketValue - car.purchasePrice;
-  const isProfitable = profitDiff >= 0;
+  const totalCost = car.purchasePrice + (car.totalRepairCost ?? 0);
 
   return (
     <div className="ios-surface rounded-[16px] p-4 space-y-3">
@@ -80,23 +78,11 @@ function CarCard({ car, slotId, onRepair }: { car: OwnedCar; slotId: number; onR
           <div className="text-[12px] font-bold text-foreground tabular-nums">{fmt(car.purchasePrice)}</div>
         </div>
         <div className="text-center ios-surface-elevated rounded-[10px] p-2">
-          <div className="text-[9px] uppercase tracking-wider text-muted-foreground font-semibold">Mercado</div>
-          <div className={`text-[12px] font-bold tabular-nums ${isProfitable ? 'text-emerald-500' : 'text-red-500'}`}>
-            {fmt(marketValue)}
+          <div className="text-[9px] uppercase tracking-wider text-muted-foreground font-semibold">Custo</div>
+          <div className="text-[12px] font-bold tabular-nums text-amber-500">
+            {fmt(totalCost)}
           </div>
         </div>
-      </div>
-
-      {/* Lucro potencial */}
-      <div className={`flex items-center gap-1.5 px-3 py-1.5 rounded-[10px] ${isProfitable ? 'bg-emerald-500/10' : 'bg-red-500/10'}`}>
-        {isProfitable ? (
-          <TrendingUp size={13} className="text-emerald-500" />
-        ) : (
-          <TrendingDown size={13} className="text-red-500" />
-        )}
-        <span className={`text-[12px] font-semibold ${isProfitable ? 'text-emerald-500' : 'text-red-500'}`}>
-          {isProfitable ? '+' : ''}{fmt(profitDiff)} potencial
-        </span>
       </div>
 
       {/* Aluguel diário desta vaga */}
@@ -187,7 +173,7 @@ export function GaragemScreen({ gameState, onUnlockSlot, onGoToOficina }: Garage
   const carsInGarage = unlockedSlots.filter(s => s.car).length;
   const totalValue = unlockedSlots.reduce((sum, s) => {
     if (!s.car) return sum;
-    return sum + Math.round(s.car.fipePrice * conditionValueFactor(s.car.condition));
+    return sum + s.car.purchasePrice + (s.car.totalRepairCost ?? 0);
   }, 0);
   const dailyRentTotal = unlockedSlots
     .filter(s => s.car)
