@@ -296,4 +296,35 @@ export function useGlobalMarketplace() {
                   ? {
                       ...l,
                       status:    'sold' as const,
-      
+                              buyerName: row.buyer_name ?? undefined,
+                      }
+                  : l
+              )
+            );
+          }
+        },
+      )
+      .subscribe();
+
+    // Fallback poll — caso Realtime esteja desabilitado no projeto Supabase
+    const pollTimer = setInterval(() => {
+      if (mountedRef.current) void loadMarketplace();
+    }, POLL_MS);
+
+    return () => {
+      mountedRef.current = false;
+      void db().removeChannel(realtimeChannel);
+      clearInterval(pollTimer);
+    };
+  }, [loadMarketplace]);
+
+  return {
+    listings,
+    loading,
+    isOnline,
+    minsLeft,
+    loadMarketplace,
+    buyGlobal,
+    makeOfferGlobal,
+  };
+}
