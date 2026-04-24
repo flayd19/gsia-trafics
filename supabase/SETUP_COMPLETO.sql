@@ -78,6 +78,13 @@ alter table public.game_progress
     add column if not exists new_buyers_timer_start bigint default 0,
     add column if not exists new_buyers_timer_duration integer default 30;
 
+-- Colunas de persistência completa (reputação, fila de pickups, stats de produto, motos)
+alter table public.game_progress
+    add column if not exists reputation jsonb default '{"level": 1, "xp": 0, "totalXp": 0}'::jsonb,
+    add column if not exists pending_pickups jsonb default '[]'::jsonb,
+    add column if not exists product_stats jsonb default '{}'::jsonb,
+    add column if not exists motorcycles jsonb default '[]'::jsonb;
+
 create table if not exists public.game_backups (
     id uuid default gen_random_uuid() primary key,
     user_id uuid references auth.users(id) on delete cascade,
@@ -332,17 +339,20 @@ $$;
 -- 5) UPSERT DO PROGRESSO (chamado pelo cliente)
 -- =====================================================================
 
--- Remove versões antigas com assinaturas diferentes
-drop function if exists upsert_game_progress_safe(
-    uuid, decimal, decimal, integer, integer, integer, integer, bigint,
-    integer, integer, text, integer, boolean, boolean, integer, integer,
-    integer, bigint, text, text, text, text, text, text, text, text, text, text
-);
-drop function if exists upsert_game_progress_safe(
-    uuid, decimal, decimal, integer, integer, integer, integer, bigint,
-    integer, integer, text, integer, boolean, boolean, integer, integer,
-    integer, bigint, boolean, bigint, integer, text, text, text, text, text, text, text, text, text, text
-);
+-- Remove TODAS as versões anteriores do upsert (evita conflito de sobrecarga)
+do $$
+declare
+    r record;
+begin
+    for r in
+        select oid::regprocedure::text as signature
+        from pg_proc
+        where proname = 'upsert_game_progress_safe'
+          and pronamespace = 'public'::regnamespace
+    loop
+        execute 'drop function if exists ' || r.signature;
+    end loop;
+end $$;
 
 create or replace function upsert_game_progress_safe(
     p_user_id uuid,
@@ -375,7 +385,11 @@ create or replace function upsert_game_progress_safe(
     p_police_interceptions jsonb,
     p_vehicle_sales jsonb,
     p_product_sales jsonb,
-    p_stores jsonb
+    p_stores jsonb,
+    p_reputation jsonb default null,
+    p_pending_pickups jsonb default null,
+    p_product_stats jsonb default null,
+    p_motorcycles jsonb default null
 ) returns boolean language plpgsql security definer set search_path = public as $$
 begin
     insert into public.game_progress (
@@ -387,7 +401,8 @@ begin
         last_price_update, is_waiting_for_new_buyers, new_buyers_timer_start,
         new_buyers_timer_duration, vehicles, drivers, stock, buyers,
         current_trips, pending_deliveries, police_interceptions,
-        vehicle_sales, product_sales, stores
+        vehicle_sales, product_sales, stores,
+        reputation, pending_pickups, product_stats, motorcycles
     ) values (
         p_user_id, p_money, p_overdraft_limit, p_last_interest_calculation,
         p_game_day, p_game_hour, p_game_minute, p_last_game_update,
@@ -397,7 +412,11 @@ begin
         p_last_price_update, p_is_waiting_for_new_buyers, p_new_buyers_timer_start,
         p_new_buyers_timer_duration, p_vehicles, p_drivers, p_stock, p_buyers,
         p_current_trips, p_pending_deliveries, p_police_interceptions,
-        p_vehicle_sales, p_product_sales, p_stores
+        p_vehicle_sales, p_product_sales, p_stores,
+        coalesce(p_reputation, '{"level": 1, "xp": 0, "totalXp": 0}'::jsonb),
+        coalesce(p_pending_pickups, '[]'::jsonb),
+        coalesce(p_product_stats, '{}'::jsonb),
+        coalesce(p_motorcycles, '[]'::jsonb)
     )
     on conflict (user_id) do update set
         money = excluded.money,
@@ -430,6 +449,10 @@ begin
         vehicle_sales = excluded.vehicle_sales,
         product_sales = excluded.product_sales,
         stores = excluded.stores,
+        reputation = coalesce(excluded.reputation, game_progress.reputation),
+        pending_pickups = coalesce(excluded.pending_pickups, game_progress.pending_pickups),
+        product_stats = coalesce(excluded.product_stats, game_progress.product_stats),
+        motorcycles = coalesce(excluded.motorcycles, game_progress.motorcycles),
         updated_at = now();
     return true;
 end;
@@ -439,7 +462,7 @@ grant execute on function upsert_game_progress_safe(
     uuid, decimal, decimal, integer, integer, integer, integer, bigint,
     integer, integer, text, integer, boolean, boolean, integer, integer,
     integer, bigint, boolean, bigint, integer, jsonb, jsonb, jsonb, jsonb,
-    jsonb, jsonb, jsonb, jsonb, jsonb, jsonb
+    jsonb, jsonb, jsonb, jsonb, jsonb, jsonb, jsonb, jsonb, jsonb, jsonb
 ) to authenticated;
 
 -- =====================================================================

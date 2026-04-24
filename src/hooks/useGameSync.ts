@@ -64,6 +64,11 @@ const gameStateToRpcPayload = (userId: string, gs: GameState) => ({
   p_vehicle_sales: gs.vehicleSales || [],
   p_product_sales: gs.productSales || [],
   p_stores: gs.stores || [],
+  // Campos adicionais (persistidos no Supabase via migration FIX_SAVE_COMPLETO)
+  p_reputation: gs.reputation || { level: 1, xp: 0, totalXp: 0 },
+  p_pending_pickups: gs.pendingPickups || [],
+  p_product_stats: gs.productStats || {},
+  p_motorcycles: gs.motorcycles || [],
 });
 
 type GameProgressRow = {
@@ -89,6 +94,7 @@ type GameProgressRow = {
   new_buyers_timer_duration?: number;
   vehicles?: unknown[];
   drivers?: unknown[];
+  motorcycles?: unknown[];
   stock?: Record<string, unknown>;
   buyers?: unknown[];
   current_trips?: unknown[];
@@ -99,16 +105,17 @@ type GameProgressRow = {
   vehicle_sales?: unknown[];
   product_sales?: unknown[];
   stores?: unknown[];
+  reputation?: Record<string, unknown>;
 };
 
 const rowToGameState = (data: GameProgressRow): GameState => ({
-  money: Number(data.money) || 20000,
+  money: Number(data.money) || 40000,
   vehicles: (data.vehicles as GameState['vehicles']) || [],
   drivers: (data.drivers as GameState['drivers']) || [],
-  motorcycles: [],
+  motorcycles: (data.motorcycles as GameState['motorcycles']) || [],
   stock: (data.stock as GameState['stock']) || {},
   inventory: 0,
-  warehouseCapacity: data.warehouse_capacity || 1440,
+  warehouseCapacity: data.warehouse_capacity || 1080,
   warehouseLevel: data.warehouse_level || 1,
   currentWarehouse: data.current_warehouse || 'rua36',
   currentTrips: (data.current_trips as GameState['currentTrips']) || [],
@@ -137,7 +144,14 @@ const rowToGameState = (data: GameProgressRow): GameState => ({
   productSales: (data.product_sales as GameState['productSales']) || [],
   productStats: (data.product_stats as GameState['productStats']) || {},
   stores: (data.stores as GameState['stores']) || [],
-  buyers: [],
+  // buyers agora carrega o que foi salvo (era hardcoded [] antes)
+  buyers: (data.buyers as GameState['buyers']) || [],
+  // Reputação: fallback pro default se o banco ainda não tem a coluna
+  reputation: (data.reputation as unknown as GameState['reputation']) || {
+    level: 1,
+    xp: 0,
+    totalXp: 0,
+  },
   pending_deliveries: (data.pending_deliveries as GameState['pendingDeliveries']) || [],
   completed_orders: data.completed_orders || 0,
 });
@@ -171,9 +185,14 @@ export const useGameSync = (): GameSyncHookResult => {
       const res = await safeCall(
         'save:upsert',
         async () => {
+          // Cast: tipos gerados do Supabase ainda não conhecem os params novos
+          // (p_reputation, p_pending_pickups, p_product_stats, p_motorcycles).
+          // O banco aceita via FIX_SAVE_COMPLETO.sql.
+          // eslint-disable-next-line @typescript-eslint/no-explicit-any
+          const payload = gameStateToRpcPayload(user.id, gameState) as any;
           const { error } = await supabase.rpc(
             'upsert_game_progress_safe',
-            gameStateToRpcPayload(user.id, gameState)
+            payload
           );
           if (error) throw error;
           return true;
