@@ -89,16 +89,52 @@ function carsToRows(cars: MarketplaceCar[], batchId: number) {
   }));
 }
 
-/** Gera lote local quando o Supabase ainda não tem as tabelas configuradas */
+// ── Cache local (localStorage) — inventário offline persiste 30 min ──────────
+const LOCAL_CACHE_KEY  = 'gsia_local_marketplace_v1';
+const LOCAL_CACHE_TTL  = 30 * 60 * 1_000; // 30 min em ms
+
+interface LocalCache {
+  generatedAt: number;
+  cars: GlobalCar[];
+}
+
+function readLocalCache(): GlobalCar[] | null {
+  try {
+    const raw = localStorage.getItem(LOCAL_CACHE_KEY);
+    if (!raw) return null;
+    const cache: LocalCache = JSON.parse(raw);
+    if (Date.now() - cache.generatedAt >= LOCAL_CACHE_TTL) return null; // expirado
+    return cache.cars;
+  } catch { return null; }
+}
+
+function writeLocalCache(cars: GlobalCar[]): void {
+  try {
+    const cache: LocalCache = { generatedAt: Date.now(), cars };
+    localStorage.setItem(LOCAL_CACHE_KEY, JSON.stringify(cache));
+  } catch { /* storage cheio ou privado — ignora */ }
+}
+
+/**
+ * Gera ou recupera lote local quando o Supabase está indisponível.
+ * O inventário é persistido no localStorage e só é regenerado após 30 min,
+ * garantindo estabilidade de preços e IDs entre sessões.
+ */
 function buildLocalFallback(): GlobalCar[] {
+  const cached = readLocalCache();
+  if (cached) return cached;
+
   const batchId = Math.floor(Date.now() / 1000);
-  return buildMarketplaceInventory().map(car => ({
+  const cars = buildMarketplaceInventory().map(car => ({
     ...car,
-    id:       `${car.variantId}_b${batchId}`,
-    status:   'available' as const,
+    id:      `${car.variantId}_b${batchId}`,
+    status:  'available' as const,
     batchId,
-    isLocal:  true,
+    isLocal: true,
   }));
+
+  writeLocalCache(cars);
+  return cars;
 }
 
 const fmt = (v: number) =>

@@ -62,13 +62,26 @@ export function conditionValueFactor(condition: number): number {
 export const MIN_SALE_PRICE_RATIO = 0.85;
 
 /**
- * Preço de listagem no mercado global.
- * Aplica conditionValueFactor com piso mínimo de MIN_SALE_PRICE_RATIO (88% da FIPE).
- * Garante que nenhum veículo seja listado abaixo do valor mínimo de venda.
+ * Preço de listagem no marketplace de compra.
+ *
+ * Varia de −24 % (piores carros) até +3 % (melhores) da FIPE,
+ * com aleatoriedade proporcional à condição.
+ *
+ * A condição define uma janela deslizante de ≈ 9 % dentro do intervalo:
+ *   condition   0 → faixa [0.76, 0.85]  (−24 % a −15 % da FIPE)
+ *   condition  50 → faixa [0.85, 0.94]  (−15 % a  −6 % da FIPE)
+ *   condition 100 → faixa [0.94, 1.03]  ( −6 % a  +3 % da FIPE)
+ *
+ * Piso absoluto: MIN_SALE_PRICE_RATIO (85 % da FIPE).
  */
 export function calcMarketAskingPrice(fipePrice: number, condition: number): number {
-  const raw = Math.round(fipePrice * conditionValueFactor(condition));
-  return Math.max(raw, Math.round(fipePrice * MIN_SALE_PRICE_RATIO));
+  const low  = 0.76 + (condition / 100) * 0.18; // 0.76 → 0.94
+  const high = 0.85 + (condition / 100) * 0.18; // 0.85 → 1.03
+  const ratio = low + Math.random() * (high - low);
+  return Math.max(
+    Math.round(fipePrice * ratio),
+    Math.round(fipePrice * MIN_SALE_PRICE_RATIO),
+  );
 }
 
 /**
