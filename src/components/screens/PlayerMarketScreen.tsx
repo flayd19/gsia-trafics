@@ -271,10 +271,12 @@ export const PlayerMarketScreen = ({
   const pendingPayouts = myListings.filter(l => l.status === 'sold');
   const pendingTotal = pendingPayouts.reduce((s, l) => s + l.total_price, 0);
 
+  // Dispara fetch quando userId estiver disponível (evita skip por userId=null no mount)
   useEffect(() => {
-    fetchActiveListings();
-    fetchMyListings();
-  }, []);
+    if (!userId) return;
+    void fetchActiveListings();
+    void fetchMyListings();
+  }, [userId]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const handleRefresh = () => {
     fetchActiveListings();
@@ -567,7 +569,7 @@ export const PlayerMarketScreen = ({
             </DialogContent>
           </Dialog>
 
-          {/* Listagens */}
+          {/* Listagens do mercado */}
           {loading ? (
             <div className="text-center py-10 text-muted-foreground text-[13px]">Carregando…</div>
           ) : filtered.length === 0 ? (
@@ -588,6 +590,120 @@ export const PlayerMarketScreen = ({
                   canAfford={gameState.money >= (Number.isFinite(listing.total_price) ? listing.total_price : listing.price_per_unit * listing.quantity)}
                   hasGarageSpace={hasGarageSpace}
                   onBuy={() => handleBuy(listing)}
+                  onCancel={() => handleCancel(listing.id)}
+                />
+              ))}
+            </div>
+          )}
+        </>
+      )}
+
+      {/* ── ABA: MEUS ANÚNCIOS ─────────────────────────────────── */}
+      {activeTab === 'meus' && (
+        <>
+          {/* Botão anunciar carro — também disponível na aba meus */}
+          <Dialog open={creatingOpen} onOpenChange={setCreatingOpen}>
+            <DialogTrigger asChild>
+              <Button className="w-full gap-2" disabled={availableCars.length === 0}>
+                <PlusCircle size={15} />
+                {availableCars.length === 0 ? 'Nenhum carro disponível para anunciar' : 'Anunciar meu carro'}
+              </Button>
+            </DialogTrigger>
+            <DialogContent className="max-w-sm">
+              <DialogHeader>
+                <DialogTitle>Anunciar carro</DialogTitle>
+                <DialogDescription>
+                  Escolha um carro da garagem e defina o preço de venda.
+                </DialogDescription>
+              </DialogHeader>
+              <div className="space-y-4 py-2">
+                <div className="space-y-2">
+                  <div className="text-[12px] font-semibold text-muted-foreground uppercase tracking-wider">Carro</div>
+                  <div className="space-y-2 max-h-48 overflow-y-auto">
+                    {availableCars.map(car => (
+                      <button
+                        key={car.instanceId}
+                        onClick={() => setSelectedCarId(car.instanceId)}
+                        className={`w-full flex items-center gap-3 p-3 rounded-[12px] border text-left transition-all ${
+                          selectedCarId === car.instanceId
+                            ? 'border-primary/50 bg-primary/5'
+                            : 'border-border bg-muted/20 hover:bg-muted/40'
+                        }`}
+                      >
+                        <span className="text-xl">{car.icon}</span>
+                        <div className="flex-1 min-w-0">
+                          <div className="font-semibold text-[13px] truncate">{car.brand} {car.model} {car.trim}</div>
+                          <div className="text-[10px] text-muted-foreground">{car.year} · Condição {car.condition}%</div>
+                        </div>
+                      </button>
+                    ))}
+                  </div>
+                </div>
+                <div className="space-y-1.5">
+                  <div className="text-[12px] font-semibold text-muted-foreground uppercase tracking-wider">Preço de venda</div>
+                  <Input
+                    type="text"
+                    inputMode="numeric"
+                    pattern="[0-9]*"
+                    placeholder="R$ 0"
+                    value={askingPrice}
+                    onChange={e => setAskingPrice(e.target.value.replace(/\D/g, ''))}
+                    className="text-[15px] font-bold"
+                  />
+                  {selectedCarId && (() => {
+                    const car = availableCars.find(c => c.instanceId === selectedCarId);
+                    return car ? (
+                      <div className="text-[10px] text-muted-foreground">
+                        FIPE de referência: {fmt(car.fipePrice)} · Condição: {car.condition}%
+                      </div>
+                    ) : null;
+                  })()}
+                </div>
+                <div className="space-y-1.5">
+                  <div className="flex items-center justify-between">
+                    <div className="text-[12px] font-semibold text-muted-foreground uppercase tracking-wider">
+                      Descrição <span className="normal-case font-normal">(opcional)</span>
+                    </div>
+                    <span className={`text-[10px] tabular-nums ${description.length > MAX_DESC ? 'text-red-500' : 'text-muted-foreground'}`}>
+                      {description.length}/{MAX_DESC}
+                    </span>
+                  </div>
+                  <textarea
+                    rows={2}
+                    maxLength={MAX_DESC}
+                    placeholder="Ex: Carro bem conservado, único dono, sem batidas…"
+                    value={description}
+                    onChange={e => setDescription(e.target.value.slice(0, MAX_DESC))}
+                    className="w-full px-3 py-2 rounded-[12px] border border-border bg-background text-[13px] text-foreground placeholder:text-muted-foreground resize-none focus:outline-none focus:ring-2 focus:ring-primary/30"
+                  />
+                </div>
+              </div>
+              <DialogFooter>
+                <Button variant="outline" onClick={() => setCreatingOpen(false)}>Cancelar</Button>
+                <Button onClick={handleCreate} disabled={busy || !selectedCarId || !askingPrice}>
+                  Publicar anúncio
+                </Button>
+              </DialogFooter>
+            </DialogContent>
+          </Dialog>
+
+          {/* Lista de meus anúncios */}
+          {myListings.length === 0 ? (
+            <div className="text-center py-12 space-y-3">
+              <div className="text-5xl">📋</div>
+              <div className="text-[14px] font-semibold text-muted-foreground">Você não tem anúncios</div>
+              <div className="text-[11px] text-muted-foreground">Anuncie um carro da sua garagem acima.</div>
+            </div>
+          ) : (
+            <div className="space-y-3">
+              {myListings.map(listing => (
+                <ListingCard
+                  key={listing.id}
+                  listing={listing}
+                  isOwn={true}
+                  canAfford={false}
+                  hasGarageSpace={hasGarageSpace}
+                  onBuy={() => {}}
                   onCancel={() => handleCancel(listing.id)}
                 />
               ))}
