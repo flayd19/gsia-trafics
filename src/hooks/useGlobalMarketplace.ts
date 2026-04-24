@@ -249,7 +249,7 @@ export function useGlobalMarketplace() {
       Math.round(car.fipePrice * MIN_ASKING_PRICE_RATIO),
     );
     if (offerValue < minOffer)
-      return { success: false, message: 'Proposta muito baixa. O vendedor não aceita.' };
+      return { success: false, message: 'Vendedor recusou sua oferta.' };
 
     if (playerMoney - offerValue < overdraftLimit)
       return { success: false, message: 'Saldo insuficiente para esta oferta.' };
