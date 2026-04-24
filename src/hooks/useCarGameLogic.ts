@@ -8,18 +8,24 @@ import {
   GARAGE_SLOTS,
   buildMarketplaceInventory,
   garageSlotDailyCost,
+  CAR_MODELS,
   type MarketplaceCar,
 } from '@/data/cars';
 import { REPAIR_TYPES } from '@/data/repairTypes';
-import { spawnBuyer, evaluatePlayerOffer } from '@/data/carBuyers';
+import {
+  evaluatePlayerOffer,
+  currentCycleEpoch,
+  secondsUntilNextCycle,
+  maxBuyerSlots,
+  generateCycleBuyers,
+} from '@/data/carBuyers';
 import { ensureReputation, addXp } from '@/lib/reputation';
 import { supabase } from '@/integrations/supabase/client';
 
 // ── Config ────────────────────────────────────────────────────────
 const GAME_TICK_MS            = 1_000;
-const GAME_MINUTES_PER_TICK   = 10;
-const BUYER_SPAWN_INTERVAL_MS = 25_000;
-const MAX_BUYERS              = 4;
+// 1 dia real = 3 min reais = 180 ticks × 8 min/tick = 1440 min = 24h in-game
+const GAME_MINUTES_PER_TICK   = 8;
 const MARKETPLACE_REFRESH_MS  = 5 * 60_000;
 const INTEREST_RATE           = 0.02;
 const AUTO_SAVE_INTERVAL_MS   = 30_000;
@@ -66,12 +72,18 @@ function calcRepairCost(baseCost: number, attrCondition: number): number {
 
 // ── Estado inicial ────────────────────────────────────────────────
 function buildInitialState(): GameState {
+  const epoch      = currentCycleEpoch();
+  const level      = 1;
+  const totalSlots = maxBuyerSlots(level);
   return ensureGameState({
-    money:                50_000,
-    garage:               [{ id: 1, unlocked: true, unlockCost: 0, car: undefined }],
-    marketplaceCars:      buildMarketplaceInventory(),
+    money:                  50_000,
+    garage:                 [{ id: 1, unlocked: true, unlockCost: 0, car: undefined }],
+    marketplaceCars:        buildMarketplaceInventory(),
     marketplaceLastRefresh: Date.now(),
-    lastRentCharge:       1, // first charge fires on day 2
+    lastRentCharge:         1,
+    carBuyers:              generateCycleBuyers(level, []),
+    buyerCycleEpoch:        epoch,
+    buyerSlotLocks:         new Array(totalSlots).fill(-1),
   });
 }
 
@@ -86,13 +98,26 @@ function serializeForSave(state: GameState): object {
   };
 }
 
-// ── Aplica save carregado: regenera marketplace se vazio ───────────
+// ── Aplica save carregado: regenera marketplace + compradores se necessário ──
 function applyLoadedSave(raw: unknown): GameState {
   const saved = ensureGameState(raw as Partial<GameState>);
+
+  // Regenera marketplace se vazio
   if (!saved.marketplaceCars || saved.marketplaceCars.length === 0) {
     saved.marketplaceCars        = buildMarketplaceInventory();
     saved.marketplaceLastRefresh = Date.now();
   }
+
+  // Regenera compradores se o ciclo avançou (jogador ficou offline)
+  const epoch = currentCycleEpoch();
+  if (epoch > saved.buyerCycleEpoch) {
+    const level      = saved.reputation.level;
+    const totalSlots = maxBuyerSlots(level);
+    saved.carBuyers      = generateCycleBuyers(level, []);
+    saved.buyerCycleEpoch = epoch;
+    saved.buyerSlotLocks  = new Array(totalSlots).fill(-1);
+  }
+
   return saved;
 }
 
@@ -180,8 +205,7 @@ export function useCarGameLogic() {
     new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL', maximumFractionDigits: 0 }).format(v);
 
   const formatGameTime = useCallback(() => {
-    const { hour, minute } = stateRef.current.gameTime;
-    return `${String(hour).padStart(2, '0')}:${String(minute).padStart(2, '0')}`;
+    return `Dia ${stateRef.current.gameTime.day}`;
   }, []);
 
   // ── saveGame: local primeiro (garantido) depois cloud ─────────
@@ -329,40 +353,47 @@ export function useCarGameLogic() {
           next = { ...next, activeRepairs: pendingRepairs, garage: updatedGarage };
         }
 
-        // Expira compradores
-        const buyers = next.carBuyers
-          .map(b => {
-            if (b.state !== 'waiting' && b.state !== 'thinking') return b;
-            if ((now - b.arrivedAt) / 1000 > b.patience) return { ...b, state: 'expired' as const };
-            return b;
-          })
-          .filter(b => {
-            if (b.state === 'expired' || b.state === 'rejected')
-              return (now - b.arrivedAt) < (b.patience + 5) * 1000;
-            if (b.state === 'accepted')
-              return (now - (b.thinkingStartedAt ?? b.arrivedAt)) < 8000;
-            return true;
-          });
+        // ── Ciclo de compradores (30 min) ─────────────────────────
+        const epoch = currentCycleEpoch();
+        if (epoch > next.buyerCycleEpoch) {
+          // Novo ciclo: regenera todos os slots (nenhum bloqueado no início do ciclo)
+          const level      = next.reputation.level;
+          const totalSlots = maxBuyerSlots(level);
+          next = {
+            ...next,
+            carBuyers:       generateCycleBuyers(level, []),
+            buyerCycleEpoch: epoch,
+            buyerSlotLocks:  new Array(totalSlots).fill(-1),
+          };
+        }
 
-        // Finaliza quem estava "pensando" por mais de 10s
-        const resolvedBuyers = buyers.map(b => {
+        // Marca compradores cujo ciclo acabou como expirados (UX feedback)
+        const buyersAfterExpiry = next.carBuyers.map(b => {
+          if (b.state !== 'waiting' && b.state !== 'thinking') return b;
+          const elapsed = (now - b.arrivedAt) / 1_000;
+          if (elapsed > b.patience) return { ...b, state: 'expired' as const };
+          return b;
+        });
+
+        // Finaliza compradores "pensando" há mais de 10 s (auto-resolve)
+        const buyersResolved = buyersAfterExpiry.map(b => {
           if (b.state !== 'thinking') return b;
-          if ((now - (b.thinkingStartedAt ?? now)) / 1000 < 10) return b;
+          if ((now - (b.thinkingStartedAt ?? now)) / 1_000 < 10) return b;
           if (!b.targetCarInstanceId || b.playerOffer === undefined)
             return { ...b, state: 'rejected' as const };
           return b;
         });
-        next = { ...next, carBuyers: resolvedBuyers };
 
-        // Spawn de novos compradores
-        const realBuyers = next.carBuyers.filter(b => b.state === 'waiting' || b.state === 'thinking');
-        if (realBuyers.length < MAX_BUYERS && now - next.lastBuyerGeneration > BUYER_SPAWN_INTERVAL_MS) {
-          next = {
-            ...next,
-            carBuyers: [...next.carBuyers, spawnBuyer(generateId())],
-            lastBuyerGeneration: now,
-          };
-        }
+        // Remove compradores expirados/rejeitados após breve grace period (UX)
+        const buyersFinal = buyersResolved.filter(b => {
+          if (b.state === 'expired' || b.state === 'rejected')
+            return (now - b.arrivedAt) < (b.patience + 5) * 1_000;
+          if (b.state === 'accepted')
+            return (now - (b.thinkingStartedAt ?? b.arrivedAt)) < 8_000;
+          return true;
+        });
+
+        next = { ...next, carBuyers: buyersFinal };
 
         // Atualiza marketplace a cada 5 min
         if (now - next.marketplaceLastRefresh > MARKETPLACE_REFRESH_MS) {
@@ -613,14 +644,42 @@ export function useCarGameLogic() {
     const buyer = state.carBuyers.find(b => b.id === buyerId);
     if (!buyer || buyer.state !== 'waiting')
       return { success: false, message: 'Comprador não disponível.' };
-    if (!state.garage.find(s => s.car?.instanceId === carInstanceId)?.car)
-      return { success: false, message: 'Carro não encontrado.' };
+
+    const slot = state.garage.find(s => s.car?.instanceId === carInstanceId);
+    if (!slot?.car) return { success: false, message: 'Carro não encontrado.' };
+
+    const car = slot.car;
+
+    // Valida compatibilidade do carro com o requisito do comprador
+    if (buyer.requirementType === 'model' && buyer.targetModelId) {
+      if (car.modelId !== buyer.targetModelId) {
+        return {
+          success: false,
+          message: `Este comprador só aceita: ${buyer.targetModelName ?? 'modelo específico'}.`,
+        };
+      }
+    } else if (buyer.requirementType === 'category' && buyer.targetCategories.length > 0) {
+      const carModel = CAR_MODELS.find(m => m.id === car.modelId);
+      if (!carModel || !buyer.targetCategories.includes(carModel.category)) {
+        return {
+          success: false,
+          message: `Este comprador só aceita carros da categoria: ${buyer.targetCategories.join(', ')}.`,
+        };
+      }
+    }
 
     setGameState(prev => ({
       ...prev,
       carBuyers: prev.carBuyers.map(b =>
         b.id === buyerId
-          ? { ...b, state: 'thinking' as const, thinkingStartedAt: Date.now(), playerOffer: askingPrice, playerIncludedTradeIn: includeTradeIn && !!b.tradeInCar, targetCarInstanceId: carInstanceId }
+          ? {
+              ...b,
+              state: 'thinking' as const,
+              thinkingStartedAt: Date.now(),
+              playerOffer: askingPrice,
+              playerIncludedTradeIn: includeTradeIn && !!b.tradeInCar,
+              targetCarInstanceId: carInstanceId,
+            }
           : b
       ),
     }));
@@ -645,7 +704,17 @@ export function useCarGameLogic() {
     const accepted = evaluatePlayerOffer(buyer, buyer.playerOffer, car.fipePrice, car.condition);
 
     if (!accepted) {
-      setGameState(prev => ({ ...prev, carBuyers: prev.carBuyers.map(b => b.id === buyerId ? { ...b, state: 'rejected' as const } : b) }));
+      const slotIdx      = buyer.slotIndex ?? -1;
+      const lockEpoch    = currentCycleEpoch();
+      setGameState(prev => {
+        const locks = [...(prev.buyerSlotLocks ?? [])];
+        if (slotIdx >= 0) locks[slotIdx] = lockEpoch;
+        return {
+          ...prev,
+          carBuyers:      prev.carBuyers.map(b => b.id === buyerId ? { ...b, state: 'rejected' as const } : b),
+          buyerSlotLocks: locks,
+        };
+      });
       return { success: true, accepted: false, message: `${buyer.name} recusou a oferta. Preço muito alto!` };
     }
 
@@ -664,6 +733,9 @@ export function useCarGameLogic() {
       profit, soldAt: Date.now(), gameDay: state.gameTime.day,
     };
 
+    const slotIdx   = buyer.slotIndex ?? -1;
+    const lockEpoch = currentCycleEpoch();
+
     setGameState(prev => {
       let garage = prev.garage.map(s =>
         s.car?.instanceId === car.instanceId ? { ...s, car: undefined } : s
@@ -672,6 +744,8 @@ export function useCarGameLogic() {
         const emptySlot = garage.find(s => s.unlocked && !s.car);
         if (emptySlot) garage = garage.map(s => s.id === emptySlot.id ? { ...s, car: tradeInCar } : s);
       }
+      const locks = [...(prev.buyerSlotLocks ?? [])];
+      if (slotIdx >= 0) locks[slotIdx] = lockEpoch;
       return {
         ...prev,
         money:           prev.money + finalPrice,
@@ -682,6 +756,7 @@ export function useCarGameLogic() {
         salesHistory:    [...(prev.salesHistory ?? []), saleRecord],
         totalProfit:     (prev.totalProfit ?? 0) + profit,
         reputation:      addXp(prev.reputation, 3).reputation,
+        buyerSlotLocks:  locks,
       };
     });
 

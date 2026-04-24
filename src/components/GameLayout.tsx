@@ -137,10 +137,14 @@ export const GameLayout = ({
               <span className="font-game-title text-[15px] font-bold text-foreground tracking-tight truncate">
                 GSIA Carros
               </span>
-              <span className="text-[10px] text-muted-foreground font-medium">
-                {gameTime.time}
-                {isSyncing && <span className="ml-1 opacity-70">· sync…</span>}
-              </span>
+              <div className="flex items-center gap-1 mt-0.5">
+                <span className="text-[11px] font-bold text-primary tabular-nums">
+                  📅 {gameTime.time}
+                </span>
+                {isSyncing && (
+                  <span className="text-[10px] text-muted-foreground opacity-70">· sync…</span>
+                )}
+              </div>
             </div>
           </div>
 

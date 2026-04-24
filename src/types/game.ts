@@ -123,6 +123,19 @@ export interface CarBuyerNPC {
   /** Resultado final */
   finalPrice?: number;
   targetCarInstanceId?: string; // qual carro da garagem quer comprar
+
+  // ── Sistema de ciclos (30 min) ──────────────────────────────────
+  /** Índice do slot que este comprador ocupa (0-based) */
+  slotIndex?: number;
+  /**
+   * Tipo de requisito: 'category' (aceita toda uma categoria) ou
+   * 'model' (quer um modelo específico)
+   */
+  requirementType?: 'category' | 'model';
+  /** ID do modelo específico (quando requirementType === 'model') */
+  targetModelId?: string;
+  /** Nome legível do modelo alvo (ex: "Volkswagen Gol") */
+  targetModelName?: string;
 }
 
 // ── Reputação ────────────────────────────────────────────────────
@@ -227,6 +240,20 @@ export interface GameState {
   newBuyersTimerStart: number;
   newBuyersTimerDuration: number;
 
+  // ── Sistema de ciclos de compradores (30 min) ────────────────────
+  /**
+   * Índice do ciclo atual de compradores.
+   * Calculado como Math.floor(Date.now() / 1_800_000).
+   * Quando este valor muda, todos os slots são renovados.
+   */
+  buyerCycleEpoch: number;
+  /**
+   * Por slot (índice 0-based): o epoch em que o slot foi bloqueado
+   * neste ciclo (-1 = desbloqueado / disponível).
+   * Um slot é bloqueado após o jogador vender ou ter sua oferta recusada.
+   */
+  buyerSlotLocks: number[];
+
   /** Histórico de vendas */
   carSales: CarSaleRecord[];
 
@@ -279,6 +306,8 @@ export function ensureGameState(raw: Partial<GameState>): GameState {
     isWaitingForNewBuyers: raw.isWaitingForNewBuyers ?? false,
     newBuyersTimerStart: raw.newBuyersTimerStart ?? 0,
     newBuyersTimerDuration: raw.newBuyersTimerDuration ?? 30,
+    buyerCycleEpoch: raw.buyerCycleEpoch ?? -1,
+    buyerSlotLocks: raw.buyerSlotLocks ?? [],
     carSales: raw.carSales ?? [],
     totalRevenue: raw.totalRevenue ?? 0,
     totalSpent: raw.totalSpent ?? 0,

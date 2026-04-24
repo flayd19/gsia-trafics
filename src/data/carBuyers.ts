@@ -2,7 +2,7 @@
 // COMPRADORES DE CARROS (NPCs) — Aba Vendas
 // =====================================================================
 import type { CarBuyerNPC, BuyerPersonality, OwnedCar } from '@/types/game';
-import { CAR_MODELS, conditionValueFactor, carFullName } from '@/data/cars';
+import { CAR_MODELS, conditionValueFactor } from '@/data/cars';
 
 // Templates de compradores (são instanciados dinamicamente)
 interface BuyerTemplate {
@@ -209,7 +209,146 @@ export const BUYER_TEMPLATES: BuyerTemplate[] = [
 ];
 
 // ─────────────────────────────────────────────────────────────────
-// Gerador de instância de comprador
+// Sistema de ciclos (30 min)
+// ─────────────────────────────────────────────────────────────────
+
+/** Duração de um ciclo de compradores em milissegundos (30 min) */
+export const BUYER_CYCLE_MS = 30 * 60 * 1_000;
+
+/** Índice do ciclo atual; incrementa a cada 30 minutos de tempo real */
+export function currentCycleEpoch(): number {
+  return Math.floor(Date.now() / BUYER_CYCLE_MS);
+}
+
+/** Segundos restantes até o início do próximo ciclo */
+export function secondsUntilNextCycle(): number {
+  const elapsed = Date.now() % BUYER_CYCLE_MS;
+  return Math.ceil((BUYER_CYCLE_MS - elapsed) / 1_000);
+}
+
+/**
+ * Número máximo de slots de comprador disponíveis para o nível do jogador.
+ *   Nível 1  → 2 slots
+ *   Nível 30 → 3 slots
+ *   Nível 50 → 4 slots
+ *   Nível 100 → 5 slots
+ */
+export function maxBuyerSlots(level: number): number {
+  if (level >= 100) return 5;
+  if (level >= 50)  return 4;
+  if (level >= 30)  return 3;
+  return 2;
+}
+
+// Labels legíveis para categorias
+export const CATEGORY_LABELS: Record<string, string> = {
+  popular:   'Popular',
+  medio:     'Médio',
+  suv:       'SUV',
+  pickup:    'Pickup',
+  esportivo: 'Esportivo',
+  eletrico:  'Elétrico',
+};
+
+function genCycleId(): string {
+  return `${Date.now()}_${Math.random().toString(36).slice(2, 8)}`;
+}
+
+/**
+ * Instancia um comprador para um slot de ciclo específico.
+ * requirementType determina se busca categoria inteira ou modelo exato.
+ */
+export function spawnCycleBuyer(
+  slotIndex: number,
+  requirementType: 'category' | 'model',
+): CarBuyerNPC {
+  const template = BUYER_TEMPLATES[Math.floor(Math.random() * BUYER_TEMPLATES.length)];
+  const tradeInCar = template.hasTradeIn && Math.random() > 0.4
+    ? generateTradeInCar()
+    : undefined;
+  const tradeInValue = tradeInCar
+    ? Math.round(
+        tradeInCar.fipePrice *
+        conditionValueFactor(tradeInCar.condition) *
+        (0.85 + Math.random() * 0.15)
+      )
+    : undefined;
+
+  let targetModelIds:   string[] = [];
+  let targetCategories: string[] = [];
+  let targetModelId:    string | undefined;
+  let targetModelName:  string | undefined;
+
+  if (requirementType === 'model') {
+    const model = CAR_MODELS[Math.floor(Math.random() * CAR_MODELS.length)];
+    targetModelIds  = [model.id];
+    targetModelId   = model.id;
+    targetModelName = `${model.brand} ${model.model}`;
+  } else {
+    // Usa uma única categoria (a primeira do template, ou 'popular' como fallback)
+    const cats = template.targetCategories;
+    const cat  = cats.length > 0
+      ? cats[Math.floor(Math.random() * cats.length)]
+      : 'popular';
+    targetCategories = [cat];
+  }
+
+  return {
+    id:              genCycleId(),
+    name:            template.name,
+    avatar:          template.avatar,
+    personality:     template.personality,
+    targetModelIds,
+    targetCategories,
+    targetModelId,
+    targetModelName,
+    requirementType,
+    slotIndex,
+    payRange:        template.payRange,
+    hasTradeIn:      !!tradeInCar,
+    tradeInCar,
+    tradeInValue,
+    // patience = segundos restantes no ciclo atual no momento do spawn
+    patience:  secondsUntilNextCycle(),
+    arrivedAt: Date.now(),
+    state:     'waiting',
+  };
+}
+
+/**
+ * Gera todos os compradores para um novo ciclo.
+ * lockedSlotIndices: slots que permanecem bloqueados (não recebem comprador novo).
+ * Distribui 50% categoria / 50% modelo específico, com pequeno embaralhamento.
+ */
+export function generateCycleBuyers(
+  playerLevel: number,
+  lockedSlotIndices: number[],
+): CarBuyerNPC[] {
+  const totalSlots = maxBuyerSlots(playerLevel);
+
+  // Distribui tipos: alternando categoria/modelo → 50/50 para slots pares
+  const reqTypes: Array<'category' | 'model'> = Array.from(
+    { length: totalSlots },
+    (_, i): 'category' | 'model' => (i % 2 === 0 ? 'category' : 'model'),
+  );
+  // Fisher-Yates shuffle para não ser sempre previsível
+  for (let i = reqTypes.length - 1; i > 0; i--) {
+    const j = Math.floor(Math.random() * (i + 1));
+    const tmp = reqTypes[i];
+    reqTypes[i] = reqTypes[j];
+    reqTypes[j] = tmp;
+  }
+
+  const buyers: CarBuyerNPC[] = [];
+  for (let i = 0; i < totalSlots; i++) {
+    if (lockedSlotIndices.includes(i)) continue;
+    buyers.push(spawnCycleBuyer(i, reqTypes[i]));
+  }
+  return buyers;
+}
+
+// ─────────────────────────────────────────────────────────────────
+// Gerador de instância de comprador (legado — mantido para compat)
 // ─────────────────────────────────────────────────────────────────
 
 /** Gera um OwnedCar simples para ser usado como trade-in de um NPC */

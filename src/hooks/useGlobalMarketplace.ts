@@ -42,7 +42,7 @@ interface MarketplaceRow {
 }
 
 const REFRESH_MS = 30 * 60 * 1000; // 30 min
-const POLL_MS    = 60 * 1_000;      // poll a cada 60s
+const POLL_MS    =  15 * 1_000;     // fallback poll a cada 15s
 const db = () => supabase as any;
 
 function rowToGlobalCar(row: MarketplaceRow): GlobalCar {
@@ -277,18 +277,46 @@ export function useGlobalMarketplace() {
     return () => clearInterval(t);
   }, []);
 
-  // ── Mount: carga inicial + poll ──────────────────────────────
+  // ── Mount: carga inicial + Realtime + poll de fallback ───────────
   useEffect(() => {
     mountedRef.current = true;
     void loadMarketplace();
 
+    // Supabase Realtime — propaga compras de outros jogadores instantaneamente.
+    // Funciona quando o projeto tem Realtime habilitado na tabela marketplace_global.
+    const realtimeChannel = db()
+      .channel('marketplace-global-sold')
+      .on(
+        'postgres_changes',
+        { event: 'UPDATE', schema: 'public', table: 'marketplace_global' },
+        (payload: { new: MarketplaceRow }) => {
+          if (!mountedRef.current) return;
+          const row = payload.new;
+          if (row.status === 'sold') {
+            setListings(prev =>
+              prev.map(l =>
+                l.id === row.id
+                  ? {
+                      ...l,
+                      status:    'sold' as const,
+                      buyerName: row.buyer_name ?? undefined,
+                      soldAt:    row.sold_at    ?? undefined,
+                    }
+                  : l
+              )
+            );
+          }
+        }
+      )
+      .subscribe();
+
+    // Poll de fallback (15 s) — cobre ambientes sem Realtime habilitado
     const poll = setInterval(async () => {
       if (!mountedRef.current) return;
       if (nextRefreshRef.current && Date.now() > nextRefreshRef.current.getTime()) {
         void loadMarketplace();
         return;
       }
-      // Só atualiza status (quem comprou) se estiver online
       if (!isOnline) return;
       const cars = await fetchListings();
       if (cars && mountedRef.current) setListings(cars);
@@ -297,6 +325,7 @@ export function useGlobalMarketplace() {
     return () => {
       mountedRef.current = false;
       clearInterval(poll);
+      void db().removeChannel(realtimeChannel);
     };
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);

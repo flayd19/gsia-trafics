@@ -247,7 +247,20 @@ export const usePlayerMarket = () => {
 
       const result = (res.data as unknown) as PurchaseResult;
       if (result?.success) {
-        setActiveListings((prev) => prev.filter((l) => l.id !== listingId));
+        // Marca como vendido (com nome do comprador) em vez de remover —
+        // outros usuários vendo a listagem verão "Vendido para [nome]" imediatamente.
+        setActiveListings((prev) =>
+          prev.map((l) =>
+            l.id === listingId
+              ? {
+                  ...l,
+                  status:     'sold'             as const,
+                  buyer_name: userName,
+                  sold_at:    new Date().toISOString(),
+                }
+              : l
+          )
+        );
       }
       return result ?? { success: false, message: 'Resposta vazia do servidor' };
     },
@@ -336,17 +349,56 @@ export const usePlayerMarket = () => {
   }, [userId, fetchMyListings]);
 
   // -------------------------------------------------------
-  // Auto-refresh (desabilitado em modo local)
+  // Auto-refresh + Realtime (desabilitados em modo local)
   // -------------------------------------------------------
   useEffect(() => {
     if (isLocalSession() || !userId) return;
     void fetchActiveListings();
     void fetchMyListings();
+
+    // Supabase Realtime — propaga vendas de outros jogadores instantaneamente.
+    // Quando uma listagem é marcada como 'sold' no banco, atualiza o card em tempo real.
+    const channel = (supabase as any)
+      .channel('p2p-market-sold')
+      .on(
+        'postgres_changes',
+        { event: 'UPDATE', schema: 'public', table: 'player_market_listings' },
+        (payload: { new: Record<string, unknown> }) => {
+          const row = payload.new;
+          if (row['status'] === 'sold') {
+            const soldAt    = String(row['sold_at'] ?? new Date().toISOString());
+            const buyerName = String(row['buyer_name'] ?? '');
+            // Atualiza na lista de disponíveis (comprado por outro jogador)
+            setActiveListings(prev =>
+              prev.map(l =>
+                l.id === row['id']
+                  ? { ...l, status: 'sold' as const, buyer_name: buyerName, sold_at: soldAt }
+                  : l
+              )
+            );
+            // Atualiza na lista do vendedor (minha venda foi concluída)
+            setMyListings(prev =>
+              prev.map(l =>
+                l.id === row['id']
+                  ? { ...l, status: 'sold' as const, buyer_name: buyerName, sold_at: soldAt }
+                  : l
+              )
+            );
+          }
+        }
+      )
+      .subscribe();
+
+    // Poll de fallback a cada 15 s — cobre ambientes sem Realtime habilitado
     const id = setInterval(() => {
       void fetchActiveListings();
       void fetchMyListings();
-    }, 30_000);
-    return () => clearInterval(id);
+    }, 15_000);
+
+    return () => {
+      clearInterval(id);
+      void (supabase as any).removeChannel(channel);
+    };
   }, [userId, fetchActiveListings, fetchMyListings]);
 
   return {

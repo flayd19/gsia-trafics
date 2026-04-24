@@ -1,14 +1,20 @@
 // =====================================================================
-// CarSalesScreen — Venda de carros para NPCs
+// CarSalesScreen — Venda de carros para NPCs (ciclos de 30 min)
 // =====================================================================
 import { useState, useEffect } from 'react';
-import { Clock, Car, DollarSign, ArrowRight, CheckCircle, XCircle, RefreshCw, User } from 'lucide-react';
+import { Car, ArrowRight, CheckCircle, XCircle, User, Lock, Tag, Layers } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { Switch } from '@/components/ui/switch';
 import { Label } from '@/components/ui/label';
 import type { GameState, CarBuyerNPC, OwnedCar } from '@/types/game';
-import { conditionLabel, conditionColor, conditionValueFactor } from '@/data/cars';
+import { conditionLabel, conditionColor, conditionValueFactor, CAR_MODELS } from '@/data/cars';
+import {
+  maxBuyerSlots,
+  currentCycleEpoch,
+  secondsUntilNextCycle,
+  CATEGORY_LABELS,
+} from '@/data/carBuyers';
 
 interface CarSalesScreenProps {
   gameState: GameState;
@@ -20,43 +26,86 @@ interface CarSalesScreenProps {
 const fmt = (v: number) =>
   new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL', maximumFractionDigits: 0 }).format(v);
 
+function fmtCountdown(totalSec: number): string {
+  const sec  = Math.max(0, Math.ceil(totalSec));
+  const mins = Math.floor(sec / 60);
+  const secs = sec % 60;
+  return `${mins}m ${String(secs).padStart(2, '0')}s`;
+}
+
 const PERSONALITY_LABELS: Record<string, string> = {
-  racional: '🧠 Racional',
+  racional:  '🧠 Racional',
   emocional: '💛 Emocional',
   pechincha: '🤑 Pechincheiro',
   apressado: '⚡ Apressado',
-  curioso: '🤔 Curioso',
+  curioso:   '🤔 Curioso',
 };
 
 const PERSONALITY_TIPS: Record<string, string> = {
-  racional: 'Conhece os preços. Pague próximo da FIPE.',
+  racional:  'Conhece os preços. Pague próximo da FIPE.',
   emocional: 'Pode pagar acima da tabela se gostar do carro.',
   pechincha: 'Sempre vai tentar baixar. Cuidado com preço alto.',
   apressado: 'Quer fechar logo. Aceita rápido, mas tem pressa.',
-  curioso: 'Indeciso. Pode aceitar se o preço for bom.',
+  curioso:   'Indeciso. Pode aceitar se o preço for bom.',
 };
 
-// Barra de tempo do comprador
-function PatienceBar({ buyer }: { buyer: CarBuyerNPC }) {
-  const [remaining, setRemaining] = useState(buyer.patience);
+// ── Timer global do ciclo ─────────────────────────────────────────
+
+function CycleHeader({ epochLocks }: { epochLocks: number[] }) {
+  const [secsLeft, setSecsLeft] = useState(secondsUntilNextCycle());
 
   useEffect(() => {
-    const interval = setInterval(() => {
-      const elapsed = (Date.now() - buyer.arrivedAt) / 1000;
+    const id = setInterval(() => setSecsLeft(secondsUntilNextCycle()), 1_000);
+    return () => clearInterval(id);
+  }, []);
+
+  const totalSlots = epochLocks.length;
+  const lockedCount = epochLocks.filter(l => l === currentCycleEpoch()).length;
+
+  return (
+    <div className="ios-surface rounded-[14px] px-4 py-3 flex items-center gap-3">
+      <div className="flex-1 min-w-0">
+        <div className="text-[11px] uppercase tracking-wider text-muted-foreground font-semibold">
+          Próximo ciclo de compradores
+        </div>
+        <div className="text-[18px] font-bold tabular-nums text-primary leading-tight mt-0.5">
+          {fmtCountdown(secsLeft)}
+        </div>
+      </div>
+      {lockedCount > 0 && (
+        <Badge variant="outline" className="text-[11px] border-amber-500/40 text-amber-600">
+          <Lock size={10} className="mr-1" />
+          {lockedCount}/{totalSlots} slots bloqueados
+        </Badge>
+      )}
+    </div>
+  );
+}
+
+// ── Barra de tempo do comprador (mostra tempo restante no ciclo) ───
+
+function CycleRemainingBar({ buyer }: { buyer: CarBuyerNPC }) {
+  const [remaining, setRemaining] = useState(
+    Math.max(0, buyer.patience - (Date.now() - buyer.arrivedAt) / 1_000),
+  );
+
+  useEffect(() => {
+    const id = setInterval(() => {
+      const elapsed = (Date.now() - buyer.arrivedAt) / 1_000;
       setRemaining(Math.max(0, buyer.patience - elapsed));
     }, 500);
-    return () => clearInterval(interval);
+    return () => clearInterval(id);
   }, [buyer.arrivedAt, buyer.patience]);
 
-  const pct = (remaining / buyer.patience) * 100;
-  const urgency = pct < 25 ? 'text-red-500' : pct < 50 ? 'text-orange-500' : 'text-green-500';
+  const pct     = (remaining / buyer.patience) * 100;
+  const urgency = pct < 25 ? 'text-red-500' : pct < 50 ? 'text-orange-500' : 'text-emerald-500';
 
   return (
     <div>
       <div className="flex justify-between items-center mb-1">
         <span className="text-[10px] text-muted-foreground">Disponível por</span>
         <span className={`text-[11px] font-bold tabular-nums ${urgency}`}>
-          {Math.ceil(remaining)}s
+          {fmtCountdown(remaining)}
         </span>
       </div>
       <div className="w-full h-1.5 bg-muted rounded-full overflow-hidden">
@@ -72,24 +121,22 @@ function PatienceBar({ buyer }: { buyer: CarBuyerNPC }) {
   );
 }
 
-// Timer de pensamento (10s)
+// ── Timer de pensamento (10 s) ─────────────────────────────────────
+
 function ThinkingTimer({ thinkingStartedAt, onTimeUp }: { thinkingStartedAt: number; onTimeUp: () => void }) {
   const [elapsed, setElapsed] = useState(0);
   const THINK_TIME = 10;
 
   useEffect(() => {
-    const interval = setInterval(() => {
-      const e = (Date.now() - thinkingStartedAt) / 1000;
+    const id = setInterval(() => {
+      const e = (Date.now() - thinkingStartedAt) / 1_000;
       setElapsed(e);
-      if (e >= THINK_TIME) {
-        onTimeUp();
-        clearInterval(interval);
-      }
+      if (e >= THINK_TIME) { onTimeUp(); clearInterval(id); }
     }, 200);
-    return () => clearInterval(interval);
+    return () => clearInterval(id);
   }, [thinkingStartedAt, onTimeUp]);
 
-  const pct = Math.min(100, (elapsed / THINK_TIME) * 100);
+  const pct       = Math.min(100, (elapsed / THINK_TIME) * 100);
   const remaining = Math.max(0, THINK_TIME - elapsed);
 
   return (
@@ -108,7 +155,59 @@ function ThinkingTimer({ thinkingStartedAt, onTimeUp }: { thinkingStartedAt: num
   );
 }
 
-// Card do comprador
+// ── Badge de requisito do comprador ──────────────────────────────
+
+function RequirementBadge({ buyer }: { buyer: CarBuyerNPC }) {
+  if (buyer.requirementType === 'model' && buyer.targetModelName) {
+    return (
+      <div className="flex items-center gap-1.5 bg-violet-500/10 border border-violet-500/20 rounded-[10px] px-3 py-2">
+        <Tag size={12} className="text-violet-500 shrink-0" />
+        <div>
+          <span className="text-[10px] text-violet-500 font-semibold uppercase tracking-wide">Modelo específico</span>
+          <div className="text-[13px] font-bold text-foreground">{buyer.targetModelName}</div>
+        </div>
+      </div>
+    );
+  }
+
+  if (buyer.targetCategories.length > 0) {
+    const cat = buyer.targetCategories[0];
+    return (
+      <div className="flex items-center gap-1.5 bg-blue-500/10 border border-blue-500/20 rounded-[10px] px-3 py-2">
+        <Layers size={12} className="text-blue-500 shrink-0" />
+        <div>
+          <span className="text-[10px] text-blue-500 font-semibold uppercase tracking-wide">Categoria</span>
+          <div className="text-[13px] font-bold text-foreground">{CATEGORY_LABELS[cat] ?? cat}</div>
+        </div>
+      </div>
+    );
+  }
+
+  return (
+    <div className="bg-muted/40 rounded-[10px] px-3 py-2">
+      <span className="text-[12px] text-muted-foreground">Aceita qualquer carro</span>
+    </div>
+  );
+}
+
+// ── Filtra carros da garagem compatíveis com o comprador ──────────
+
+function filterCompatibleCars(cars: OwnedCar[], buyer: CarBuyerNPC): OwnedCar[] {
+  if (!buyer.requirementType) return cars; // legado
+  if (buyer.requirementType === 'model' && buyer.targetModelId) {
+    return cars.filter(c => c.modelId === buyer.targetModelId);
+  }
+  if (buyer.requirementType === 'category' && buyer.targetCategories.length > 0) {
+    return cars.filter(c => {
+      const model = CAR_MODELS.find(m => m.id === c.modelId);
+      return model && buyer.targetCategories.includes(model.category);
+    });
+  }
+  return cars;
+}
+
+// ── Card do comprador ─────────────────────────────────────────────
+
 function BuyerCard({
   buyer,
   carsInGarage,
@@ -118,25 +217,21 @@ function BuyerCard({
 }: {
   buyer: CarBuyerNPC;
   carsInGarage: OwnedCar[];
-  onSendOffer: (carId: string, price: number, includeTradeIn: boolean) => void;
+  onSendOffer:       (carId: string, price: number, includeTradeIn: boolean) => void;
   onResolveDecision: () => { accepted: boolean; message: string; finalPrice?: number } | void;
-  onDismiss: () => void;
+  onDismiss:         () => void;
 }) {
-  const [selectedCarId, setSelectedCarId] = useState<string>(carsInGarage[0]?.instanceId ?? '');
-  const [askingPrice, setAskingPrice] = useState<string>('');
+  const compatibleCars = filterCompatibleCars(carsInGarage, buyer);
+  const [selectedCarId, setSelectedCarId] = useState<string>(compatibleCars[0]?.instanceId ?? '');
+  const [askingPrice, setAskingPrice]     = useState<string>('');
   const [includeTradeIn, setIncludeTradeIn] = useState(false);
-  const [decided, setDecided] = useState<{ accepted: boolean; message: string; finalPrice?: number } | null>(null);
+  const [decided, setDecided]             = useState<{ accepted: boolean; message: string; finalPrice?: number } | null>(null);
 
-  const selectedCar = carsInGarage.find(c => c.instanceId === selectedCarId);
-
-  // Sugestão de preço baseada na FIPE
+  const selectedCar   = compatibleCars.find(c => c.instanceId === selectedCarId)
+                     ?? carsInGarage.find(c => c.instanceId === selectedCarId);
   const suggestedPrice = selectedCar
     ? Math.round(selectedCar.fipePrice * conditionValueFactor(selectedCar.condition) * 1.05)
     : 0;
-
-  const handleSuggest = () => {
-    if (suggestedPrice > 0) setAskingPrice(String(suggestedPrice));
-  };
 
   const handleSendOffer = () => {
     const price = parseInt(askingPrice.replace(/\D/g, ''));
@@ -149,10 +244,10 @@ function BuyerCard({
     if (result) setDecided(result);
   };
 
-  const tradeInValue = buyer.tradeInCar && includeTradeIn ? (buyer.tradeInValue ?? 0) : 0;
+  const tradeInValue       = buyer.tradeInCar && includeTradeIn ? (buyer.tradeInValue ?? 0) : 0;
   const effectiveReceiving = Math.max(0, parseInt(askingPrice.replace(/\D/g, '') || '0') - tradeInValue);
 
-  // Se aceito/rejeitado/expirado — mostrar resultado
+  // ── estados terminais ───────────────────────────────────────────
   if (buyer.state === 'accepted' && !decided) {
     return (
       <div className="ios-surface rounded-[16px] p-4 space-y-3">
@@ -161,9 +256,7 @@ function BuyerCard({
           <span className="font-bold">Venda realizada!</span>
         </div>
         <p className="text-[13px] text-muted-foreground">{buyer.name} comprou o carro.</p>
-        <Button variant="outline" size="sm" className="w-full" onClick={onDismiss}>
-          Dispensar
-        </Button>
+        <Button variant="outline" size="sm" className="w-full" onClick={onDismiss}>Dispensar</Button>
       </div>
     );
   }
@@ -178,14 +271,11 @@ function BuyerCard({
           </span>
         </div>
         <p className="text-[12px] text-muted-foreground">{buyer.name} foi embora.</p>
-        <Button variant="ghost" size="sm" className="w-full" onClick={onDismiss}>
-          Remover
-        </Button>
+        <Button variant="ghost" size="sm" className="w-full" onClick={onDismiss}>Remover</Button>
       </div>
     );
   }
 
-  // Resultado local pós-decisão
   if (decided) {
     return (
       <div className={`ios-surface rounded-[16px] p-4 space-y-3 ${decided.accepted ? 'border border-emerald-500/30' : 'border border-red-500/30'}`}>
@@ -200,13 +290,12 @@ function BuyerCard({
             <span className="text-[11px] text-muted-foreground ml-2">recebido</span>
           </div>
         )}
-        <Button variant="outline" size="sm" className="w-full" onClick={onDismiss}>
-          Próximo
-        </Button>
+        <Button variant="outline" size="sm" className="w-full" onClick={onDismiss}>Próximo</Button>
       </div>
     );
   }
 
+  // ── estado normal (waiting / thinking) ──────────────────────────
   return (
     <div className="ios-surface rounded-[16px] p-4 space-y-4">
       {/* Comprador info */}
@@ -221,18 +310,11 @@ function BuyerCard({
         </div>
       </div>
 
-      {/* Barra de paciência */}
-      {buyer.state === 'waiting' && <PatienceBar buyer={buyer} />}
+      {/* Requisito do comprador */}
+      <RequirementBadge buyer={buyer} />
 
-      {/* Procura */}
-      <div className="bg-muted/40 rounded-[10px] px-3 py-2">
-        <span className="text-[11px] text-muted-foreground">Procura: </span>
-        <span className="text-[12px] font-semibold text-foreground">
-          {buyer.targetCategories.length
-            ? buyer.targetCategories.join(', ')
-            : 'Qualquer carro'}
-        </span>
-      </div>
+      {/* Barra de tempo do ciclo */}
+      {buyer.state === 'waiting' && <CycleRemainingBar buyer={buyer} />}
 
       {/* Trade-in */}
       {buyer.tradeInCar && (
@@ -253,11 +335,7 @@ function BuyerCard({
             </div>
           </div>
           <div className="flex items-center gap-2">
-            <Switch
-              id={`tradein-${buyer.id}`}
-              checked={includeTradeIn}
-              onCheckedChange={setIncludeTradeIn}
-            />
+            <Switch id={`tradein-${buyer.id}`} checked={includeTradeIn} onCheckedChange={setIncludeTradeIn} />
             <Label htmlFor={`tradein-${buyer.id}`} className="text-[12px]">
               Aceitar troca como parte do pagamento
             </Label>
@@ -265,57 +343,67 @@ function BuyerCard({
         </div>
       )}
 
-      {/* Formulário de oferta (estado: waiting) */}
+      {/* Formulário de oferta */}
       {buyer.state === 'waiting' && (
         <div className="space-y-3">
           <div className="text-[11px] uppercase tracking-wider text-muted-foreground font-semibold">
             Selecionar Carro
           </div>
-          <div className="space-y-2">
-            {carsInGarage.length === 0 ? (
-              <div className="text-center py-4 text-[13px] text-muted-foreground">
-                Garagem vazia — compre um carro primeiro
-              </div>
-            ) : (
-              carsInGarage.map(car => {
-                const isSelected = car.instanceId === selectedCarId;
-                const mv = Math.round(car.fipePrice * conditionValueFactor(car.condition));
-                return (
-                  <button
-                    key={car.instanceId}
-                    onClick={() => { setSelectedCarId(car.instanceId); setAskingPrice(''); }}
-                    className={`w-full flex items-center gap-3 p-3 rounded-[12px] border transition-all text-left ${
-                      isSelected ? 'border-primary/40 bg-primary/5' : 'border-border bg-muted/20'
-                    }`}
-                  >
-                    <span className="text-2xl">{car.icon}</span>
-                    <div className="flex-1 min-w-0">
-                      <div className="font-semibold text-[13px] truncate">{car.brand} {car.model}</div>
-                      <div className="text-[10px] text-muted-foreground">{car.trim}</div>
-                    </div>
-                    <div className="text-right">
-                      <div className="text-[12px] font-bold">{fmt(mv)}</div>
-                      <div className={`text-[10px] font-medium ${conditionColor(car.condition)}`}>
-                        {conditionLabel(car.condition)}
-                      </div>
-                    </div>
-                  </button>
-                );
-              })
-            )}
-          </div>
 
-          {selectedCar && (
+          {compatibleCars.length === 0 ? (
+            <div className="text-center py-4 rounded-[12px] bg-amber-500/10 border border-amber-500/20">
+              <div className="text-[13px] font-semibold text-amber-600">Nenhum carro compatível</div>
+              <div className="text-[11px] text-muted-foreground mt-1">
+                Este comprador precisa de:{' '}
+                {buyer.requirementType === 'model'
+                  ? buyer.targetModelName
+                  : (CATEGORY_LABELS[buyer.targetCategories[0]] ?? buyer.targetCategories[0])}
+              </div>
+            </div>
+          ) : (
+            compatibleCars.map(car => {
+              const isSelected = car.instanceId === selectedCarId;
+              const mv = Math.round(car.fipePrice * conditionValueFactor(car.condition));
+              return (
+                <button
+                  key={car.instanceId}
+                  onClick={() => { setSelectedCarId(car.instanceId); setAskingPrice(''); }}
+                  className={`w-full flex items-center gap-3 p-3 rounded-[12px] border transition-all text-left ${
+                    isSelected ? 'border-primary/40 bg-primary/5' : 'border-border bg-muted/20'
+                  }`}
+                >
+                  <span className="text-2xl">{car.icon}</span>
+                  <div className="flex-1 min-w-0">
+                    <div className="font-semibold text-[13px] truncate">{car.brand} {car.model}</div>
+                    <div className="text-[10px] text-muted-foreground">{car.trim}</div>
+                  </div>
+                  <div className="text-right">
+                    <div className="text-[12px] font-bold">{fmt(mv)}</div>
+                    <div className={`text-[10px] font-medium ${conditionColor(car.condition)}`}>
+                      {conditionLabel(car.condition)}
+                    </div>
+                  </div>
+                </button>
+              );
+            })
+          )}
+
+          {selectedCar && compatibleCars.length > 0 && (
             <>
               <div className="text-[11px] uppercase tracking-wider text-muted-foreground font-semibold">
                 Quanto você quer receber?
               </div>
-
-              {/* FIPE reference */}
               <div className="bg-muted/30 rounded-[10px] px-3 py-2 text-[11px] text-muted-foreground space-y-0.5">
                 <div>FIPE: <strong className="text-foreground">{fmt(selectedCar.fipePrice)}</strong></div>
-                <div>Valor de mercado (condição atual): <strong className="text-foreground">{fmt(Math.round(selectedCar.fipePrice * conditionValueFactor(selectedCar.condition)))}</strong></div>
-                <div className="text-[10px] text-primary mt-1">💡 Compradores pagam até 25% acima dependendo da sorte</div>
+                <div>
+                  Valor de mercado:{' '}
+                  <strong className="text-foreground">
+                    {fmt(Math.round(selectedCar.fipePrice * conditionValueFactor(selectedCar.condition)))}
+                  </strong>
+                </div>
+                <div className="text-[10px] text-primary mt-1">
+                  💡 Compradores pagam até 25% acima dependendo da sorte
+                </div>
               </div>
 
               <div className="relative">
@@ -329,12 +417,7 @@ function BuyerCard({
                 />
               </div>
 
-              <Button
-                variant="ghost"
-                size="sm"
-                className="w-full text-[12px] text-primary"
-                onClick={handleSuggest}
-              >
+              <Button variant="ghost" size="sm" className="w-full text-[12px] text-primary" onClick={() => setAskingPrice(String(suggestedPrice))}>
                 Usar preço sugerido: {fmt(suggestedPrice)}
               </Button>
 
@@ -346,7 +429,7 @@ function BuyerCard({
 
               <Button
                 className="w-full gap-2"
-                disabled={!askingPrice || carsInGarage.length === 0}
+                disabled={!askingPrice || compatibleCars.length === 0}
                 onClick={handleSendOffer}
               >
                 <ArrowRight size={15} />
@@ -368,7 +451,33 @@ function BuyerCard({
   );
 }
 
-// Slot vazio (sem comprador)
+// ── Slot bloqueado ────────────────────────────────────────────────
+
+function LockedSlot({ slotIndex }: { slotIndex: number }) {
+  const [secsLeft, setSecsLeft] = useState(secondsUntilNextCycle());
+
+  useEffect(() => {
+    const id = setInterval(() => setSecsLeft(secondsUntilNextCycle()), 1_000);
+    return () => clearInterval(id);
+  }, []);
+
+  return (
+    <div className="rounded-[16px] border border-dashed border-amber-500/30 bg-amber-500/5 p-5 flex flex-col items-center justify-center gap-2 text-center min-h-[140px]">
+      <div className="w-10 h-10 rounded-[12px] bg-amber-500/10 flex items-center justify-center">
+        <Lock size={18} className="text-amber-500" />
+      </div>
+      <div className="space-y-0.5">
+        <div className="text-[13px] font-semibold text-amber-600">Slot {slotIndex + 1} bloqueado</div>
+        <div className="text-[11px] text-muted-foreground">
+          Novo comprador em <span className="font-bold tabular-nums text-amber-600">{fmtCountdown(secsLeft)}</span>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// ── Slot vazio (aguardando comprador no ciclo) ─────────────────────
+
 function EmptyBuyerSlot({ index }: { index: number }) {
   return (
     <div className="rounded-[16px] border border-dashed border-border bg-muted/20 p-5 flex flex-col items-center justify-center gap-2 text-center min-h-[140px]">
@@ -387,24 +496,28 @@ function EmptyBuyerSlot({ index }: { index: number }) {
   );
 }
 
-// ── Tela principal ─────────────────────────────────────────────────
+// ── Tela principal ────────────────────────────────────────────────
+
 export function CarSalesScreen({
   gameState,
   onSendOffer,
   onResolveDecision,
   onDismissBuyer,
 }: CarSalesScreenProps) {
+  const level        = gameState.reputation.level;
+  const totalSlots   = maxBuyerSlots(level);
+  const slotLocks    = gameState.buyerSlotLocks ?? [];
+  const cycleEpoch   = currentCycleEpoch();
+
   const carsInGarage = gameState.garage.filter(s => s.unlocked && s.car).map(s => s.car!);
-  const MAX_SLOTS = 4;
 
   const activeBuyers = gameState.carBuyers.filter(
-    b => b.state === 'waiting' || b.state === 'thinking' || b.state === 'accepted' || b.state === 'rejected'
+    b => b.state === 'waiting' || b.state === 'thinking' || b.state === 'accepted' || b.state === 'rejected',
   );
 
-  // Stats rápidos
-  const totalSold = gameState.totalCarsSold ?? 0;
+  const totalSold   = gameState.totalCarsSold ?? 0;
   const totalRevenue = gameState.totalRevenue ?? 0;
-  const avgProfit = gameState.carSales.length > 0
+  const avgProfit   = gameState.carSales.length > 0
     ? Math.round(gameState.carSales.reduce((s, r) => s + r.profit, 0) / gameState.carSales.length)
     : 0;
 
@@ -415,7 +528,7 @@ export function CarSalesScreen({
         <div>
           <h2 className="font-game-title text-xl font-bold text-foreground tracking-tight">💰 Vendas</h2>
           <p className="text-[12px] text-muted-foreground mt-0.5">
-            {activeBuyers.filter(b => b.state === 'waiting').length} comprador(es) disponíve(is)
+            {activeBuyers.filter(b => b.state === 'waiting').length} comprador(es) disponíve(is) · {totalSlots} slots
           </p>
         </div>
         <div className="text-right">
@@ -423,6 +536,9 @@ export function CarSalesScreen({
           <div className="font-game-title tabular-nums text-[15px] font-bold">{totalSold} carros</div>
         </div>
       </div>
+
+      {/* Ciclo global */}
+      <CycleHeader epochLocks={slotLocks} />
 
       {/* Stats */}
       {totalSold > 0 && (
@@ -440,19 +556,29 @@ export function CarSalesScreen({
         </div>
       )}
 
-      {/* Compradores */}
+      {/* Nota sobre slots futuros */}
+      {level < 100 && (
+        <div className="text-[11px] text-muted-foreground px-1">
+          {level < 30 && `Nível 30 → 3 slots · Nível 50 → 4 slots · Nível 100 → 5 slots`}
+          {level >= 30 && level < 50 && `Nível 50 → 4 slots · Nível 100 → 5 slots`}
+          {level >= 50 && level < 100 && `Nível 100 → 5 slots`}
+        </div>
+      )}
+
+      {/* Grid de slots */}
       <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-        {Array.from({ length: MAX_SLOTS }, (_, i) => {
-          const buyer = activeBuyers[i];
+        {Array.from({ length: totalSlots }, (_, i) => {
+          const isLocked = (slotLocks[i] ?? -1) === cycleEpoch;
+          if (isLocked) return <LockedSlot key={`locked-${i}`} slotIndex={i} />;
+
+          const buyer = activeBuyers.find(b => (b.slotIndex ?? activeBuyers.indexOf(b)) === i);
           if (buyer) {
             return (
               <BuyerCard
                 key={buyer.id}
                 buyer={buyer}
                 carsInGarage={carsInGarage}
-                onSendOffer={(carId, price, includeTradeIn) => {
-                  onSendOffer(buyer.id, carId, price, includeTradeIn);
-                }}
+                onSendOffer={(carId, price, includeTradeIn) => onSendOffer(buyer.id, carId, price, includeTradeIn)}
                 onResolveDecision={() => {
                   const result = onResolveDecision(buyer.id);
                   if ('accepted' in result) return result;
@@ -461,6 +587,7 @@ export function CarSalesScreen({
               />
             );
           }
+
           return <EmptyBuyerSlot key={`empty-${i}`} index={i} />;
         })}
       </div>

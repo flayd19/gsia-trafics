@@ -3,7 +3,7 @@
 // =====================================================================
 import { useState, useEffect } from 'react';
 import { toast } from 'sonner';
-import { Wrench, Stethoscope, ChevronRight, AlertTriangle, CheckCircle2 } from 'lucide-react';
+import { Wrench, Stethoscope, ChevronRight, AlertTriangle, CheckCircle2, Loader2 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import type { GameState, OwnedCar, RepairType, DiagnosisResult, AttributeKey } from '@/types/game';
@@ -238,6 +238,31 @@ export function OficinaScreen({
     preSelectedCarId ?? (carsInGarage.length > 0 ? carsInGarage[0].instanceId : null)
   );
 
+  // ── Timer de diagnóstico (UI-only, 10 s) ──────────────────────
+  const [diagnosingUntil, setDiagnosingUntil] = useState<number | null>(null);
+  const [countdown, setCountdown]             = useState(0);
+
+  // Reseta countdown ao trocar de carro
+  useEffect(() => {
+    setDiagnosingUntil(null);
+    setCountdown(0);
+  }, [selectedCarId]);
+
+  // Tick do countdown
+  useEffect(() => {
+    if (diagnosingUntil === null) return;
+    const tick = () => {
+      const rem = Math.ceil((diagnosingUntil - Date.now()) / 1000);
+      if (rem <= 0) { setDiagnosingUntil(null); setCountdown(0); }
+      else            setCountdown(rem);
+    };
+    tick();
+    const id = setInterval(tick, 250);
+    return () => clearInterval(id);
+  }, [diagnosingUntil]);
+
+  const isDiagnosing = diagnosingUntil !== null;
+
   const selectedCar    = carsInGarage.find(c => c.instanceId === selectedCarId) ?? null;
   const cleaningRepair = repairTypes.find(r => r.isAlwaysAvailable) ?? null;
   // undefined = nunca diagnosticado | [] = diagnosticado, nada encontrado | [...] = reparos pendentes
@@ -247,8 +272,13 @@ export function OficinaScreen({
   const handleDiagnose = () => {
     if (!selectedCar) return;
     const res = onRunDiagnosis(selectedCar.instanceId);
-    if (res.success) toast.success(res.message);
-    else             toast.error(res.message);
+    if (res.success) {
+      setDiagnosingUntil(Date.now() + 10_000);
+      setCountdown(10);
+      toast.success('Diagnóstico iniciado — R$ 400 debitados.');
+    } else {
+      toast.error(res.message);
+    }
   };
 
   const handleStartRepair = (repairTypeId: string) => {
@@ -429,7 +459,7 @@ export function OficinaScreen({
                     </div>
 
                     {/* Nunca diagnosticado → mostra botão com custo */}
-                    {neverDiagnosed && (
+                    {neverDiagnosed && !isDiagnosing && (
                       <div className="ios-surface rounded-[14px] p-4 space-y-3">
                         <div className="flex items-center gap-2.5">
                           <div className="w-10 h-10 rounded-[12px] bg-amber-500/10 flex items-center justify-center">
@@ -455,8 +485,35 @@ export function OficinaScreen({
                       </div>
                     )}
 
+                    {/* Diagnóstico em andamento — countdown 10 s */}
+                    {isDiagnosing && (
+                      <div className="ios-surface rounded-[14px] p-4 space-y-3">
+                        <div className="flex items-center gap-3">
+                          <div className="w-10 h-10 rounded-[12px] bg-amber-500/10 flex items-center justify-center shrink-0">
+                            <Loader2 size={20} className="text-amber-500 animate-spin" />
+                          </div>
+                          <div className="flex-1 min-w-0">
+                            <div className="font-bold text-[14px] text-foreground">Analisando veículo…</div>
+                            <div className="text-[11px] text-muted-foreground">
+                              Verificando lataria, mecânica, elétrica e interior
+                            </div>
+                          </div>
+                          <div className="text-[22px] font-bold text-amber-500 tabular-nums leading-none">
+                            {countdown}s
+                          </div>
+                        </div>
+                        {/* Barra de progresso */}
+                        <div className="w-full h-1.5 bg-muted rounded-full overflow-hidden">
+                          <div
+                            className="h-full rounded-full bg-amber-500 transition-all duration-250"
+                            style={{ width: `${((10 - countdown) / 10) * 100}%` }}
+                          />
+                        </div>
+                      </div>
+                    )}
+
                     {/* Diagnosticado, nenhum reparo necessário */}
-                    {!neverDiagnosed && diagnosis!.length === 0 && (
+                    {!neverDiagnosed && !isDiagnosing && diagnosis!.length === 0 && (
                       <div className="flex items-center gap-2.5 bg-emerald-500/10 rounded-[12px] px-4 py-3">
                         <CheckCircle2 size={16} className="text-emerald-500 shrink-0" />
                         <div>
@@ -467,7 +524,7 @@ export function OficinaScreen({
                     )}
 
                     {/* Diagnosticado com reparos pendentes */}
-                    {!neverDiagnosed && diagnosis!.length > 0 && (
+                    {!neverDiagnosed && !isDiagnosing && diagnosis!.length > 0 && (
                       <DiagnosisRepairList
                         results={diagnosis!}
                         repairTypes={repairTypes}

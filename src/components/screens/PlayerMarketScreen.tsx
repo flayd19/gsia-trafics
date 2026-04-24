@@ -134,9 +134,12 @@ function ListingCard({
         )}
       </div>
 
-      {listing.status === 'sold' && listing.buyer_name && (
-        <div className="text-[11px] text-muted-foreground">
-          Vendido para <span className="font-semibold">{listing.buyer_name}</span>
+      {listing.status === 'sold' && (
+        <div className="flex items-center gap-2 bg-emerald-500/10 border border-emerald-500/20 rounded-[10px] px-3 py-2">
+          <CheckCircle2 size={14} className="text-emerald-500 shrink-0" />
+          <div className="text-[12px] text-emerald-600 font-semibold">
+            Vendido{listing.buyer_name ? ` para ${listing.buyer_name}` : ''}
+          </div>
         </div>
       )}
     </div>
