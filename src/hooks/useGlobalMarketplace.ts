@@ -239,27 +239,28 @@ export function useGlobalMarketplace() {
     overdraftLimit: number
   ): Promise<{ success: boolean; message: string; finalPrice?: number }> => {
     const car = listingsRef.current.find(l => l.id === carId);
-    if (!car)                 return { success: false, message: 'Carro não encontrado.' };
+    if (!car)                  return { success: false, message: 'Carro não encontrado.' };
     if (car.status === 'sold') return { success: false, message: 'Este carro já foi vendido por outro jogador!' };
-    if (offerValue <= 0)      return { success: false, message: 'Oferta inválida.' };
+    if (offerValue <= 0)       return { success: false, message: 'Oferta inválida.' };
+
+    // Máximo 10% de desconto sobre o preço solicitado
+    const minOffer = Math.round(car.askingPrice * 0.90);
+    if (offerValue < minOffer)
+      return {
+        success: false,
+        message: `Desconto máximo de 10%. Oferta mínima: ${fmt(minOffer)}.`,
+      };
+
     if (playerMoney - offerValue < overdraftLimit)
       return { success: false, message: 'Saldo insuficiente para esta oferta.' };
-
-    // Lógica de aceitação: ≥80% → sempre aceita; abaixo → probabilidade progressiva
-    const accepted = offerValue >= car.askingPrice * 0.80
-      ? true
-      : Math.random() < (offerValue / car.askingPrice) * 0.85;
-
-    if (!accepted)
-      return { success: false, message: `Proposta de ${fmt(offerValue)} recusada. Tente um valor maior.` };
 
     const result = await buyGlobal(carId, buyerName);
     if (!result.success) return result;
 
     const discount = Math.round(((car.askingPrice - offerValue) / car.askingPrice) * 100);
-    const msg = discount <= 5
-      ? `Oferta aceita! ${car.brand} ${car.model} adicionado à garagem.`
-      : `Desconto de ${discount}%! ${car.brand} ${car.model} por ${fmt(offerValue)}.`;
+    const msg = discount > 0
+      ? `Desconto de ${discount}%! ${car.brand} ${car.model} por ${fmt(offerValue)}.`
+      : `Oferta aceita! ${car.brand} ${car.model} adicionado à garagem.`;
 
     return { success: true, message: msg, finalPrice: offerValue };
   }, [buyGlobal]);

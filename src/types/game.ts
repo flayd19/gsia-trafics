@@ -7,6 +7,25 @@ import type { MarketplaceCar } from '@/data/cars';
 // ── Re-exportar para conveniência ──────────────────────────────────
 export type { MarketplaceCar } from '@/data/cars';
 
+// ── 4 atributos independentes do carro ───────────────────────────
+export interface CarAttributes {
+  body:       number; // Lataria   0–100
+  mechanical: number; // Mecânica  0–100
+  electrical: number; // Elétrica  0–100
+  interior:   number; // Interior  0–100
+}
+
+export type AttributeKey = keyof CarAttributes;
+
+// ── Resultado do diagnóstico na oficina ──────────────────────────
+export interface DiagnosisResult {
+  attribute:      AttributeKey;
+  attributeLabel: string;
+  repairTypeId:   string;
+  repairName:     string;
+  repairIcon:     string;
+}
+
 // ── Carro em posse do jogador ─────────────────────────────────────
 export interface OwnedCar {
   /** UUID único da instância (mesmo modelo pode ter várias instâncias) */
@@ -31,9 +50,13 @@ export interface OwnedCar {
   inRepair?: boolean;
   repairCompletesAt?: number; // timestamp
   repairTypeId?: string;
-  repairGain?: number; // quanto de condição vai ganhar
-  /** IDs dos tipos de reparo já realizados neste carro — cada reparo só pode ser feito uma vez por carro */
+  repairGain?: number; // ganho RNG aplicado ao atributo
+  /** IDs dos tipos de reparo realizados (histórico) */
   completedRepairs: string[];
+  /** 4 atributos independentes (novo sistema de oficina) */
+  attributes?: CarAttributes;
+  /** Diagnóstico pendente na oficina */
+  diagnosisResult?: DiagnosisResult | null;
 }
 
 // ── Slots da garagem ─────────────────────────────────────────────
@@ -50,14 +73,16 @@ export interface RepairType {
   name: string;
   description: string;
   icon: string;
-  baseCost: number;       // custo base em R$
-  conditionGain: number;  // pontos de condição ganhos (ex: 20 = +20%)
-  /** Duração em segundos REAIS (não in-game). Ex: 30 = 30s */
+  baseCost: number;
+  /** Mantido para compatibilidade; ganho real é RNG 5–28 */
+  conditionGain: number;
   durationSec: number;
-  /** Condição mínima do carro para aplicar esse reparo */
   minCondition?: number;
-  /** Condição máxima do carro (acima disso o reparo não faz sentido) */
   maxCondition?: number;
+  /** Atributo afetado por este reparo */
+  attribute: AttributeKey;
+  /** Se true: sempre visível/disponível sem diagnóstico (ex: lavagem) */
+  isAlwaysAvailable?: boolean;
 }
 
 // ── Compradores de carros (NPCs na aba Vendas) ────────────────────
@@ -186,6 +211,8 @@ export interface GameState {
     durationSec: number;
     conditionGain: number;
     cost: number;
+    /** Atributo alvo do reparo (novo sistema) */
+    targetAttribute?: AttributeKey;
   }[];
 
   /** Carros disponíveis no marketplace de fornecedores */

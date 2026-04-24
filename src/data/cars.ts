@@ -749,8 +749,9 @@ export function buildMarketplaceInventory(): MarketplaceCar[] {
         ? Math.floor(45 + Math.random() * 30)  // 45-75 (regular-bom)
         : Math.floor(20 + Math.random() * 30); // 20-50 (ruim-regular)
 
-      const factor = conditionValueFactor(condition);
-      const askingPrice = Math.round(variant.fipePrice * factor * (0.95 + Math.random() * 0.3));
+      // Base = FIPE × condition factor → apply ±15% RNG
+      const basePrice   = Math.round(variant.fipePrice * conditionValueFactor(condition));
+      const askingPrice = Math.round(basePrice * (0.85 + Math.random() * 0.30));
 
       result.push({
         id: `mp_${variant.id}_${Date.now()}_${Math.random().toString(36).slice(2, 6)}`,

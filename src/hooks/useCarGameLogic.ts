@@ -2,7 +2,7 @@
 // useCarGameLogic — lógica central do jogo de compra e venda de carros
 // =====================================================================
 import { useState, useEffect, useCallback, useRef } from 'react';
-import type { GameState, OwnedCar } from '@/types/game';
+import type { GameState, OwnedCar, CarAttributes, AttributeKey, DiagnosisResult } from '@/types/game';
 import { ensureGameState } from '@/types/game';
 import {
   GARAGE_SLOTS,
@@ -26,6 +26,41 @@ const LOCAL_SAVE_KEY          = 'gsia_car_game_v1';
 
 function generateId(): string {
   return `${Date.now()}_${Math.random().toString(36).slice(2, 8)}`;
+}
+
+// ── Helpers do sistema de atributos ──────────────────────────────
+const ATTR_LABELS: Record<AttributeKey, string> = {
+  body:       'Lataria',
+  mechanical: 'Mecânica',
+  electrical: 'Elétrica',
+  interior:   'Interior',
+};
+
+/** Gera atributos iniciais distribuídos em torno da condição geral (±15) */
+function generateAttributes(condition: number): CarAttributes {
+  const spread = 15;
+  const rand = () => Math.round(condition + (Math.random() * spread * 2 - spread));
+  return {
+    body:       Math.min(100, Math.max(0, rand())),
+    mechanical: Math.min(100, Math.max(0, rand())),
+    electrical: Math.min(100, Math.max(0, rand())),
+    interior:   Math.min(100, Math.max(0, rand())),
+  };
+}
+
+/** Condição geral = média dos 4 atributos */
+function avgCondition(attrs: CarAttributes): number {
+  return Math.round((attrs.body + attrs.mechanical + attrs.electrical + attrs.interior) / 4);
+}
+
+/** Custo dinâmico: atributo mais baixo = reparo mais caro (+25% a -15%) */
+function calcRepairCost(baseCost: number, attrCondition: number): number {
+  let multiplier = 1.0;
+  if      (attrCondition < 30) multiplier = 1.25;
+  else if (attrCondition < 45) multiplier = 1.20;
+  else if (attrCondition < 58) multiplier = 1.05;
+  else                         multiplier = 0.85;
+  return Math.round(baseCost * multiplier);
 }
 
 // ── Estado inicial ────────────────────────────────────────────────
@@ -256,16 +291,23 @@ export function useCarGameLogic() {
           finishedRepairs.forEach(rep => {
             updatedGarage = updatedGarage.map(slot => {
               if (!slot.car || slot.car.instanceId !== rep.carInstanceId) return slot;
+              const car      = slot.car;
+              const oldAttrs = car.attributes ?? generateAttributes(car.condition);
+              const attr     = (rep.targetAttribute ?? 'mechanical') as AttributeKey;
+              const newAttrs: CarAttributes = {
+                ...oldAttrs,
+                [attr]: Math.min(100, oldAttrs[attr] + rep.conditionGain),
+              };
               return {
                 ...slot,
                 car: {
-                  ...slot.car,
-                  condition:        Math.min(100, slot.car.condition + rep.conditionGain),
-                  inRepair:         false,
+                  ...car,
+                  attributes:        newAttrs,
+                  condition:         avgCondition(newAttrs),
+                  inRepair:          false,
                   repairCompletesAt: undefined,
-                  repairTypeId:     undefined,
-                  repairGain:       undefined,
-                  completedRepairs: [...(slot.car.completedRepairs ?? []), rep.repairTypeId],
+                  repairTypeId:      undefined,
+                  repairGain:        undefined,
                 },
               };
             });
@@ -338,6 +380,7 @@ export function useCarGameLogic() {
       fipePrice: car.fipePrice, condition: car.condition,
       purchasePrice: car.askingPrice, purchasedAt: Date.now(),
       completedRepairs: [],
+      attributes: generateAttributes(car.condition),
     };
 
     setGameState(prev => ({
@@ -362,16 +405,17 @@ export function useCarGameLogic() {
 
     const emptySlot = state.garage.find(s => s.unlocked && !s.car);
     if (!emptySlot) return { success: false, message: 'Garagem cheia!' };
+
+    // Máximo 10% de desconto sobre o preço solicitado
+    const minOffer = Math.round(car.askingPrice * 0.90);
+    if (offerValue < minOffer)
+      return {
+        success: false,
+        message: `Desconto máximo de 10%. Oferta mínima: ${formatMoney(minOffer)}.`,
+      };
+
     if (state.money - offerValue < state.overdraftLimit)
       return { success: false, message: 'Saldo insuficiente.' };
-
-    const accepted =
-      offerValue >= car.askingPrice * 0.80
-        ? true
-        : Math.random() < (offerValue / car.askingPrice) * 0.8;
-
-    if (!accepted)
-      return { success: false, message: `Oferta de ${formatMoney(offerValue)} recusada. Tente um valor maior.` };
 
     const owned: OwnedCar = {
       instanceId: generateId(),
@@ -382,6 +426,7 @@ export function useCarGameLogic() {
       fipePrice: car.fipePrice, condition: car.condition,
       purchasePrice: offerValue, purchasedAt: Date.now(),
       completedRepairs: [],
+      attributes: generateAttributes(car.condition),
     };
 
     setGameState(prev => ({
@@ -394,9 +439,10 @@ export function useCarGameLogic() {
     }));
 
     setTimeout(() => void saveGame(), 400);
-    const msg = offerValue >= car.askingPrice * 0.80
-      ? `Oferta aceita! ${car.brand} ${car.model} na garagem.`
-      : `Oferta com desconto! ${car.brand} ${car.model} na garagem por ${formatMoney(offerValue)}.`;
+    const discount = Math.round(((car.askingPrice - offerValue) / car.askingPrice) * 100);
+    const msg = discount > 0
+      ? `Desconto de ${discount}%! ${car.brand} ${car.model} por ${formatMoney(offerValue)}.`
+      : `Oferta aceita! ${car.brand} ${car.model} na garagem.`;
     return { success: true, message: msg };
   }, [saveGame]);
 
@@ -427,35 +473,109 @@ export function useCarGameLogic() {
     if (!repairType) return { success: false, message: 'Tipo de reparo inválido.' };
 
     const slot = state.garage.find(s => s.car?.instanceId === carInstanceId);
-    if (!slot?.car)  return { success: false, message: 'Carro não encontrado na garagem.' };
+    if (!slot?.car)    return { success: false, message: 'Carro não encontrado na garagem.' };
     if (slot.car.inRepair) return { success: false, message: 'Carro já está em reparo.' };
-    if ((slot.car.completedRepairs ?? []).includes(repairTypeId))
-      return { success: false, message: `${repairType.name} já foi realizada neste carro.` };
-    if (repairType.maxCondition !== undefined && slot.car.condition >= repairType.maxCondition)
-      return { success: false, message: 'O carro está em boas condições para esse tipo de reparo.' };
-    if (repairType.minCondition !== undefined && slot.car.condition > repairType.minCondition)
-      return { success: false, message: 'Condição mínima não atingida para esse reparo.' };
-    if (state.money < repairType.baseCost)
-      return { success: false, message: `Você precisa de ${formatMoney(repairType.baseCost)}.` };
 
-    const now = Date.now();
+    const car   = slot.car;
+    const attrs = car.attributes ?? generateAttributes(car.condition);
+
+    // Lavagem sempre disponível; demais exigem atributo < 60
+    if (!repairType.isAlwaysAvailable) {
+      const attrVal = attrs[repairType.attribute];
+      if (attrVal >= 60)
+        return { success: false, message: `${ATTR_LABELS[repairType.attribute]} já está em boas condições (${attrVal}%).` };
+    }
+
+    const attrVal = attrs[repairType.attribute];
+    const cost    = repairType.isAlwaysAvailable
+      ? repairType.baseCost
+      : calcRepairCost(repairType.baseCost, attrVal);
+
+    if (state.money - cost < state.overdraftLimit)
+      return { success: false, message: `Você precisa de ${formatMoney(cost)}.` };
+
+    const gain = Math.round(5 + Math.random() * 23); // RNG 5–28
+    const now  = Date.now();
+
     setGameState(prev => ({
       ...prev,
-      money:  prev.money - repairType.baseCost,
-      garage: prev.garage.map(s =>
-        s.car?.instanceId === carInstanceId
-          ? { ...s, car: { ...s.car!, inRepair: true, repairCompletesAt: now + repairType.durationSec * 1000, repairTypeId, repairGain: repairType.conditionGain } }
-          : s
-      ),
+      money: prev.money - cost,
+      garage: prev.garage.map(s => {
+        if (s.car?.instanceId !== carInstanceId) return s;
+        return {
+          ...s,
+          car: {
+            ...s.car!,
+            attributes:        attrs,
+            inRepair:          true,
+            repairCompletesAt: now + repairType.durationSec * 1000,
+            repairTypeId,
+            repairGain:        gain,
+            diagnosisResult:   null,
+            completedRepairs:  [...(s.car!.completedRepairs ?? []), repairTypeId],
+          },
+        };
+      }),
       activeRepairs: [
         ...prev.activeRepairs,
-        { carInstanceId, repairTypeId, startedAt: now, durationSec: repairType.durationSec, conditionGain: repairType.conditionGain, cost: repairType.baseCost },
+        {
+          carInstanceId,
+          repairTypeId,
+          startedAt:       now,
+          durationSec:     repairType.durationSec,
+          conditionGain:   gain,
+          cost,
+          targetAttribute: repairType.attribute,
+        },
       ],
     }));
 
     setTimeout(() => void saveGame(), 400);
     return { success: true, message: `${repairType.name} iniciada! Pronto em ${repairType.durationSec}s.` };
   }, [saveGame]);
+
+  const runDiagnosis = useCallback((carInstanceId: string): { success: boolean; message: string; result?: DiagnosisResult } => {
+    const state = stateRef.current;
+    const slot  = state.garage.find(s => s.car?.instanceId === carInstanceId);
+    if (!slot?.car)       return { success: false, message: 'Carro não encontrado.' };
+    if (slot.car.inRepair) return { success: false, message: 'Carro está em reparo.' };
+
+    const car   = slot.car;
+    const attrs = car.attributes ?? generateAttributes(car.condition);
+
+    // Atributos com problema (< 60)
+    const brokenAttrs = (Object.keys(attrs) as AttributeKey[]).filter(k => attrs[k] < 60);
+    if (brokenAttrs.length === 0)
+      return { success: false, message: 'O carro está em ótimas condições! Nenhum reparo necessário.' };
+
+    // Escolhe atributo aleatório com problema
+    const chosenAttr = brokenAttrs[Math.floor(Math.random() * brokenAttrs.length)];
+
+    // Escolhe reparo disponível para esse atributo
+    const available = REPAIR_TYPES.filter(r => r.attribute === chosenAttr && !r.isAlwaysAvailable);
+    if (available.length === 0)
+      return { success: false, message: 'Nenhum reparo disponível para este atributo.' };
+
+    const chosenRepair = available[Math.floor(Math.random() * available.length)];
+    const result: DiagnosisResult = {
+      attribute:      chosenAttr,
+      attributeLabel: ATTR_LABELS[chosenAttr],
+      repairTypeId:   chosenRepair.id,
+      repairName:     chosenRepair.name,
+      repairIcon:     chosenRepair.icon,
+    };
+
+    setGameState(prev => ({
+      ...prev,
+      garage: prev.garage.map(s =>
+        s.car?.instanceId === carInstanceId
+          ? { ...s, car: { ...s.car!, attributes: attrs, diagnosisResult: result } }
+          : s
+      ),
+    }));
+
+    return { success: true, message: `Diagnóstico: ${result.attributeLabel} precisa de atenção.`, result };
+  }, []);
 
   const sendOfferToBuyer = useCallback((
     buyerId: string, carInstanceId: string,
@@ -593,6 +713,7 @@ export function useCarGameLogic() {
       purchasePrice: finalPrice,
       purchasedAt:   Date.now(),
       completedRepairs: [],
+      attributes:    generateAttributes(car.condition),
     };
 
     setGameState(prev => ({
@@ -625,6 +746,7 @@ export function useCarGameLogic() {
       purchasedAt:      Date.now(),
       completedRepairs: car.completedRepairs ?? [],
       inRepair:         undefined,          // remove estado de reparo do vendedor
+      attributes:       car.attributes ?? generateAttributes(car.condition),
     };
 
     setGameState(prev => ({
@@ -675,6 +797,7 @@ export function useCarGameLogic() {
 
     unlockGarageSlot,
     startRepair,
+    runDiagnosis,
 
     sendOfferToBuyer,
     resolveBuyerDecision,

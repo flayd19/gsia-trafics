@@ -53,6 +53,7 @@ const Index = () => {
     removeCarFromGarage,
     unlockGarageSlot,
     startRepair,
+    runDiagnosis,
     sendOfferToBuyer,
     resolveBuyerDecision,
     dismissBuyer,
@@ -120,6 +121,11 @@ const Index = () => {
     return result;
   };
 
+  const handleRunDiagnosis = (carInstanceId: string) => {
+    const result = runDiagnosis(carInstanceId);
+    return result;
+  };
+
   const handleSendOffer = (buyerId: string, carInstanceId: string, price: number, includeTradeIn: boolean) => {
     const result = sendOfferToBuyer(buyerId, carInstanceId, price, includeTradeIn);
     result.success ? toast.info(result.message) : toast.error(result.message);
@@ -178,6 +184,7 @@ const Index = () => {
             repairTypes={repairTypes}
             preSelectedCarId={oficinaPendingCar}
             onStartRepair={handleStartRepair}
+            onRunDiagnosis={handleRunDiagnosis}
           />
         );
 
