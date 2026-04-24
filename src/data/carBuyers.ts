@@ -324,15 +324,18 @@ function genCycleId(): string {
 
 /**
  * Instancia um comprador para um slot de ciclo específico.
- * requirementType determina se busca categoria inteira ou modelo exato.
- * playerLevel filtra categorias e preços de acordo com a progressão do jogador.
  *
- * Regras de troca (trade-in):
- * - O target (modelo ou categoria) é determinado ANTES da geração do trade-in,
- *   para que o teto de FIPE do trade-in seja calculado com base no que o comprador quer comprar.
- * - Trade-in FIPE ≤ 90 % do menor FIPE do modelo desejado (pedido de modelo)
- *   ou ≤ 80 % do teto do tier (pedido de categoria).
- * - Isso garante que a troca nunca gere vantagem econômica injusta para o comprador.
+ * Regra de trade-in obrigatória:
+ * - Compradores com trade-in DEVEM solicitar um modelo específico (nunca categoria).
+ * - O modelo desejado deve ter FIPE mínima > FIPE do carro oferecido na troca.
+ * - Se nenhum modelo válido for encontrado, a troca é removida (negociação em dinheiro).
+ *
+ * Fluxo:
+ *  1. Decide antecipadamente se o comprador terá trade-in (rola o dado antes).
+ *  2. Se terá trade-in → força effectiveReqType = 'model'.
+ *  3. Seleciona modelo com FIPE mínima adequada para ser o teto do trade-in.
+ *  4. Gera o trade-in com FIPE ≤ 90 % do menor FIPE do modelo desejado.
+ *  5. Valida defensivamente: se FIPE do trade-in ≥ FIPE mín do modelo → remove troca.
  */
 export function spawnCycleBuyer(
   slotIndex: number,
@@ -348,14 +351,19 @@ export function spawnCycleBuyer(
   const templatePool = eligibleTemplates.length > 0 ? eligibleTemplates : BUYER_TEMPLATES;
   const template = templatePool[Math.floor(Math.random() * templatePool.length)];
 
-  // ── 1. Determina o target ANTES do trade-in ──────────────────────
+  // ── 1. Decide antecipadamente se haverá trade-in ─────────────────
+  // Compradores com trade-in OBRIGAM pedido de modelo específico.
+  const willHaveTradeIn = template.hasTradeIn && Math.random() > 0.4;
+  const effectiveReqType: 'category' | 'model' = willHaveTradeIn ? 'model' : requirementType;
+
+  // ── 2. Determina o target com effectiveReqType ───────────────────
   let targetModelIds:   string[] = [];
   let targetCategories: string[] = [];
   let targetModelId:    string | undefined;
   let targetModelName:  string | undefined;
   let maxTradeInFipe:   number;
 
-  if (requirementType === 'model') {
+  if (effectiveReqType === 'model') {
     const eligibleModels = CAR_MODELS.filter(m =>
       tier.allowedCategories.includes(m.category) &&
       Math.min(...m.variants.map(v => v.fipePrice)) <= tier.maxFipePrice,
@@ -365,22 +373,33 @@ export function spawnCycleBuyer(
     targetModelIds  = [model.id];
     targetModelId   = model.id;
     targetModelName = `${model.brand} ${model.model}`;
-    // Teto do trade-in: 90 % do menor FIPE do modelo solicitado
-    // O comprador só pode trazer algo menos valioso do que o que quer comprar.
+    // Teto do trade-in: 90 % do menor FIPE do modelo solicitado.
+    // Garante que o trade-in nunca vale mais do que o carro desejado.
     maxTradeInFipe = Math.min(...model.variants.map(v => v.fipePrice)) * 0.9;
   } else {
     const cats = template.targetCategories.filter(c => tier.allowedCategories.includes(c));
     const catPool = cats.length > 0 ? cats : tier.allowedCategories;
     const cat = catPool[Math.floor(Math.random() * catPool.length)];
     targetCategories = [cat];
-    // Teto do trade-in: 80 % do teto do tier (Infinity → cap absoluto de R$ 500 k)
     maxTradeInFipe = (tier.maxFipePrice === Infinity ? 500_000 : tier.maxFipePrice) * 0.8;
   }
 
-  // ── 2. Gera trade-in com teto calculado a partir do target ───────
-  const tradeInCar = template.hasTradeIn && Math.random() > 0.4
-    ? generateTradeInCar(maxTradeInFipe)
-    : undefined;
+  // ── 3. Gera trade-in dentro do teto ─────────────────────────────
+  let tradeInCar = willHaveTradeIn ? generateTradeInCar(maxTradeInFipe) : undefined;
+
+  // ── 4. Validação defensiva: trade-in FIPE < modelo desejado FIPE ─
+  // Caso generateTradeInCar retorne algo acima do teto (edge case),
+  // remove a troca em vez de criar inconsistência econômica.
+  if (tradeInCar && targetModelId) {
+    const desiredModel = CAR_MODELS.find(m => m.id === targetModelId);
+    const modelMinFipe = desiredModel
+      ? Math.min(...desiredModel.variants.map(v => v.fipePrice))
+      : Infinity;
+    if (tradeInCar.fipePrice >= modelMinFipe) {
+      tradeInCar = undefined; // remove troca inválida → negociação só em dinheiro
+    }
+  }
+
   const tradeInValue = tradeInCar
     ? Math.round(
         tradeInCar.fipePrice *
@@ -398,13 +417,12 @@ export function spawnCycleBuyer(
     targetCategories,
     targetModelId,
     targetModelName,
-    requirementType,
+    requirementType: effectiveReqType,
     slotIndex,
     payRange:        template.payRange,
     hasTradeIn:      !!tradeInCar,
     tradeInCar,
     tradeInValue,
-    // patience = segundos restantes no ciclo atual no momento do spawn
     patience:  secondsUntilNextCycle(),
     arrivedAt: Date.now(),
     state:     'waiting',
@@ -543,53 +561,4 @@ export function calculateBuyerOffer(
  *  3. Ajuste por condição do veículo:
  *       condition ≥ 60 → bônus = (condition − 60) × 0.5
  *       condition < 60 → penalidade = (60 − condition) × 0.7
- *  4. chance_final = base + bônus − penalidade, limitada a [0, 100]
- *  5. Garantia mínima: se condition ≥ 60 → chance_final ≥ 60 %
- *  6. Decisão: random [0,100] ≤ chance_final → aceita
- *
- * Compradores emocionais recebem +5 % de tolerância adicional no ratio.
- */
-export function evaluatePlayerOffer(
-  buyer: CarBuyerNPC,
-  playerOfferPrice: number,
-  fipePrice: number,
-  condition: number,
-): boolean {
-  const marketValue = fipePrice * conditionValueFactor(condition);
-  if (marketValue <= 0) return false;
-
-  // Tolerância extra para compradores emocionais
-  const emotionalBonus = buyer.personality === 'emocional' ? 5 : 0;
-
-  const ratio = playerOfferPrice / marketValue;
-
-  // 1. Chance base por ratio
-  let minChance: number;
-  let maxChance: number;
-  if (ratio <= 0.95) {
-    minChance = 90; maxChance = 100;
-  } else if (ratio <= 1.00) {
-    minChance = 70; maxChance = 90;
-  } else if (ratio <= 1.10) {
-    minChance = 40; maxChance = 70;
-  } else {
-    minChance = 10; maxChance = 40;
-  }
-  const baseChance = minChance + Math.random() * (maxChance - minChance);
-
-  // 2. Ajuste por condição
-  const bonus   = condition >= 60 ? (condition - 60) * 0.5 : 0;
-  const penalty = condition <  60 ? (60 - condition) * 0.7 : 0;
-
-  // 3. Chance final
-  let chance = baseChance + bonus - penalty + emotionalBonus;
-
-  // 4. Garantia mínima para carros em bom estado
-  if (condition >= 60) {
-    chance = Math.max(chance, 60);
-  }
-
-  // 5. Clamp e decisão
-  chance = Math.min(100, Math.max(0, chance));
-  return Math.random() * 100 <= chance;
-}
+ *  4. chance_final = base + bônus −

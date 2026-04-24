@@ -699,13 +699,23 @@ export function useCarGameLogic() {
       }
     }
 
-    // Valida trade-in: FIPE do veículo de troca não pode superar FIPE do carro vendido.
-    // Impede que o comprador entregue um carro mais valioso em troca, gerando lucro injusto.
+    // Validações de trade-in ──────────────────────────────────────────
+    // Regra 1: comprador com trade-in DEVE ter pedido de modelo específico.
+    // Se o requirementType for 'category', a troca é inválida e é ignorada.
+    if (includeTradeIn && buyer.tradeInCar && buyer.requirementType !== 'model') {
+      return {
+        success: false,
+        message: 'Troca inválida: o comprador deve solicitar um modelo específico para incluir um veículo na troca.',
+      };
+    }
+
+    // Regra 2: FIPE do trade-in deve ser inferior à FIPE do carro vendido.
+    // Garante que a troca representa um upgrade lógico para o comprador.
     if (includeTradeIn && buyer.tradeInCar) {
-      if (buyer.tradeInCar.fipePrice > car.fipePrice) {
+      if (buyer.tradeInCar.fipePrice >= car.fipePrice) {
         return {
           success: false,
-          message: 'O carro de troca tem valor FIPE superior ao que está sendo vendido. Troca não permitida.',
+          message: 'O carro de troca tem valor FIPE igual ou superior ao que está sendo vendido. Troca não permitida.',
         };
       }
 
@@ -1101,3 +1111,4 @@ export function useCarGameLogic() {
     garageSlotDefs: GARAGE_SLOTS,
   };
 }
+                                                                                                                                                 
