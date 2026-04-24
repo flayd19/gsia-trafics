@@ -210,6 +210,52 @@ export const CAR_MODELS: CarModel[] = [
       { id: 'amarok_20_tdi_comfortline',trim: '2.0 TDI Comfortline', year: 2021, fipePrice: 265_000 },
     ],
   },
+  {
+    id: 'virtus',
+    brand: 'Volkswagen',
+    model: 'Virtus',
+    icon: '🚗',
+    category: 'popular',
+    variants: [
+      { id: 'virtus_10_tsi_comfortline', trim: '1.0 TSI Comfortline', year: 2023, fipePrice: 98_000 },
+      { id: 'virtus_10_tsi_highline',    trim: '1.0 TSI Highline',    year: 2023, fipePrice: 112_000 },
+      { id: 'virtus_16_msi_comfortline', trim: '1.6 MSI Comfortline', year: 2022, fipePrice: 88_000 },
+    ],
+  },
+  {
+    id: 'nivus',
+    brand: 'Volkswagen',
+    model: 'Nivus',
+    icon: '🚙',
+    category: 'suv',
+    variants: [
+      { id: 'nivus_10_tsi_comfortline', trim: '1.0 TSI Comfortline', year: 2023, fipePrice: 120_000 },
+      { id: 'nivus_10_tsi_highline',    trim: '1.0 TSI Highline',    year: 2023, fipePrice: 135_000 },
+    ],
+  },
+  {
+    id: 'taos',
+    brand: 'Volkswagen',
+    model: 'Taos',
+    icon: '🚙',
+    category: 'suv',
+    variants: [
+      { id: 'taos_14_tsi_comfortline', trim: '1.4 TSI Comfortline', year: 2023, fipePrice: 155_000 },
+      { id: 'taos_14_tsi_highline',    trim: '1.4 TSI Highline',    year: 2023, fipePrice: 172_000 },
+    ],
+  },
+  {
+    id: 'tiguan',
+    brand: 'Volkswagen',
+    model: 'Tiguan',
+    icon: '🚙',
+    category: 'suv',
+    variants: [
+      { id: 'tiguan_14_comfortline',  trim: '1.4 TSI Comfortline',    year: 2023, fipePrice: 198_000 },
+      { id: 'tiguan_14_highline',     trim: '1.4 TSI Highline',        year: 2023, fipePrice: 225_000 },
+      { id: 'tiguan_20_allspace',     trim: '2.0 TSI Allspace R-Line', year: 2023, fipePrice: 268_000 },
+    ],
+  },
 
   // ── FIAT ────────────────────────────────────────────────────────
   {
@@ -374,6 +420,29 @@ export const CAR_MODELS: CarModel[] = [
       { id: 'spin_10_turbo',   trim: '1.0 Turbo',   year: 2023, fipePrice: 108_000 },
     ],
   },
+  {
+    id: 'cruze',
+    brand: 'Chevrolet',
+    model: 'Cruze',
+    icon: '🚗',
+    category: 'medio',
+    variants: [
+      { id: 'cruze_14_lt',      trim: '1.4 Turbo LT',      year: 2022, fipePrice: 142_000 },
+      { id: 'cruze_14_ltz',     trim: '1.4 Turbo LTZ',     year: 2022, fipePrice: 162_000 },
+      { id: 'cruze_14_premier', trim: '1.4 Turbo Premier', year: 2023, fipePrice: 182_000 },
+    ],
+  },
+  {
+    id: 'equinox',
+    brand: 'Chevrolet',
+    model: 'Equinox',
+    icon: '🚙',
+    category: 'suv',
+    variants: [
+      { id: 'equinox_15_lt',      trim: '1.5 Turbo LT',      year: 2023, fipePrice: 195_000 },
+      { id: 'equinox_15_premier', trim: '1.5 Turbo Premier', year: 2023, fipePrice: 218_000 },
+    ],
+  },
 
   // ── FORD ────────────────────────────────────────────────────────
   {
@@ -406,9 +475,66 @@ export const CAR_MODELS: CarModel[] = [
     icon: '🛻',
     category: 'pickup',
     variants: [
-      { id: 'ranger_22_xls_4x2',  trim: '2.2 XLS 4x2',  year: 2022, fipePrice: 198_000 },
-      { id: 'ranger_32_xlt_4x4',  trim: '3.2 XLT 4x4',  year: 2022, fipePrice: 265_000 },
+      { id: 'ranger_22_xls_4x2',  trim: '2.2 XLS 4x2',    year: 2022, fipePrice: 198_000 },
+      { id: 'ranger_32_xlt_4x4',  trim: '3.2 XLT 4x4',    year: 2022, fipePrice: 265_000 },
       { id: 'ranger_32_ltd_4x4',  trim: '3.2 Limited 4x4', year: 2023, fipePrice: 305_000 },
+    ],
+  },
+  {
+    id: 'fiesta',
+    brand: 'Ford',
+    model: 'Fiesta',
+    icon: '🚗',
+    category: 'popular',
+    variants: [
+      { id: 'fiesta_15_se',       trim: '1.5 SE',        year: 2018, fipePrice: 52_000 },
+      { id: 'fiesta_16_sel',      trim: '1.6 SEL',       year: 2020, fipePrice: 62_000 },
+      { id: 'fiesta_15_titanium', trim: '1.5 Titanium',  year: 2020, fipePrice: 70_000 },
+    ],
+  },
+  {
+    id: 'focus',
+    brand: 'Ford',
+    model: 'Focus',
+    icon: '🚗',
+    category: 'medio',
+    variants: [
+      { id: 'focus_20_se',       trim: '2.0 SE',         year: 2019, fipePrice: 78_000 },
+      { id: 'focus_20_se_plus',  trim: '2.0 SE Plus',    year: 2019, fipePrice: 88_000 },
+      { id: 'focus_20_titanium', trim: '2.0 Titanium',   year: 2019, fipePrice: 98_000 },
+    ],
+  },
+  {
+    id: 'territory',
+    brand: 'Ford',
+    model: 'Territory',
+    icon: '🚙',
+    category: 'suv',
+    variants: [
+      { id: 'territory_15_se',       trim: '1.5 EcoBoost SE',       year: 2022, fipePrice: 148_000 },
+      { id: 'territory_15_titanium', trim: '1.5 EcoBoost Titanium', year: 2023, fipePrice: 165_000 },
+    ],
+  },
+  {
+    id: 'maverick_ford',
+    brand: 'Ford',
+    model: 'Maverick',
+    icon: '🛻',
+    category: 'pickup',
+    variants: [
+      { id: 'maverick_20_xlt',   trim: '2.0 EcoBoost XLT',   year: 2022, fipePrice: 195_000 },
+      { id: 'maverick_20_lariat',trim: '2.0 EcoBoost Lariat', year: 2023, fipePrice: 218_000 },
+    ],
+  },
+  {
+    id: 'bronco_sport',
+    brand: 'Ford',
+    model: 'Bronco Sport',
+    icon: '🚙',
+    category: 'suv',
+    variants: [
+      { id: 'bronco_20_bigbend',  trim: '2.0 EcoBoost Big Bend',  year: 2023, fipePrice: 238_000 },
+      { id: 'bronco_20_badlands', trim: '2.0 EcoBoost Badlands',  year: 2023, fipePrice: 268_000 },
     ],
   },
 
@@ -460,6 +586,28 @@ export const CAR_MODELS: CarModel[] = [
       { id: 'sw4_28_srx', trim: '2.8 SRX', year: 2023, fipePrice: 325_000 },
     ],
   },
+  {
+    id: 'rav4',
+    brand: 'Toyota',
+    model: 'RAV4',
+    icon: '🚙',
+    category: 'suv',
+    variants: [
+      { id: 'rav4_20_dynamic',  trim: '2.0 Dynamic AWD',  year: 2023, fipePrice: 195_000 },
+      { id: 'rav4_25_hybrid',   trim: '2.5 Hybrid AWD',   year: 2023, fipePrice: 248_000 },
+    ],
+  },
+  {
+    id: 'camry',
+    brand: 'Toyota',
+    model: 'Camry',
+    icon: '🚗',
+    category: 'medio',
+    variants: [
+      { id: 'camry_25_hybrid_xse', trim: '2.5 Hybrid XSE',     year: 2023, fipePrice: 212_000 },
+      { id: 'camry_25_hybrid_le',  trim: '2.5 Hybrid LE',      year: 2022, fipePrice: 195_000 },
+    ],
+  },
 
   // ── HONDA ────────────────────────────────────────────────────────
   {
@@ -498,6 +646,29 @@ export const CAR_MODELS: CarModel[] = [
       { id: 'fit_15_twist', trim: '1.5 Twist',  year: 2021, fipePrice: 86_000 },
     ],
   },
+  {
+    id: 'city',
+    brand: 'Honda',
+    model: 'City',
+    icon: '🚗',
+    category: 'popular',
+    variants: [
+      { id: 'city_15_lx',    trim: '1.5 LX',    year: 2023, fipePrice: 88_000 },
+      { id: 'city_15_sport', trim: '1.5 Sport',  year: 2023, fipePrice: 98_000 },
+      { id: 'city_15_exl',   trim: '1.5 EXL',   year: 2023, fipePrice: 112_000 },
+    ],
+  },
+  {
+    id: 'wrv',
+    brand: 'Honda',
+    model: 'WR-V',
+    icon: '🚙',
+    category: 'suv',
+    variants: [
+      { id: 'wrv_15_ex',  trim: '1.5 EX',  year: 2023, fipePrice: 95_000 },
+      { id: 'wrv_15_exl', trim: '1.5 EXL', year: 2023, fipePrice: 108_000 },
+    ],
+  },
 
   // ── HYUNDAI ──────────────────────────────────────────────────────
   {
@@ -531,8 +702,30 @@ export const CAR_MODELS: CarModel[] = [
     icon: '🚙',
     category: 'suv',
     variants: [
-      { id: 'tucson_16_gls',     trim: '1.6 GLS',     year: 2022, fipePrice: 178_000 },
+      { id: 'tucson_16_gls',     trim: '1.6 GLS',      year: 2022, fipePrice: 178_000 },
       { id: 'tucson_16_gls_nb',  trim: '1.6 GLS NBio', year: 2022, fipePrice: 168_000 },
+    ],
+  },
+  {
+    id: 'i30',
+    brand: 'Hyundai',
+    model: 'i30',
+    icon: '🚗',
+    category: 'medio',
+    variants: [
+      { id: 'i30_18_gls',  trim: '1.8 GLS',   year: 2019, fipePrice: 85_000 },
+      { id: 'i30_20_gls',  trim: '2.0 GLS',   year: 2021, fipePrice: 105_000 },
+    ],
+  },
+  {
+    id: 'santa_fe',
+    brand: 'Hyundai',
+    model: 'Santa Fe',
+    icon: '🚙',
+    category: 'suv',
+    variants: [
+      { id: 'santafe_35_gls',   trim: '3.5 GLS AWD',        year: 2022, fipePrice: 278_000 },
+      { id: 'santafe_20_turbo', trim: '2.0 GLS Turbo AWD',  year: 2023, fipePrice: 295_000 },
     ],
   },
 
@@ -604,9 +797,79 @@ export const CAR_MODELS: CarModel[] = [
     icon: '🚙',
     category: 'suv',
     variants: [
-      { id: 'duster_16_zen',    trim: '1.6 Zen 4x2',     year: 2022, fipePrice: 88_000 },
-      { id: 'duster_16_iconic', trim: '1.6 Iconic',       year: 2023, fipePrice: 95_000 },
-      { id: 'duster_20_iconic', trim: '2.0 Iconic 4x4',   year: 2022, fipePrice: 110_000 },
+      { id: 'duster_16_zen',    trim: '1.6 Zen 4x2',   year: 2022, fipePrice: 88_000 },
+      { id: 'duster_16_iconic', trim: '1.6 Iconic',     year: 2023, fipePrice: 95_000 },
+      { id: 'duster_20_iconic', trim: '2.0 Iconic 4x4', year: 2022, fipePrice: 110_000 },
+    ],
+  },
+  {
+    id: 'logan',
+    brand: 'Renault',
+    model: 'Logan',
+    icon: '🚗',
+    category: 'popular',
+    variants: [
+      { id: 'logan_16_life',  trim: '1.6 Life',  year: 2022, fipePrice: 72_000 },
+      { id: 'logan_16_zen',   trim: '1.6 Zen',   year: 2022, fipePrice: 82_000 },
+      { id: 'logan_16_iconic',trim: '1.6 Iconic', year: 2022, fipePrice: 92_000 },
+    ],
+  },
+  {
+    id: 'captur',
+    brand: 'Renault',
+    model: 'Captur',
+    icon: '🚙',
+    category: 'suv',
+    variants: [
+      { id: 'captur_13_zen',     trim: '1.3 Turbo Zen',     year: 2023, fipePrice: 108_000 },
+      { id: 'captur_13_intense', trim: '1.3 Turbo Intense', year: 2023, fipePrice: 122_000 },
+    ],
+  },
+  {
+    id: 'kardian',
+    brand: 'Renault',
+    model: 'Kardian',
+    icon: '🚙',
+    category: 'suv',
+    variants: [
+      { id: 'kardian_10_life', trim: '1.0 Turbo Life', year: 2023, fipePrice: 82_000 },
+      { id: 'kardian_10_zen',  trim: '1.0 Turbo Zen',  year: 2023, fipePrice: 95_000 },
+    ],
+  },
+
+  // ── KIA ─────────────────────────────────────────────────────────
+  {
+    id: 'sportage',
+    brand: 'Kia',
+    model: 'Sportage',
+    icon: '🚙',
+    category: 'suv',
+    variants: [
+      { id: 'sportage_20_lx',    trim: '2.0 LX',     year: 2022, fipePrice: 145_000 },
+      { id: 'sportage_20_ex',    trim: '2.0 EX',     year: 2022, fipePrice: 162_000 },
+      { id: 'sportage_16_ex_nb', trim: '1.6 T-GDi EX NBio', year: 2023, fipePrice: 182_000 },
+    ],
+  },
+  {
+    id: 'cerato',
+    brand: 'Kia',
+    model: 'Cerato',
+    icon: '🚗',
+    category: 'medio',
+    variants: [
+      { id: 'cerato_16_sx',  trim: '1.6 SX',  year: 2021, fipePrice: 95_000 },
+      { id: 'cerato_20_ex',  trim: '2.0 EX',  year: 2022, fipePrice: 108_000 },
+    ],
+  },
+  {
+    id: 'stonic',
+    brand: 'Kia',
+    model: 'Stonic',
+    icon: '🚙',
+    category: 'suv',
+    variants: [
+      { id: 'stonic_10_ex',  trim: '1.0 T-GDi EX',  year: 2023, fipePrice: 105_000 },
+      { id: 'stonic_10_sx',  trim: '1.0 T-GDi SX',  year: 2023, fipePrice: 115_000 },
     ],
   },
 
@@ -826,6 +1089,40 @@ export const CAR_MODELS: CarModel[] = [
     variants: [
       { id: 'tempra_16_ie',    trim: '1.6 IE',       year: 1995, fipePrice: 24_000 },
       { id: 'tempra_20_turbo', trim: '2.0 IE Turbo', year: 1996, fipePrice: 38_000 },
+    ],
+  },
+  {
+    id: 'tipo',
+    brand: 'Fiat',
+    model: 'Tipo',
+    icon: '🚗',
+    category: 'classico',
+    variants: [
+      { id: 'tipo_16_mpi',  trim: '1.6 MPI',   year: 1995, fipePrice: 22_000 },
+      { id: 'tipo_20_16v',  trim: '2.0 16V',   year: 1996, fipePrice: 32_000 },
+    ],
+  },
+  {
+    id: 'escort',
+    brand: 'Ford',
+    model: 'Escort',
+    icon: '🚗',
+    category: 'classico',
+    variants: [
+      { id: 'escort_16_gl',   trim: '1.6 GL',    year: 1997, fipePrice: 20_000 },
+      { id: 'escort_18_xr3',  trim: '1.8 XR3',   year: 1996, fipePrice: 30_000 },
+      { id: 'escort_20_gti',  trim: '2.0 GTi',   year: 1996, fipePrice: 44_000 },
+    ],
+  },
+  {
+    id: 'passat_classic',
+    brand: 'Volkswagen',
+    model: 'Passat',
+    icon: '🚗',
+    category: 'classico',
+    variants: [
+      { id: 'passat_20_gls',    trim: '2.0 GLS',    year: 1996, fipePrice: 34_000 },
+      { id: 'passat_20_syncro', trim: '2.0 Syncro',  year: 1997, fipePrice: 48_000 },
     ],
   },
 
@@ -1053,6 +1350,38 @@ export const CAR_MODELS: CarModel[] = [
       { id: 'type_r_20', trim: '2.0 Turbo Type R', year: 2023, fipePrice: 425_000 },
     ],
   },
+  {
+    id: 'golf_gti',
+    brand: 'Volkswagen',
+    model: 'Golf GTI',
+    icon: '🏎️',
+    category: 'esportivo',
+    variants: [
+      { id: 'gti_20_tsi',    trim: '2.0 TSI GTI',             year: 2021, fipePrice: 185_000 },
+      { id: 'gti_20_perf',   trim: '2.0 TSI GTI Performance', year: 2022, fipePrice: 210_000 },
+    ],
+  },
+  {
+    id: 'wrx_sti',
+    brand: 'Subaru',
+    model: 'WRX STI',
+    icon: '🏎️',
+    category: 'esportivo',
+    variants: [
+      { id: 'wrx_25_sti',   trim: '2.5 Turbo STI',         year: 2018, fipePrice: 195_000 },
+      { id: 'wrx_25_sport', trim: '2.5 Turbo S-Sport AWD', year: 2020, fipePrice: 225_000 },
+    ],
+  },
+  {
+    id: 'i30n',
+    brand: 'Hyundai',
+    model: 'i30 N',
+    icon: '🏎️',
+    category: 'esportivo',
+    variants: [
+      { id: 'i30n_20_performance', trim: '2.0 T-GDi N Performance', year: 2022, fipePrice: 205_000 },
+    ],
+  },
 ];
 
 // ── HELPERS ──────────────────────────────────────────────────────
@@ -1234,18 +1563,24 @@ export function buildMarketplaceInventory(): MarketplaceCar[] {
 
 /** Vendedores fictícios para o marketplace */
 export const MARKETPLACE_SELLERS = [
-  'Autopark Goiânia',
-  'Revenda Norte',
-  'Carlos Veículos',
-  'Mega Auto Center',
-  'Feira do Carro',
-  'João Paulo Automóveis',
-  'Estrela Motors',
-  'Central Multimarcas',
-  'Revenda Boa Vista',
-  'Top Veículos',
-  'JR Automóveis',
-  'AutoShow Brasília',
+  'Dieguin da Revisa',
+  'Galeguinho Motos',
+  'Guilherme Sol Quente',
+  'Summer Veículos',
+  'Douguinha da Contorno',
+  'Tumate Veículos',
+  'Adir Veículos',
+  'Repasse Santa Rita',
+  'Pedro Multimarcas',
+  'Fabinho Veículos',
+  'California Veículos',
+  'Paulo Afonso Veículos',
+  'Paulo Vitor',
+  'Eduardo Veículos',
+  'Claudio Veículos',
+  'Feira da Marreta',
+  'Mal Preço Veículos',
+  'Amarelinhas Veículos',
 ];
 
 export interface MarketplaceCar {
