@@ -1092,11 +1092,11 @@ export function carYear(modelId: string, variantId: string): number {
 
 // ── Constantes de geração do mercado ────────────────────────────
 /** Mínimo de veículos gerados por ciclo de 30 min. */
-const MARKET_MIN_BATCH = 40;
+const MARKET_MIN_BATCH = 80;
 /** Máximo de veículos gerados por ciclo de 30 min. */
-const MARKET_MAX_BATCH = 60;
+const MARKET_MAX_BATCH = 110;
 /** Proporção mínima de veículos populares no mercado. */
-const POPULAR_MIN_RATIO = 0.30;
+const POPULAR_MIN_RATIO = 0.40;
 /** Quantas vezes o mesmo modelo pode aparecer no mesmo ciclo. */
 const MAX_SAME_MODEL = 2;
 
@@ -1172,8 +1172,8 @@ function pickModels(pool: CarModel[], count: number): CarModel[] {
  * Gera o inventário do mercado global para um ciclo de 30 min.
  *
  * Distribuição por ciclo:
- *   • Total: 40–60 veículos (aleatório)
- *   • ≥ 30 % populares
+ *   • Total: 80–110 veículos (aleatório)
+ *   • ≥ 40 % populares
  *   • 1 garantido de cada outra categoria (medio / suv / pickup / esportivo / eletrico)
  *   • Restante: preenchimento aleatório de qualquer categoria
  *   • Máximo de 2 aparições do mesmo modelo por ciclo
@@ -1191,11 +1191,11 @@ export function buildMarketplaceInventory(): MarketplaceCar[] {
     ['medio', 'suv', 'pickup', 'esportivo', 'eletrico', 'classico', 'luxo'] as CarCategory[]
   ).filter(c => byCategory.has(c));
 
-  // Total do ciclo: 40–60
+  // Total do ciclo: 80–110
   const total = MARKET_MIN_BATCH
     + Math.floor(Math.random() * (MARKET_MAX_BATCH - MARKET_MIN_BATCH + 1));
 
-  // Quota de populares (mínimo 30 %)
+  // Quota de populares (mínimo 40 %)
   const popularCount = Math.max(Math.ceil(total * POPULAR_MIN_RATIO), 1);
 
   // 1 garantido por categoria não-popular
