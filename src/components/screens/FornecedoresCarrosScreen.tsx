@@ -2,6 +2,7 @@
 // FornecedoresCarrosScreen — Marketplace estilo Facebook Marketplace
 // =====================================================================
 import { useState, useMemo } from 'react';
+import { createPortal } from 'react-dom';
 import { RefreshCw, Search, X, Tag, CheckCircle, TrendingDown, TrendingUp, ChevronLeft } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -161,7 +162,7 @@ function CarDetailSheet({
   };
 
   return (
-    <div className="fixed inset-0 z-50 flex flex-col bg-background animate-fade-in">
+    <div className="fixed inset-0 z-[60] flex flex-col bg-background animate-fade-in">
       {/* Hero foto */}
       <div className="relative w-full bg-muted" style={{ height: 220 }}>
         <div className="w-full h-full flex items-center justify-center text-[88px]">
@@ -479,8 +480,8 @@ export function FornecedoresCarrosScreen({
         )}
       </div>
 
-      {/* Detail sheet */}
-      {selectedCar && (
+      {/* Detail sheet — portal para document.body para evitar conflito de z-index */}
+      {selectedCar && createPortal(
         <CarDetailSheet
           car={selectedCar}
           canAfford={gameState.money >= selectedCar.askingPrice}
@@ -488,7 +489,8 @@ export function FornecedoresCarrosScreen({
           onBuy={() => handleBuy(selectedCar)}
           onOffer={(value) => handleOffer(selectedCar.id, value)}
           onClose={() => setSelectedCar(null)}
-        />
+        />,
+        document.body
       )}
     </div>
   );
