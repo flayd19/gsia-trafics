@@ -82,9 +82,11 @@ CREATE TABLE player_market_listings (
   category       text DEFAULT 'carro',
   quantity       int  NOT NULL DEFAULT 1,
   price_per_unit numeric NOT NULL,
+  total_price    numeric GENERATED ALWAYS AS (price_per_unit * quantity) STORED,
   status         text NOT NULL DEFAULT 'active'
                    CHECK (status IN ('active','sold','cancelled','collected')),
   buyer_id       uuid REFERENCES auth.users(id),
+  buyer_name     text,
   sold_at        timestamptz,
   created_at     timestamptz DEFAULT now(),
   updated_at     timestamptz DEFAULT now()
@@ -144,7 +146,8 @@ RETURNS jsonb
 LANGUAGE plpgsql SECURITY DEFINER
 AS $$
 DECLARE
-  v_listing player_market_listings%ROWTYPE;
+  v_listing    player_market_listings%ROWTYPE;
+  v_buyer_name text;
 BEGIN
   -- Busca e trava a linha
   SELECT * INTO v_listing
@@ -160,11 +163,21 @@ BEGIN
     RETURN jsonb_build_object('success', false, 'message', 'Você não pode comprar seu próprio anúncio.');
   END IF;
 
+  -- Busca nome do comprador
+  SELECT display_name INTO v_buyer_name
+  FROM player_profiles
+  WHERE user_id = auth.uid();
+
+  IF v_buyer_name IS NULL THEN
+    v_buyer_name := split_part(auth.email(), '@', 1);
+  END IF;
+
   -- Marca como vendido
   UPDATE player_market_listings
-  SET status   = 'sold',
-      buyer_id = auth.uid(),
-      sold_at  = now(),
+  SET status     = 'sold',
+      buyer_id   = auth.uid(),
+      buyer_name = v_buyer_name,
+      sold_at    = now(),
       updated_at = now()
   WHERE id = p_listing_id;
 
@@ -173,7 +186,8 @@ BEGIN
     'message',        'Compra realizada com sucesso!',
     'product_name',   v_listing.product_name,
     'price_per_unit', v_listing.price_per_unit,
-    'quantity',       v_listing.quantity
+    'quantity',       v_listing.quantity,
+    'total',          v_listing.price_per_unit * v_listing.quantity
   );
 END;
 $$;
@@ -366,6 +380,38 @@ END;
 $$;
 
 GRANT EXECUTE ON FUNCTION buy_marketplace_car(text, text) TO authenticated;
+
+-- ================================================================
+-- 6. MIGRAÇÃO INCREMENTAL
+-- Se você JÁ rodou o reset antes, execute apenas este bloco
+-- para adicionar as novas colunas sem recriar tudo.
+-- ================================================================
+DO $$
+BEGIN
+  -- total_price como coluna gerada
+  IF NOT EXISTS (
+    SELECT 1 FROM information_schema.columns
+    WHERE table_name = 'player_market_listings' AND column_name = 'total_price'
+  ) THEN
+    ALTER TABLE player_market_listings
+      ADD COLUMN total_price numeric GENERATED ALWAYS AS (price_per_unit * quantity) STORED;
+    RAISE NOTICE 'Coluna total_price adicionada.';
+  ELSE
+    RAISE NOTICE 'Coluna total_price já existe — ignorada.';
+  END IF;
+
+  -- buyer_name
+  IF NOT EXISTS (
+    SELECT 1 FROM information_schema.columns
+    WHERE table_name = 'player_market_listings' AND column_name = 'buyer_name'
+  ) THEN
+    ALTER TABLE player_market_listings ADD COLUMN buyer_name text;
+    RAISE NOTICE 'Coluna buyer_name adicionada.';
+  ELSE
+    RAISE NOTICE 'Coluna buyer_name já existe — ignorada.';
+  END IF;
+END;
+$$;
 
 -- ================================================================
 -- 5. VERIFICAÇÃO FINAL

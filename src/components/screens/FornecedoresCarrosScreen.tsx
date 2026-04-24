@@ -85,10 +85,12 @@ function OfferPanel({
 
       <div className="space-y-2">
         <Input
-          type="number"
+          type="text"
+          inputMode="numeric"
+          pattern="[0-9]*"
           placeholder={`Mínimo ${fmt(minOffer)}`}
           value={offerValue}
-          onChange={e => setOfferValue(e.target.value)}
+          onChange={e => setOfferValue(e.target.value.replace(/\D/g, ''))}
           className="text-[15px] font-bold h-11"
           autoFocus
         />

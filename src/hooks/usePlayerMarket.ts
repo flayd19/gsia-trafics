@@ -9,6 +9,20 @@ import {
 import { toast } from '@/hooks/use-toast';
 import { safeCall, isLocalSession, throttledToast } from '@/lib/safeSync';
 
+// Garante que total_price nunca seja NaN mesmo se a coluna não existir no DB
+function mapListing(raw: Record<string, unknown>): PlayerMarketListing {
+  const pricePerUnit = Number(raw.price_per_unit ?? 0);
+  const quantity     = Number(raw.quantity ?? 1);
+  const totalFromDb  = raw.total_price != null ? Number(raw.total_price) : NaN;
+  const total_price  = Number.isFinite(totalFromDb) ? totalFromDb : pricePerUnit * quantity;
+  return {
+    ...(raw as unknown as PlayerMarketListing),
+    price_per_unit: pricePerUnit,
+    quantity,
+    total_price,
+  };
+}
+
 /**
  * Hook para o Mercado P2P entre jogadores.
  *
@@ -92,7 +106,7 @@ export const usePlayerMarket = () => {
     setLoading(false);
 
     if (res.ok) {
-      const list = ((res.data ?? []) as unknown) as PlayerMarketListing[];
+      const list = ((res.data ?? []) as unknown[]).map(r => mapListing(r as Record<string, unknown>));
       setActiveListings(list.filter((l) => l.seller_id !== userId));
     } else if (!res.skipped) {
       setError('Falha ao buscar ofertas');
@@ -122,7 +136,7 @@ export const usePlayerMarket = () => {
     );
 
     if (res.ok) {
-      setMyListings(((res.data ?? []) as unknown) as PlayerMarketListing[]);
+      setMyListings(((res.data ?? []) as unknown[]).map(r => mapListing(r as Record<string, unknown>)));
     } else if (!res.skipped) {
       setError('Falha ao buscar minhas ofertas');
     }
@@ -177,7 +191,7 @@ export const usePlayerMarket = () => {
       );
 
       if (res.ok && res.data) {
-        const listing = (res.data as unknown) as PlayerMarketListing;
+        const listing = mapListing(res.data as Record<string, unknown>);
         setMyListings((prev) => [listing, ...prev]);
         toast({
           title: 'Oferta publicada!',

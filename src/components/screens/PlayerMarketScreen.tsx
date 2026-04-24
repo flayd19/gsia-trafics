@@ -54,12 +54,13 @@ const relativeTime = (iso: string): string => {
   return `${Math.floor(h / 24)}d atrás`;
 };
 
-const statusInfo = (s: PlayerMarketListing['status']) => {
+const statusInfo = (s: string) => {
   switch (s) {
     case 'active':    return { label: 'Ativa',      color: 'bg-green-600/20 text-green-400 border-green-600/40',   icon: <Clock size={11} /> };
     case 'sold':      return { label: 'Vendido',     color: 'bg-primary/20 text-primary border-primary/40',         icon: <CheckCircle2 size={11} /> };
+    case 'collected': return { label: 'Recebido',    color: 'bg-emerald-600/20 text-emerald-400 border-emerald-600/40', icon: <CheckCircle2 size={11} /> };
     case 'cancelled': return { label: 'Cancelado',   color: 'bg-muted text-muted-foreground border-border',          icon: <Ban size={11} /> };
-    case 'expired':   return { label: 'Expirado',    color: 'bg-orange-600/20 text-orange-400 border-orange-600/40', icon: <Hourglass size={11} /> };
+    default:          return { label: 'Expirado',    color: 'bg-orange-600/20 text-orange-400 border-orange-600/40', icon: <Hourglass size={11} /> };
   }
 };
 
@@ -173,10 +174,8 @@ export const PlayerMarketScreen = ({
     !search || l.product_name.toLowerCase().includes(search.toLowerCase())
   );
 
-  // Pagamentos pendentes a recolher
-  const pendingPayouts = myListings.filter(
-    l => l.status === 'sold' && !l.paid_out_at
-  );
+  // Pagamentos pendentes a recolher (status 'sold', ainda não coletados)
+  const pendingPayouts = myListings.filter(l => l.status === 'sold');
   const pendingTotal = pendingPayouts.reduce((s, l) => s + l.total_price, 0);
 
   useEffect(() => {
@@ -221,18 +220,33 @@ export const PlayerMarketScreen = ({
   };
 
   const handleBuy = async (listing: PlayerMarketListing) => {
-    if (!onSpendMoney(listing.total_price)) {
+    // Garante que o preço é válido antes de debitar
+    const price = Number.isFinite(listing.total_price) && listing.total_price > 0
+      ? listing.total_price
+      : listing.price_per_unit * listing.quantity;
+
+    if (!Number.isFinite(price) || price <= 0) {
+      toast({ title: 'Preço inválido', description: 'Não foi possível determinar o valor.', variant: 'destructive' });
+      return;
+    }
+    if (!onSpendMoney(price)) {
       toast({ title: 'Saldo insuficiente', variant: 'destructive' });
       return;
     }
     setBusy(true);
     try {
-      await purchaseListing(listing.id, listing.total_price);
-      toast({ title: 'Compra realizada!', description: `Você comprou ${listing.product_name}` });
-      fetchActiveListings();
+      const result = await purchaseListing(listing.id);
+      if (result.success) {
+        toast({ title: 'Compra realizada!', description: `Você comprou ${listing.product_name} por ${fmt(price)}` });
+        fetchActiveListings();
+      } else {
+        // RPC falhou — estorna o dinheiro
+        onAddMoney(price);
+        toast({ title: 'Falha na compra', description: result.message ?? 'Tente novamente.', variant: 'destructive' });
+      }
     } catch {
       toast({ title: 'Erro ao comprar', variant: 'destructive' });
-      onAddMoney(listing.total_price); // estorna
+      onAddMoney(price); // estorna
     } finally {
       setBusy(false);
     }
@@ -379,10 +393,12 @@ export const PlayerMarketScreen = ({
                 <div className="space-y-1.5">
                   <div className="text-[12px] font-semibold text-muted-foreground uppercase tracking-wider">Preço de venda</div>
                   <Input
-                    type="number"
+                    type="text"
+                    inputMode="numeric"
+                    pattern="[0-9]*"
                     placeholder="R$ 0"
                     value={askingPrice}
-                    onChange={e => setAskingPrice(e.target.value)}
+                    onChange={e => setAskingPrice(e.target.value.replace(/\D/g, ''))}
                     className="text-[15px] font-bold"
                   />
                   {selectedCarId && (() => {
@@ -422,7 +438,7 @@ export const PlayerMarketScreen = ({
                   key={listing.id}
                   listing={listing}
                   isOwn={listing.seller_id === userId}
-                  canAfford={gameState.money >= listing.total_price}
+                  canAfford={gameState.money >= (Number.isFinite(listing.total_price) ? listing.total_price : listing.price_per_unit * listing.quantity)}
                   onBuy={() => handleBuy(listing)}
                   onCancel={() => handleCancel(listing.id)}
                 />
