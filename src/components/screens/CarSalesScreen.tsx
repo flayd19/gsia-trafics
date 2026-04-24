@@ -1,7 +1,7 @@
 // =====================================================================
 // CarSalesScreen — Venda de carros para NPCs (ciclos de 30 min)
 // =====================================================================
-import { useState, useEffect, useMemo } from 'react';
+import { useState, useEffect, useMemo, useRef } from 'react';
 import { Car, ArrowRight, CheckCircle, XCircle, User, Lock, Tag, Layers, TrendingDown, TrendingUp } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
@@ -131,15 +131,19 @@ function CycleRemainingBar({ buyer }: { buyer: CarBuyerNPC }) {
 function ThinkingTimer({ thinkingStartedAt, onTimeUp }: { thinkingStartedAt: number; onTimeUp: () => void }) {
   const [elapsed, setElapsed] = useState(0);
   const THINK_TIME = 10;
+  // Ref para evitar que mudanças de referência de onTimeUp reiniciem o timer
+  const onTimeUpRef = useRef(onTimeUp);
+  onTimeUpRef.current = onTimeUp;
 
   useEffect(() => {
     const id = setInterval(() => {
       const e = (Date.now() - thinkingStartedAt) / 1_000;
       setElapsed(e);
-      if (e >= THINK_TIME) { onTimeUp(); clearInterval(id); }
+      if (e >= THINK_TIME) { onTimeUpRef.current(); clearInterval(id); }
     }, 200);
     return () => clearInterval(id);
-  }, [thinkingStartedAt, onTimeUp]);
+  // Só reinicia o timer se thinkingStartedAt mudar — onTimeUp via ref
+  }, [thinkingStartedAt]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const pct       = Math.min(100, (elapsed / THINK_TIME) * 100);
   const remaining = Math.max(0, THINK_TIME - elapsed);
@@ -780,7 +784,8 @@ export function CarSalesScreen({
                 }
                 onResolveDecision={() => {
                   const result = onResolveDecision(buyer.id);
-                  if ('accepted' in result) return result;
+                  // Só propaga se a decisão foi bem-sucedida (evita setDecided com erro)
+                  if (result.success && 'accepted' in result) return result;
                 }}
                 onResolveCounterOffer={(accept) => onResolveCounterOffer(buyer.id, accept)}
                 onDismiss={() => onDismissBuyer(buyer.id)}

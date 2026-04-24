@@ -193,6 +193,8 @@ export interface PlayerMarketListing {
   total_price: number;
   /** Dados completos do carro (OwnedCar serializado) para entrega ao comprador */
   car_data?: OwnedCar | null;
+  /** Descrição opcional do vendedor (máx. 150 caracteres) */
+  description?: string | null;
   status: PlayerMarketListingStatus;
   buyer_id?: string | null;
   buyer_name?: string | null;
@@ -211,6 +213,8 @@ export interface CreateListingInput {
   price_per_unit: number;
   /** Dados completos do carro para entrega ao comprador */
   car_data?: OwnedCar | null;
+  /** Descrição opcional do vendedor (máx. 150 caracteres) */
+  description?: string | null;
 }
 
 export interface PurchaseResult {

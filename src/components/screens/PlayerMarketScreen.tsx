@@ -68,6 +68,19 @@ const statusInfo = (s: string) => {
   }
 };
 
+// ── Helpers de condição ───────────────────────────────────────────
+function conditionBadgeClass(c: number) {
+  if (c >= 80) return 'text-emerald-500 border-emerald-500/40 bg-emerald-500/10';
+  if (c >= 50) return 'text-amber-500 border-amber-500/40 bg-amber-500/10';
+  return 'text-red-500 border-red-500/40 bg-red-500/10';
+}
+function conditionLabel(c: number) {
+  if (c >= 80) return 'Ótimo';
+  if (c >= 60) return 'Bom';
+  if (c >= 40) return 'Regular';
+  return 'Ruim';
+}
+
 // ── Card de anúncio ───────────────────────────────────────────────
 function ListingCard({
   listing,
@@ -84,11 +97,13 @@ function ListingCard({
   onBuy: () => void;
   onCancel: () => void;
 }) {
-  const si = statusInfo(listing.status);
-  const isActive = listing.status === 'active';
+  const si        = statusInfo(listing.status);
+  const isActive  = listing.status === 'active';
+  const condition = listing.car_data?.condition;
 
   return (
     <div className="ios-surface rounded-[14px] p-4 space-y-3">
+      {/* Header */}
       <div className="flex items-start gap-3">
         <div className="w-12 h-12 rounded-[12px] bg-muted flex items-center justify-center text-2xl shrink-0">
           {listing.product_icon ?? '🚗'}
@@ -106,6 +121,39 @@ function ListingCard({
         </Badge>
       </div>
 
+      {/* Condição do veículo */}
+      {condition !== undefined && (
+        <div className="flex items-center gap-2">
+          <div className="flex-1 h-1.5 bg-muted rounded-full overflow-hidden">
+            <div
+              className="h-full rounded-full"
+              style={{
+                width: `${condition}%`,
+                background: condition >= 60
+                  ? 'var(--gradient-primary, #22c55e)'
+                  : condition >= 35
+                  ? 'linear-gradient(90deg,#f59e0b,#f97316)'
+                  : 'linear-gradient(90deg,#ef4444,#dc2626)',
+              }}
+            />
+          </div>
+          <Badge
+            variant="outline"
+            className={`text-[10px] font-bold shrink-0 ${conditionBadgeClass(condition)}`}
+          >
+            {conditionLabel(condition)} · {condition}%
+          </Badge>
+        </div>
+      )}
+
+      {/* Descrição do vendedor */}
+      {listing.description && (
+        <p className="text-[12px] text-muted-foreground italic leading-relaxed border-l-2 border-primary/30 pl-2">
+          "{listing.description}"
+        </p>
+      )}
+
+      {/* Preço + ação */}
       <div className="flex items-center justify-between">
         <div>
           <div className="font-game-title text-xl font-bold text-foreground tabular-nums">
@@ -172,8 +220,11 @@ export const PlayerMarketScreen = ({
   const [creatingOpen, setCreatingOpen] = useState(false);
   const [selectedCarId, setSelectedCarId] = useState<string>('');
   const [askingPrice, setAskingPrice] = useState<string>('');
+  const [description, setDescription] = useState<string>('');
   const [busy, setBusy] = useState(false);
   const [activeTab, setActiveTab] = useState<'mercado' | 'meus'>('mercado');
+
+  const MAX_DESC = 150;
 
   // Vaga disponível para o comprador
   const hasGarageSpace = gameState.garage.some(s => s.unlocked && !s.car);
@@ -238,7 +289,8 @@ export const PlayerMarketScreen = ({
         category:     'carro',
         quantity:     1,
         price_per_unit: price,
-        car_data:     car,   // ← dados completos para entrega ao comprador
+        car_data:     car,
+        description:  description.trim() || null,
       });
       // Remove o carro da garagem do vendedor imediatamente ao anunciar
       onSoldListing(car.instanceId);
@@ -246,6 +298,7 @@ export const PlayerMarketScreen = ({
       setCreatingOpen(false);
       setSelectedCarId('');
       setAskingPrice('');
+      setDescription('');
       fetchMyListings();
     } catch {
       toast({ title: 'Erro ao criar anúncio', variant: 'destructive' });
@@ -473,6 +526,26 @@ export const PlayerMarketScreen = ({
                       </div>
                     ) : null;
                   })()}
+                </div>
+
+                {/* Descrição opcional */}
+                <div className="space-y-1.5">
+                  <div className="flex items-center justify-between">
+                    <div className="text-[12px] font-semibold text-muted-foreground uppercase tracking-wider">
+                      Descrição <span className="normal-case font-normal">(opcional)</span>
+                    </div>
+                    <span className={`text-[10px] tabular-nums ${description.length > MAX_DESC ? 'text-red-500' : 'text-muted-foreground'}`}>
+                      {description.length}/{MAX_DESC}
+                    </span>
+                  </div>
+                  <textarea
+                    rows={2}
+                    maxLength={MAX_DESC}
+                    placeholder="Ex: Carro bem conservado, único dono, sem batidas…"
+                    value={description}
+                    onChange={e => setDescription(e.target.value.slice(0, MAX_DESC))}
+                    className="w-full px-3 py-2 rounded-[12px] border border-border bg-background text-[13px] text-foreground placeholder:text-muted-foreground resize-none focus:outline-none focus:ring-2 focus:ring-primary/30"
+                  />
                 </div>
               </div>
               <DialogFooter>

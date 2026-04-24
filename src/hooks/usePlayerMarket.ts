@@ -178,6 +178,7 @@ export const usePlayerMarket = () => {
             quantity:      input.quantity,
             price_per_unit: input.price_per_unit,
             car_data:      input.car_data ?? null,
+            description:   input.description?.trim() || null,
             status:        'active',
           };
           const { data, error } = await supabase
