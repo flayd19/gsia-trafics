@@ -240,6 +240,66 @@ export function maxBuyerSlots(level: number): number {
   return 2;
 }
 
+// ─────────────────────────────────────────────────────────────────
+// Progressão por nível — categorias e preços desbloqueados
+// ─────────────────────────────────────────────────────────────────
+
+interface BuyerTier {
+  minLevel: number;
+  /** Categorias que compradores podem solicitar neste tier */
+  allowedCategories: string[];
+  /** Preço FIPE máximo (variante mais barata do modelo) para pedidos de modelo específico */
+  maxFipePrice: number;
+}
+
+/**
+ * Tabela de progressão de compradores por nível do jogador.
+ * Cada tier define quais categorias são desbloqueadas e o teto de
+ * preço FIPE que um comprador pode solicitar (pedido de modelo exato).
+ *
+ * Níveis 1–5   → populares baratos (até R$ 100 k)
+ * Níveis 6–15  → populares + médios (até R$ 160 k)
+ * Níveis 16–29 → + SUVs e pickups básicas (até R$ 250 k)
+ * Níveis 30–49 → + elétricos e veículos premium (até R$ 400 k)
+ * Nível 50+    → + esportivos e supercarros (sem teto)
+ */
+const LEVEL_TIERS: BuyerTier[] = [
+  {
+    minLevel: 1,
+    allowedCategories: ['popular'],
+    maxFipePrice: 100_000,
+  },
+  {
+    minLevel: 6,
+    allowedCategories: ['popular', 'medio'],
+    maxFipePrice: 160_000,
+  },
+  {
+    minLevel: 16,
+    allowedCategories: ['popular', 'medio', 'suv', 'pickup'],
+    maxFipePrice: 250_000,
+  },
+  {
+    minLevel: 30,
+    allowedCategories: ['popular', 'medio', 'suv', 'pickup', 'eletrico'],
+    maxFipePrice: 400_000,
+  },
+  {
+    minLevel: 50,
+    allowedCategories: ['popular', 'medio', 'suv', 'pickup', 'eletrico', 'esportivo'],
+    maxFipePrice: Infinity,
+  },
+];
+
+/** Retorna o tier de compradores correspondente ao nível do jogador */
+function getBuyerTier(level: number): BuyerTier {
+  let tier = LEVEL_TIERS[0];
+  for (const t of LEVEL_TIERS) {
+    if (level >= t.minLevel) tier = t;
+  }
+  return tier;
+}
+
 // Labels legíveis para categorias
 export const CATEGORY_LABELS: Record<string, string> = {
   popular:   'Popular',
@@ -257,12 +317,22 @@ function genCycleId(): string {
 /**
  * Instancia um comprador para um slot de ciclo específico.
  * requirementType determina se busca categoria inteira ou modelo exato.
+ * playerLevel filtra categorias e preços de acordo com a progressão do jogador.
  */
 export function spawnCycleBuyer(
   slotIndex: number,
   requirementType: 'category' | 'model',
+  playerLevel: number,
 ): CarBuyerNPC {
-  const template = BUYER_TEMPLATES[Math.floor(Math.random() * BUYER_TEMPLATES.length)];
+  const tier = getBuyerTier(playerLevel);
+
+  // Filtra templates cujas categorias-alvo têm interseção com o tier atual
+  const eligibleTemplates = BUYER_TEMPLATES.filter(t =>
+    t.targetCategories.some(c => tier.allowedCategories.includes(c)),
+  );
+  const templatePool = eligibleTemplates.length > 0 ? eligibleTemplates : BUYER_TEMPLATES;
+  const template = templatePool[Math.floor(Math.random() * templatePool.length)];
+
   const tradeInCar = template.hasTradeIn && Math.random() > 0.4
     ? generateTradeInCar()
     : undefined;
@@ -280,16 +350,21 @@ export function spawnCycleBuyer(
   let targetModelName:  string | undefined;
 
   if (requirementType === 'model') {
-    const model = CAR_MODELS[Math.floor(Math.random() * CAR_MODELS.length)];
+    // Filtra modelos dentro das categorias e faixa de preço do tier
+    const eligibleModels = CAR_MODELS.filter(m =>
+      tier.allowedCategories.includes(m.category) &&
+      Math.min(...m.variants.map(v => v.fipePrice)) <= tier.maxFipePrice,
+    );
+    const modelPool = eligibleModels.length > 0 ? eligibleModels : CAR_MODELS;
+    const model = modelPool[Math.floor(Math.random() * modelPool.length)];
     targetModelIds  = [model.id];
     targetModelId   = model.id;
     targetModelName = `${model.brand} ${model.model}`;
   } else {
-    // Usa uma única categoria (a primeira do template, ou 'popular' como fallback)
-    const cats = template.targetCategories;
-    const cat  = cats.length > 0
-      ? cats[Math.floor(Math.random() * cats.length)]
-      : 'popular';
+    // Usa uma categoria do template que esteja dentro do tier (fallback: qualquer do tier)
+    const cats = template.targetCategories.filter(c => tier.allowedCategories.includes(c));
+    const catPool = cats.length > 0 ? cats : tier.allowedCategories;
+    const cat = catPool[Math.floor(Math.random() * catPool.length)];
     targetCategories = [cat];
   }
 
@@ -342,7 +417,7 @@ export function generateCycleBuyers(
   const buyers: CarBuyerNPC[] = [];
   for (let i = 0; i < totalSlots; i++) {
     if (lockedSlotIndices.includes(i)) continue;
-    buyers.push(spawnCycleBuyer(i, reqTypes[i]));
+    buyers.push(spawnCycleBuyer(i, reqTypes[i], playerLevel));
   }
   return buyers;
 }
