@@ -6,14 +6,12 @@ import {
   Settings as SettingsIcon,
   LogOut,
   User,
-  Users,
   Trophy,
   X,
   DollarSign,
   ShoppingBag,
   Wrench,
   Car,
-  Store,
 } from 'lucide-react';
 import { supabase } from '@/integrations/supabase/client';
 import { useAudio } from '@/hooks/useAudio';
@@ -39,10 +37,9 @@ const PRIMARY_TABS: TabDef[] = [
 ];
 
 const SECONDARY_TABS: TabDef[] = [
-  { id: 'home',         label: 'Início',        icon: Home },
-  { id: 'playermarket', label: 'Mercado P2P',   icon: Users },
-  { id: 'ranking',      label: 'Ranking',       icon: Trophy },
-  { id: 'settings',     label: 'Ajustes',       icon: SettingsIcon },
+  { id: 'home',     label: 'Início',  icon: Home },
+  { id: 'ranking',  label: 'Ranking', icon: Trophy },
+  { id: 'settings', label: 'Ajustes', icon: SettingsIcon },
 ];
 
 /* ---------------------------------------------------------------- */

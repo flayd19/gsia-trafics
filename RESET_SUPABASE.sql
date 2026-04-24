@@ -83,6 +83,7 @@ CREATE TABLE player_market_listings (
   quantity       int  NOT NULL DEFAULT 1,
   price_per_unit numeric NOT NULL,
   total_price    numeric GENERATED ALWAYS AS (price_per_unit * quantity) STORED,
+  car_data       jsonb,          -- OwnedCar serializado; permite entregar o carro ao comprador
   status         text NOT NULL DEFAULT 'active'
                    CHECK (status IN ('active','sold','cancelled','collected')),
   buyer_id       uuid REFERENCES auth.users(id),
@@ -259,25 +260,28 @@ GRANT EXECUTE ON FUNCTION collect_market_payouts() TO authenticated;
 
 -- ── marketplace_meta ──────────────────────────────────────────
 -- Singleton que controla qual batch está ativo e quando foi gerado
-CREATE TABLE marketplace_meta (
+CREATE TABLE IF NOT EXISTS marketplace_meta (
   id           int  PRIMARY KEY DEFAULT 1 CHECK (id = 1),
   batch_id     int  NOT NULL DEFAULT 0,
   last_refresh timestamptz DEFAULT '2000-01-01'
 );
 
--- Linha inicial (timestamp antigo força refresh imediato no primeiro acesso)
-INSERT INTO marketplace_meta (id, batch_id, last_refresh) VALUES (1, 0, '2000-01-01');
+-- Linha inicial — ON CONFLICT para ser idempotente
+INSERT INTO marketplace_meta (id, batch_id, last_refresh)
+VALUES (1, 0, '2000-01-01')
+ON CONFLICT (id) DO NOTHING;
 
 ALTER TABLE marketplace_meta ENABLE ROW LEVEL SECURITY;
 
--- Leitura pública (todos os autenticados precisam saber o batch atual)
+-- Policies (DROP IF EXISTS antes para evitar "already exists")
+DROP POLICY IF EXISTS "public_read_meta" ON marketplace_meta;
 CREATE POLICY "public_read_meta" ON marketplace_meta
   FOR SELECT USING (auth.uid() IS NOT NULL);
 
 -- ── marketplace_global ─────────────────────────────────────────
 -- Carros visíveis para todos — atualizados a cada 30 minutos
-CREATE TABLE marketplace_global (
-  id            text PRIMARY KEY,      -- {variantId}_b{batchId}
+CREATE TABLE IF NOT EXISTS marketplace_global (
+  id            text PRIMARY KEY,
   model_id      text NOT NULL,
   variant_id    text NOT NULL,
   brand         text NOT NULL,
@@ -300,18 +304,20 @@ CREATE TABLE marketplace_global (
 
 ALTER TABLE marketplace_global ENABLE ROW LEVEL SECURITY;
 
--- Leitura pública para todos os autenticados
+DROP POLICY IF EXISTS "read_marketplace"   ON marketplace_global;
+DROP POLICY IF EXISTS "insert_marketplace" ON marketplace_global;
+DROP POLICY IF EXISTS "delete_marketplace" ON marketplace_global;
+DROP POLICY IF EXISTS "update_marketplace" ON marketplace_global;
+
 CREATE POLICY "read_marketplace" ON marketplace_global
   FOR SELECT USING (auth.uid() IS NOT NULL);
 
--- Insert/Delete via funções SECURITY DEFINER (sem policy de escrita direta)
 CREATE POLICY "insert_marketplace" ON marketplace_global
   FOR INSERT WITH CHECK (auth.uid() IS NOT NULL);
 
 CREATE POLICY "delete_marketplace" ON marketplace_global
   FOR DELETE USING (auth.uid() IS NOT NULL);
 
--- Update apenas via RPC — permite que SECURITY DEFINER funcione sem policy extra
 CREATE POLICY "update_marketplace" ON marketplace_global
   FOR UPDATE USING (auth.uid() IS NOT NULL);
 
@@ -409,6 +415,17 @@ BEGIN
     RAISE NOTICE 'Coluna buyer_name adicionada.';
   ELSE
     RAISE NOTICE 'Coluna buyer_name já existe — ignorada.';
+  END IF;
+
+  -- car_data (OwnedCar serializado)
+  IF NOT EXISTS (
+    SELECT 1 FROM information_schema.columns
+    WHERE table_name = 'player_market_listings' AND column_name = 'car_data'
+  ) THEN
+    ALTER TABLE player_market_listings ADD COLUMN car_data jsonb;
+    RAISE NOTICE 'Coluna car_data adicionada.';
+  ELSE
+    RAISE NOTICE 'Coluna car_data já existe — ignorada.';
   END IF;
 END;
 $$;

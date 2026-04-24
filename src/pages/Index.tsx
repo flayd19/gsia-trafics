@@ -5,9 +5,8 @@ import { GameLayout } from '@/components/GameLayout';
 import { HomeScreen } from '@/components/screens/HomeScreen';
 import { GaragemScreen } from '@/components/screens/GaragemScreen';
 import { OficinaScreen } from '@/components/screens/OficinaScreen';
-import { FornecedoresCarrosScreen } from '@/components/screens/FornecedoresCarrosScreen';
+import { ComprarScreen } from '@/components/screens/ComprarScreen';
 import { CarSalesScreen } from '@/components/screens/CarSalesScreen';
-import { PlayerMarketScreen } from '@/components/screens/PlayerMarketScreen';
 import RankingScreen from '@/components/screens/RankingScreen';
 import { SettingsScreen } from '@/components/screens/SettingsScreen';
 import { useCarGameLogic } from '@/hooks/useCarGameLogic';
@@ -50,6 +49,8 @@ const Index = () => {
     garageCarCount,
 
     addCarFromGlobal,
+    addOwnedCarToGarage,
+    removeCarFromGarage,
     unlockGarageSlot,
     startRepair,
     sendOfferToBuyer,
@@ -182,7 +183,7 @@ const Index = () => {
 
       case 'fornecedores':
         return (
-          <FornecedoresCarrosScreen
+          <ComprarScreen
             gameState={gameState}
             globalCars={globalCars}
             loading={marketplaceLoading}
@@ -191,6 +192,10 @@ const Index = () => {
             onBuyCar={handleBuyCar}
             onMakeOffer={handleMakeOffer}
             onRefreshMarketplace={loadMarketplace}
+            onSpendMoney={spendMoney}
+            onAddMoney={addMoney}
+            onAddToGarage={addOwnedCarToGarage}
+            onSoldListing={removeCarFromGarage}
           />
         );
 
@@ -204,21 +209,67 @@ const Index = () => {
           />
         );
 
-      case 'playermarket':
+      case 'ranking':
+        return <RankingScreen gameState={gameState as any} />;
+
+      case 'settings':
         return (
-          <PlayerMarketScreen
+          <SettingsScreen
             gameState={gameState as any}
-            products={[]}
-            onReserveStock={() => {}}
-            onReturnStock={() => {}}
-            onReceiveStock={() => {}}
-            onSpendMoney={spendMoney}
-            onAddMoney={addMoney}
+            operationalCosts={{ warehouseCost: 0, driverCosts: 0, totalWeekly: 0 }}
+            onSaveGame={handleSaveGame}
+            onResetGame={handleResetGame}
           />
         );
 
-      case 'ranking':
-        return <RankingScreen gameState={gameState as any} />;
+      default:
+        return <div className="text-center py-10 text-muted-foreground">Tela não encontrada</div>;
+    }
+  };
+
+  if (!gameLoaded) {
+    return (
+      <div className="min-h-screen bg-background flex items-center justify-center">
+        <div className="text-center space-y-6 animate-scale-in">
+          <div className="text-6xl mb-4 animate-bounce-gentle">🚗</div>
+          <h2 className="text-3xl font-game-title font-bold text-primary glow-primary">
+            GSIA CARROS
+          </h2>
+          <p className="text-lg font-game-ui text-muted-foreground">
+            {isSyncing ? 'Carregando seu progresso…' : 'Preparando sua concessionária…'}
+          </p>
+          <div className="w-48 h-2 bg-muted rounded-full mx-auto overflow-hidden">
+            <div className="h-full bg-gradient-to-r from-primary to-secondary animate-glow-pulse rounded-full" />
+          </div>
+        </div>
+      </div>
+    );
+  }
+
+  return (
+    <GameLayout
+      money={gameState.money}
+      garageCount={garageCarCount}
+      gameTime={gameTime}
+      onTabChange={handleTabChange}
+      currentTab={currentTab}
+      isSyncing={isSyncing || saveStatus === 'saving'}
+      user={user}
+      reputation={gameState.reputation}
+      onLogout={async () => {
+        await saveGame();
+        const { supabase: sb } = await import('@/integrations/supabase/client');
+        await sb.auth.signOut();
+        navigate('/auth');
+      }}
+    >
+      {renderCurrentScreen()}
+    </GameLayout>
+  );
+};
+
+export default Index;
+n <RankingScreen gameState={gameState as any} />;
 
       case 'settings':
         return (

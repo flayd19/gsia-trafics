@@ -169,15 +169,16 @@ export const usePlayerMarket = () => {
         'p2p:create',
         async () => {
           const payload = {
-            seller_id: userId,
-            seller_name: userName,
-            product_id: input.product_id,
-            product_name: input.product_name,
-            product_icon: input.product_icon ?? null,
-            category: input.category ?? null,
-            quantity: input.quantity,
+            seller_id:     userId,
+            seller_name:   userName,
+            product_id:    input.product_id,
+            product_name:  input.product_name,
+            product_icon:  input.product_icon ?? null,
+            category:      input.category ?? null,
+            quantity:      input.quantity,
             price_per_unit: input.price_per_unit,
-            status: 'active',
+            car_data:      input.car_data ?? null,
+            status:        'active',
           };
           const { data, error } = await supabase
             .from('player_market_listings' as any)
@@ -341,25 +342,22 @@ export const usePlayerMarket = () => {
     if (isLocalSession() || !userId) return;
     void fetchActiveListings();
     void fetchMyListings();
-    const interval = setInterval(() => {
+    const id = setInterval(() => {
       void fetchActiveListings();
       void fetchMyListings();
     }, 30_000);
-    return () => clearInterval(interval);
+    return () => clearInterval(id);
   }, [userId, fetchActiveListings, fetchMyListings]);
 
   return {
     activeListings,
     myListings,
-    loading,
-    error,
     userId,
-    userName,
-    fetchActiveListings,
-    fetchMyListings,
     createListing,
     purchaseListing,
     cancelListing,
     collectPayouts,
+    fetchActiveListings,
+    fetchMyListings,
   };
-};
+}

@@ -253,41 +253,28 @@ export function OficinaScreen({ gameState, repairTypes, preSelectedCarId, onStar
                 </div>
 
                 {/* Progresso de reparos */}
-                <div className="flex items-center justify-between text-[11px]">
-                  <span className="text-muted-foreground">Reparos realizados</span>
+         
+                <div className="flex items-center justify-between text-[12px] text-muted-foreground">
+                  <span>Reparos concluídos</span>
                   <span className="font-bold text-foreground">
-                    {(selectedCar.completedRepairs ?? []).length} / {totalRepairs}
+                    {(selectedCar.completedRepairs ?? []).length}/{totalRepairs}
                   </span>
                 </div>
                 <div className="w-full h-1.5 bg-muted rounded-full overflow-hidden">
                   <div
-                    className="h-full rounded-full bg-emerald-500 transition-all"
-                    style={{ width: `${((selectedCar.completedRepairs ?? []).length / totalRepairs) * 100}%` }}
+                    className="h-full rounded-full transition-all"
+                    style={{
+                      width: `${Math.round(((selectedCar.completedRepairs ?? []).length / Math.max(totalRepairs, 1)) * 100)}%`,
+                      background: 'var(--gradient-primary)',
+                    }}
                   />
                 </div>
-
-                {selectedCar.inRepair && selectedCar.repairCompletesAt && (
-                  <div className="flex items-center gap-2 bg-primary/10 rounded-[10px] px-3 py-2">
-                    <Clock size={13} className="text-primary" />
-                    <span className="text-[12px] font-medium text-primary">
-                      Em reparo — pronto em{' '}
-                      {Math.max(0, Math.ceil((selectedCar.repairCompletesAt - Date.now()) / 1000))}s
-                    </span>
-                  </div>
-                )}
               </div>
 
               {/* Reparos disponíveis */}
               <div>
-                <div className="flex items-center justify-between px-1 mb-3">
-                  <div className="text-[11px] uppercase tracking-wider text-muted-foreground font-semibold">
-                    Serviços Disponíveis
-                  </div>
-                  {availableRepairs < totalRepairs && (
-                    <div className="text-[10px] text-muted-foreground">
-                      {availableRepairs} restantes
-                    </div>
-                  )}
+                <div className="text-[11px] uppercase tracking-wider text-muted-foreground font-semibold px-1 mb-2">
+                  Reparos disponíveis ({availableRepairs})
                 </div>
                 <div className="space-y-3">
                   {repairTypes.map(repair => (

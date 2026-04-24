@@ -2,7 +2,7 @@
 // PlayerMarketScreen — Mercado P2P de Carros
 // Permite anunciar carros da garagem e comprar de outros jogadores
 // =====================================================================
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import {
@@ -28,7 +28,7 @@ import {
   DialogTrigger,
 } from '@/components/ui/dialog';
 import { toast } from '@/hooks/use-toast';
-import type { GameState, OwnedCar, PlayerMarketListing } from '@/types/game';
+import type { GameState, OwnedCar, PlayerMarketListing, PlayerMarketListingStatus } from '@/types/game';
 import { usePlayerMarket } from '@/hooks/usePlayerMarket';
 
 interface PlayerMarketScreenProps {
@@ -39,6 +39,10 @@ interface PlayerMarketScreenProps {
   onReceiveStock: () => void;
   onSpendMoney: (amount: number) => boolean;
   onAddMoney: (amount: number) => void;
+  /** Callback: comprador recebe o carro após compra bem-sucedida */
+  onAddToGarage: (car: OwnedCar, paidPrice: number) => { success: boolean; message: string };
+  /** Callback: vendedor — remove carro da garagem quando listing é vendido */
+  onSoldListing: (carInstanceId: string) => void;
 }
 
 const fmt = (v: number) =>
@@ -69,12 +73,14 @@ function ListingCard({
   listing,
   isOwn,
   canAfford,
+  hasGarageSpace,
   onBuy,
   onCancel,
 }: {
   listing: PlayerMarketListing;
   isOwn: boolean;
   canAfford: boolean;
+  hasGarageSpace: boolean;
   onBuy: () => void;
   onCancel: () => void;
 }) {
@@ -116,8 +122,13 @@ function ListingCard({
               Cancelar anúncio
             </Button>
           ) : (
-            <Button size="sm" className="text-[12px]" disabled={!canAfford} onClick={onBuy}>
-              {canAfford ? `Comprar` : 'Sem saldo'}
+            <Button
+              size="sm"
+              className="text-[12px]"
+              disabled={!canAfford || !hasGarageSpace}
+              onClick={onBuy}
+            >
+              {!hasGarageSpace ? 'Garagem cheia' : !canAfford ? 'Sem saldo' : 'Comprar'}
             </Button>
           )
         )}
@@ -137,6 +148,8 @@ export const PlayerMarketScreen = ({
   gameState,
   onSpendMoney,
   onAddMoney,
+  onAddToGarage,
+  onSoldListing,
 }: PlayerMarketScreenProps) => {
   const {
     activeListings,
@@ -158,6 +171,22 @@ export const PlayerMarketScreen = ({
   const [askingPrice, setAskingPrice] = useState<string>('');
   const [busy, setBusy] = useState(false);
   const [activeTab, setActiveTab] = useState<'mercado' | 'meus'>('mercado');
+
+  // Vaga disponível para o comprador
+  const hasGarageSpace = gameState.garage.some(s => s.unlocked && !s.car);
+
+  // Detecta vendas concluídas e remove o carro da garagem do vendedor
+  const processedSalesRef = useRef(new Set<string>());
+  useEffect(() => {
+    myListings
+      .filter(l => (l.status === 'sold' || l.status === ('collected' as PlayerMarketListingStatus)))
+      .forEach(l => {
+        if (!processedSalesRef.current.has(l.id)) {
+          processedSalesRef.current.add(l.id);
+          onSoldListing(l.product_id); // product_id = instanceId do carro vendido
+        }
+      });
+  }, [myListings, onSoldListing]);
 
   // Carros na garagem disponíveis para anunciar (não em reparo, não anunciados)
   const carsInGarage: OwnedCar[] = gameState.garage
@@ -200,12 +229,13 @@ export const PlayerMarketScreen = ({
     setBusy(true);
     try {
       await createListing({
-        product_id: car.instanceId,
+        product_id:   car.instanceId,
         product_name: `${car.brand} ${car.model} ${car.trim} ${car.year}`,
         product_icon: car.icon,
-        category: 'carro',
-        quantity: 1,
+        category:     'carro',
+        quantity:     1,
         price_per_unit: price,
+        car_data:     car,   // ← dados completos para entrega ao comprador
       });
       toast({ title: 'Anúncio criado!', description: `${car.brand} ${car.model} anunciado por ${fmt(price)}` });
       setCreatingOpen(false);
@@ -220,7 +250,13 @@ export const PlayerMarketScreen = ({
   };
 
   const handleBuy = async (listing: PlayerMarketListing) => {
-    // Garante que o preço é válido antes de debitar
+    // 1. Verificar vaga na garagem antes de qualquer coisa
+    if (!hasGarageSpace) {
+      toast({ title: 'Garagem cheia!', description: 'Libere uma vaga antes de comprar.', variant: 'destructive' });
+      return;
+    }
+
+    // 2. Validar preço
     const price = Number.isFinite(listing.total_price) && listing.total_price > 0
       ? listing.total_price
       : listing.price_per_unit * listing.quantity;
@@ -229,24 +265,42 @@ export const PlayerMarketScreen = ({
       toast({ title: 'Preço inválido', description: 'Não foi possível determinar o valor.', variant: 'destructive' });
       return;
     }
+
+    // 3. Debitar dinheiro (verificação de saldo incluída)
     if (!onSpendMoney(price)) {
       toast({ title: 'Saldo insuficiente', variant: 'destructive' });
       return;
     }
+
     setBusy(true);
     try {
+      // 4. RPC atômica — marca como vendido no Supabase
       const result = await purchaseListing(listing.id);
+
       if (result.success) {
-        toast({ title: 'Compra realizada!', description: `Você comprou ${listing.product_name} por ${fmt(price)}` });
+        // 5. Adicionar carro à garagem do comprador
+        if (listing.car_data) {
+          const addResult = onAddToGarage(listing.car_data, price);
+          if (!addResult.success) {
+            // Não conseguiu adicionar (improvável — já checamos vaga)
+            onAddMoney(price); // estorna
+            toast({ title: 'Erro ao adicionar à garagem', description: addResult.message, variant: 'destructive' });
+            return;
+          }
+          toast({ title: '🚗 Carro comprado!', description: addResult.message });
+        } else {
+          // car_data ausente (listagem antiga sem dados) — só confirma compra
+          toast({ title: 'Compra realizada!', description: `${listing.product_name} comprado por ${fmt(price)}` });
+        }
         fetchActiveListings();
       } else {
-        // RPC falhou — estorna o dinheiro
+        // RPC falhou (carro já vendido por outro) — estorna
         onAddMoney(price);
         toast({ title: 'Falha na compra', description: result.message ?? 'Tente novamente.', variant: 'destructive' });
       }
     } catch {
       toast({ title: 'Erro ao comprar', variant: 'destructive' });
-      onAddMoney(price); // estorna
+      onAddMoney(price);
     } finally {
       setBusy(false);
     }
@@ -439,6 +493,7 @@ export const PlayerMarketScreen = ({
                   listing={listing}
                   isOwn={listing.seller_id === userId}
                   canAfford={gameState.money >= (Number.isFinite(listing.total_price) ? listing.total_price : listing.price_per_unit * listing.quantity)}
+                  hasGarageSpace={hasGarageSpace}
                   onBuy={() => handleBuy(listing)}
                   onCancel={() => handleCancel(listing.id)}
                 />
@@ -447,29 +502,6 @@ export const PlayerMarketScreen = ({
           )}
         </>
       )}
-
-      {activeTab === 'meus' && (
-        <div className="space-y-3">
-          {myListings.length === 0 ? (
-            <div className="text-center py-12 space-y-3">
-              <div className="text-5xl"><Car size={48} className="mx-auto text-muted-foreground" /></div>
-              <div className="text-[14px] font-semibold text-muted-foreground">Nenhum anúncio ainda</div>
-              <div className="text-[11px] text-muted-foreground">Anuncie um carro da sua garagem</div>
-            </div>
-          ) : (
-            myListings.map(listing => (
-              <ListingCard
-                key={listing.id}
-                listing={listing}
-                isOwn
-                canAfford={false}
-                onBuy={() => {}}
-                onCancel={() => handleCancel(listing.id)}
-              />
-            ))
-          )}
-        </div>
-      )}
     </div>
   );
-};
+}

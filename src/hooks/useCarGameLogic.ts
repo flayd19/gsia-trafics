@@ -608,6 +608,55 @@ export function useCarGameLogic() {
     return { success: true, message: `${car.brand} ${car.model} adicionado à garagem!` };
   }, [saveGame]);
 
+  /**
+   * addOwnedCarToGarage — adiciona um OwnedCar existente (vindo do P2P) à garagem.
+   * NÃO desconta dinheiro (o dinheiro já foi descontado antes via spendMoney).
+   * Gera novo instanceId para o comprador.
+   */
+  const addOwnedCarToGarage = useCallback((car: OwnedCar, paidPrice: number): { success: boolean; message: string } => {
+    const state     = stateRef.current;
+    const emptySlot = state.garage.find(s => s.unlocked && !s.car);
+    if (!emptySlot) return { success: false, message: 'Garagem cheia! Libere uma vaga primeiro.' };
+
+    const carToAdd: OwnedCar = {
+      ...car,
+      instanceId:       generateId(),      // nova instância para o comprador
+      purchasePrice:    paidPrice,
+      purchasedAt:      Date.now(),
+      completedRepairs: car.completedRepairs ?? [],
+      inRepair:         undefined,          // remove estado de reparo do vendedor
+    };
+
+    setGameState(prev => ({
+      ...prev,
+      garage:          prev.garage.map(s => s.id === emptySlot.id ? { ...s, car: carToAdd } : s),
+      reputation:      addXp(prev.reputation, 1).reputation,
+      totalCarsBought: (prev.totalCarsBought ?? 0) + 1,
+      totalSpent:      (prev.totalSpent ?? 0) + paidPrice,
+    }));
+
+    setTimeout(() => void saveGame(), 400);
+    return { success: true, message: `${car.brand} ${car.model} adicionado à garagem!` };
+  }, [saveGame]);
+
+  /**
+   * removeCarFromGarage — remove um carro da garagem pelo instanceId.
+   * Usado quando uma listagem P2P do vendedor é marcada como vendida.
+   */
+  const removeCarFromGarage = useCallback((instanceId: string): void => {
+    setGameState(prev => ({
+      ...prev,
+      garage: prev.garage.map(s =>
+        s.car?.instanceId === instanceId ? { ...s, car: undefined } : s
+      ),
+    }));
+    setTimeout(() => void saveGame(), 400);
+  }, [saveGame]);
+
+  // ── Derived values ────────────────────────────────────────────
+  const garageCarCount = gameState.garage.filter(s => s.car).length;
+  const reputation     = gameState.reputation;
+
   // ── Expõe estado e ações ──────────────────────────────────────
   return {
     gameState,
@@ -615,10 +664,14 @@ export function useCarGameLogic() {
     isSyncing,
     saveStatus,
     formatGameTime,
+    reputation,
+    garageCarCount,
 
     buyCarFromMarketplace,
     makeOfferOnMarketplace,
     addCarFromGlobal,
+    addOwnedCarToGarage,
+    removeCarFromGarage,
 
     unlockGarageSlot,
     startRepair,
@@ -633,7 +686,28 @@ export function useCarGameLogic() {
     saveGame,
     resetGame,
 
-    repairTypes:   REPAIR_TYPES,
+    repairTypes:    REPAIR_TYPES,
+    garageSlotDefs: GARAGE_SLOTS,
+  };
+}
+
+    addOwnedCarToGarage,
+    removeCarFromGarage,
+
+    unlockGarageSlot,
+    startRepair,
+
+    sendOfferToBuyer,
+    resolveBuyerDecision,
+    dismissBuyer,
+
+    refreshMarketplace,
+    addMoney,
+    spendMoney,
+    saveGame,
+    resetGame,
+
+    repairTypes:    REPAIR_TYPES,
     garageSlotDefs: GARAGE_SLOTS,
   };
 }

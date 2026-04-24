@@ -495,124 +495,48 @@ export function FornecedoresCarrosScreen({
               onClick={() => void onRefreshMarketplace()}
               className="w-9 h-9 rounded-full ios-surface flex items-center justify-center active:scale-95 transition-transform"
               aria-label="Atualizar mercado"
+       
             >
-              <RefreshCw size={16} className="text-muted-foreground" />
+              <RefreshCw size={16} className={loading ? 'animate-spin text-primary' : 'text-muted-foreground'} />
             </button>
           </div>
-        </div>
-
-        {/* Saldo */}
-        <div className="ios-surface rounded-[12px] px-3 py-2 flex justify-between items-center">
-          <span className="text-[12px] text-muted-foreground">Seu saldo</span>
-          <span className="text-[15px] font-bold text-foreground tabular-nums">
-            {new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL', maximumFractionDigits: 0 }).format(gameState.money)}
-          </span>
-        </div>
-
-        {/* Próxima renovação — só mostra quando online */}
-        {minsLeft != null && isOnline && (
-          <div className="flex items-center gap-2 px-3 py-2 rounded-[10px] bg-primary/5 border border-primary/10">
-            <Clock size={12} className="text-primary shrink-0" />
-            <span className="text-[11px] text-primary font-medium">
-              {minsLeft === 0
-                ? 'Novos carros chegando em instantes…'
-                : `Novo lote em ${minsLeft} min — compre antes que acabem!`}
-            </span>
-          </div>
-        )}
-
-        {/* Busca */}
-        <div className="relative">
-          <Search size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground" />
-          <Input
-            placeholder="Buscar marca ou modelo..."
-            value={search}
-            onChange={e => setSearch(e.target.value)}
-            className="pl-8 h-9 text-[13px]"
-          />
-          {search && (
-            <button onClick={() => setSearch('')} className="absolute right-3 top-1/2 -translate-y-1/2">
-              <X size={14} className="text-muted-foreground" />
-            </button>
-          )}
-        </div>
-
-        {/* Filtro de categoria */}
-        <div className="flex gap-2 overflow-x-auto pb-1 scrollbar-hide">
-          <button
-            onClick={() => setSelectedCat('all')}
-            className={`shrink-0 px-3 py-1.5 rounded-full text-[11px] font-semibold transition-colors ${
-              selectedCat === 'all' ? 'bg-primary text-primary-foreground' : 'bg-muted text-muted-foreground'
-            }`}
-          >
-            Todos
-          </button>
-          {categories.map(cat => (
-            <button
-              key={cat}
-              onClick={() => setSelectedCat(cat)}
-              className={`shrink-0 px-3 py-1.5 rounded-full text-[11px] font-semibold transition-colors ${
-                selectedCat === cat ? 'bg-primary text-primary-foreground' : 'bg-muted text-muted-foreground'
-              }`}
-            >
-              {CATEGORY_LABELS[cat]}
-            </button>
-          ))}
         </div>
       </div>
 
-      {/* Grid */}
-      <div className="flex-1 overflow-y-auto px-4 pb-4">
-        {loading ? (
-          <div className="text-center py-16 text-muted-foreground">
-            <div className="text-[40px] mb-3 animate-spin inline-block">🔄</div>
-            <p className="text-[14px] font-semibold mt-2">Carregando mercado…</p>
-            <p className="text-[12px] mt-1">Buscando carros disponíveis</p>
-          </div>
-        ) : globalCars.length === 0 ? (
-          <div className="text-center py-16 text-muted-foreground space-y-3">
-            <div className="text-[40px]">🏎️</div>
-            <p className="text-[14px] font-semibold">Nenhum carro no momento</p>
-            <p className="text-[12px]">Toque em atualizar para tentar novamente</p>
-            <button
-              onClick={() => void onRefreshMarketplace()}
-              className="mt-2 px-4 py-2 rounded-full bg-primary text-primary-foreground text-[12px] font-semibold active:scale-95 transition-transform"
-            >
-              Atualizar mercado
-            </button>
-          </div>
-        ) : cars.length === 0 ? (
-          <div className="text-center py-12 text-muted-foreground">
-            <div className="text-[40px] mb-3">🔍</div>
-            <p className="text-[14px] font-semibold">Nenhum carro encontrado</p>
-            <p className="text-[12px] mt-1">Tente outro filtro</p>
-          </div>
-        ) : (
-          <div className="grid grid-cols-2 gap-3">
-            {cars.map(car => (
-              <MarketplaceCard
+      {/* Car grid */}
+      {loading ? (
+        <div className="flex flex-col items-center justify-center py-16 gap-3">
+          <RefreshCw size={28} className="animate-spin text-primary" />
+          <p className="text-[13px] text-muted-foreground font-medium">Carregando mercado…</p>
+        </div>
+      ) : globalCars.length === 0 ? (
+        <div className="flex flex-col items-center justify-center py-16 gap-3">
+          <div className="text-5xl">🚗</div>
+          <p className="text-[14px] font-semibold text-foreground">Mercado vazio</p>
+          <p className="text-[12px] text-muted-foreground text-center">
+            Nenhum carro disponível no momento.
+          </p>
+          <button
+            onClick={() => void onRefreshMarketplace()}
+            className="mt-1 px-4 py-2 rounded-[12px] bg-primary text-primary-foreground text-[13px] font-semibold active:scale-95 transition-transform"
+          >
+            Tentar novamente
+          </button>
+        </div>
+      ) : (
+        <div className="space-y-3">
+          {[...globalCars]
+            .sort((a, b) => (a.status === 'available' ? -1 : 1) - (b.status === 'available' ? -1 : 1))
+            .map(car => (
+              <CarCard
                 key={car.id}
                 car={car}
-                canAfford={gameState.money >= car.askingPrice}
-                hasGarageSpace={hasGarageSpace}
-                onClick={() => setSelectedCar(car)}
+                money={gameState.money}
+                onBuy={onBuyCar}
+                onOffer={onMakeOffer}
               />
             ))}
-          </div>
-        )}
-      </div>
-
-      {/* Detail sheet — portal para document.body para evitar conflito de z-index */}
-      {selectedCar && createPortal(
-        <CarDetailSheet
-          car={selectedCar}
-          canAfford={gameState.money >= selectedCar.askingPrice}
-          hasGarageSpace={hasGarageSpace}
-          onBuy={() => handleBuy(selectedCar)}
-          onOffer={(value) => handleOffer(selectedCar.id, value)}
-          onClose={() => setSelectedCar(null)}
-        />,
-        document.body
+        </div>
       )}
     </div>
   );

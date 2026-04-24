@@ -135,13 +135,15 @@ export interface PlayerMarketListing {
   quantity: number;
   price_per_unit: number;
   total_price: number;
+  /** Dados completos do carro (OwnedCar serializado) para entrega ao comprador */
+  car_data?: OwnedCar | null;
   status: PlayerMarketListingStatus;
   buyer_id?: string | null;
   buyer_name?: string | null;
   sold_at?: string | null;
   paid_out_at?: string | null;
   created_at: string;
-  expires_at: string;
+  expires_at?: string | null;
 }
 
 export interface CreateListingInput {
@@ -151,6 +153,8 @@ export interface CreateListingInput {
   category?: string | null;
   quantity: number;
   price_per_unit: number;
+  /** Dados completos do carro para entrega ao comprador */
+  car_data?: OwnedCar | null;
 }
 
 export interface PurchaseResult {
@@ -256,5 +260,15 @@ export function ensureGameState(raw: Partial<GameState>): GameState {
     overdraftLimit: raw.overdraftLimit ?? -30_000,
     lastInterestCalculation: raw.lastInterestCalculation ?? 0,
     completedOrders: raw.completedOrders ?? 0,
+  };
+}
+ought: raw.totalCarsBought ?? 0,
+    reputation: ensureReputation(raw.reputation),
+    gameTime: raw.gameTime ?? { day: 1, hour: 8, minute: 0, lastUpdate: Date.now() },
+    overdraftLimit: raw.overdraftLimit ?? -50_000,
+    lastInterestCalculation: raw.lastInterestCalculation ?? Date.now(),
+    completedOrders: raw.completedOrders ?? 0,
+  };
+}
   };
 }
