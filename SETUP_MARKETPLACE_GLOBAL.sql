@@ -66,6 +66,26 @@ CREATE POLICY "marketplace_meta_select"
   TO authenticated
   USING (true);
 
+-- Jogadores autenticados podem inserir e deletar carros do inventário global
+-- (necessário para o cliente popular o lote após try_claim_marketplace_refresh)
+DROP POLICY IF EXISTS "marketplace_global_insert" ON marketplace_global;
+CREATE POLICY "marketplace_global_insert"
+  ON marketplace_global FOR INSERT
+  TO authenticated
+  WITH CHECK (true);
+
+DROP POLICY IF EXISTS "marketplace_global_delete" ON marketplace_global;
+CREATE POLICY "marketplace_global_delete"
+  ON marketplace_global FOR DELETE
+  TO authenticated
+  USING (true);
+
+DROP POLICY IF EXISTS "marketplace_global_update" ON marketplace_global;
+CREATE POLICY "marketplace_global_update"
+  ON marketplace_global FOR UPDATE
+  TO authenticated
+  USING (true);
+
 -- ── try_claim_marketplace_refresh() ──────────────────────────────
 -- Tenta "ganhar" o slot de refresh de forma atômica.
 -- Retorna o novo batch_id se ganhou, NULL se outro jogador já atualizou.

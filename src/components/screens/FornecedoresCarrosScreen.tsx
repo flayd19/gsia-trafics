@@ -18,6 +18,7 @@ interface FornecedoresCarrosScreenProps {
   globalCars: GlobalCar[];
   loading: boolean;
   isOnline: boolean;
+  errorMsg?: string | null;
   minsLeft: number | null;
   onBuyCar: (car: GlobalCar) => Promise<{ success: boolean; message: string }>;
   onMakeOffer: (carId: string, value: number) => Promise<{ success: boolean; message: string; finalPrice?: number }>;
@@ -411,6 +412,7 @@ export function FornecedoresCarrosScreen({
   globalCars,
   loading,
   isOnline,
+  errorMsg,
   minsLeft,
   onBuyCar,
   onMakeOffer,
@@ -554,9 +556,13 @@ export function FornecedoresCarrosScreen({
           <div className="flex flex-col items-center justify-center py-16 gap-3">
             <div className="text-5xl">🚗</div>
             <p className="text-[14px] font-semibold text-foreground">Mercado vazio</p>
-            <p className="text-[12px] text-muted-foreground text-center">
-              Nenhum carro disponível no momento.
-            </p>
+            {errorMsg ? (
+              <p className="text-[11px] text-red-500 text-center px-4 font-mono break-all">{errorMsg}</p>
+            ) : (
+              <p className="text-[12px] text-muted-foreground text-center">
+                Nenhum carro disponível no momento.
+              </p>
+            )}
             <button
               onClick={() => void onRefreshMarketplace()}
               className="mt-1 px-4 py-2 rounded-[12px] bg-primary text-primary-foreground text-[13px] font-semibold active:scale-95 transition-transform"
