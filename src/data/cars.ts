@@ -42,8 +42,10 @@ export function conditionColor(condition: number): string {
 
 /** Fator de valor de mercado baseado na condição (0-100 → 0.35 a 1.0) */
 export function conditionValueFactor(condition: number): number {
-  // Novo (100) = 100% da FIPE; Sucata (0) = 35%
-  return 0.35 + (condition / 100) * 0.65;
+  // Novo (100) = 100% da FIPE; Sucata (0) = 10%
+  // Faixa real: [0.10, 1.00] — permite que veículos com condition baixa
+  // sejam gerados abaixo do piso de 22% e recebam o clamp corretamente.
+  return 0.10 + (condition / 100) * 0.90;
 }
 
 /**
@@ -777,13 +779,18 @@ export function buildMarketplaceInventory(): MarketplaceCar[] {
   const result: MarketplaceCar[] = [];
   CAR_MODELS.forEach(model => {
     model.variants.forEach(variant => {
-      // Condição varia: maioria boa, alguns regulares
+      // Condição varia: maioria boa, poucos em estado de sucata
+      // A faixa mais baixa (sucata: 1-15) combinada com a nova fórmula
+      // de conditionValueFactor produz preços abaixo de 22% da FIPE,
+      // ativando corretamente o piso de MIN_ASKING_PRICE_RATIO.
       const conditionRoll = Math.random();
-      const condition = conditionRoll > 0.7
-        ? Math.floor(70 + Math.random() * 25)  // 70-95 (bom-ótimo)
-        : conditionRoll > 0.3
-        ? Math.floor(45 + Math.random() * 30)  // 45-75 (regular-bom)
-        : Math.floor(20 + Math.random() * 30); // 20-50 (ruim-regular)
+      const condition = conditionRoll > 0.70
+        ? Math.floor(70 + Math.random() * 25)  // 70-95  (bom-ótimo)    30%
+        : conditionRoll > 0.30
+        ? Math.floor(40 + Math.random() * 30)  // 40-70  (regular-bom)  40%
+        : conditionRoll > 0.05
+        ? Math.floor(15 + Math.random() * 25)  // 15-40  (ruim)         25%
+        : Math.floor(1  + Math.random() * 15); //  1-15  (sucata)        5%
 
       // 1. Valor base: FIPE × fator de condição
       const basePrice = Math.round(variant.fipePrice * conditionValueFactor(condition));
