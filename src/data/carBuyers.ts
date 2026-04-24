@@ -212,8 +212,8 @@ export const BUYER_TEMPLATES: BuyerTemplate[] = [
 // Sistema de ciclos (30 min)
 // ─────────────────────────────────────────────────────────────────
 
-/** Duração de um ciclo de compradores em milissegundos (30 min) */
-export const BUYER_CYCLE_MS = 30 * 60 * 1_000;
+/** Duração de um ciclo de compradores em milissegundos (10 min) */
+export const BUYER_CYCLE_MS = 10 * 60 * 1_000;
 
 /** Índice do ciclo atual; incrementa a cada 30 minutos de tempo real */
 export function currentCycleEpoch(): number {
