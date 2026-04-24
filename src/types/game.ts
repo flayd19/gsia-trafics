@@ -1,312 +1,125 @@
-// Game Types - Tycoon Minimalista
+// =====================================================================
+// Game Types — GSIA Trafics · Compra e Venda de Carros
+// =====================================================================
 
-export interface Product {
-  id: string;
-  name: string;
-  displayName: string;
-  icon?: string;
-  space: number; // Espaço ocupado
-  baseCost: number; // Custo de operação
-  baseStreetPrice: number; // Preço de rua base
-  currentPrice: number; // Preço atual com oscilação
-  priceDirection: 'up' | 'down' | 'stable';
-  riskLevel?: string;
-  category?: string; // Categoria do produto
-  isIllicit?: boolean; // Indica se o produto é ilícito (sujeito a apreensão)
-  /**
-   * Marca o produto como uma CAIXA que, ao chegar no estoque, se desmembra
-   * em `units` unidades do produto base (`productId`). Também afeta o cálculo
-   * de espaço: a caixa ocupa `units` slots no veículo/galpão em vez de 1.
-   */
-  boxContents?: {
-    productId: string; // id do produto base que está dentro da caixa
-    units: number;     // quantas unidades do produto base a caixa contém
-  };
-}
+import type { MarketplaceCar } from '@/data/cars';
 
-export interface ProductCategory {
-  id: string;
-  name: string;
+// ── Re-exportar para conveniência ──────────────────────────────────
+export type { MarketplaceCar } from '@/data/cars';
+
+// ── Carro em posse do jogador ─────────────────────────────────────
+export interface OwnedCar {
+  /** UUID único da instância (mesmo modelo pode ter várias instâncias) */
+  instanceId: string;
+  modelId: string;
+  variantId: string;
+  /** Nome completo cacheado ex: "Volkswagen Gol 1.0 Trend" */
+  fullName: string;
+  brand: string;
+  model: string;
+  trim: string;
+  year: number;
   icon: string;
+  /** Preço FIPE de referência no momento da compra */
+  fipePrice: number;
+  /** Condição 0-100 */
+  condition: number;
+  /** Preço pago na aquisição */
+  purchasePrice: number;
+  purchasedAt: number; // timestamp
+  /** Se está em reparo na oficina */
+  inRepair?: boolean;
+  repairCompletesAt?: number; // timestamp
+  repairTypeId?: string;
+  repairGain?: number; // quanto de condição vai ganhar
+}
+
+// ── Slots da garagem ─────────────────────────────────────────────
+export interface GarageSlot {
+  id: number;
+  unlocked: boolean;
+  unlockCost: number;
+  car?: OwnedCar;
+}
+
+// ── Oficina / tipos de reparo ─────────────────────────────────────
+export interface RepairType {
+  id: string;
+  name: string;
   description: string;
+  icon: string;
+  baseCost: number;       // custo base em R$
+  conditionGain: number;  // pontos de condição ganhos (ex: 20 = +20%)
+  /** Duração em segundos REAIS (não in-game). Ex: 30 = 30s */
+  durationSec: number;
+  /** Condição mínima do carro para aplicar esse reparo */
+  minCondition?: number;
+  /** Condição máxima do carro (acima disso o reparo não faz sentido) */
+  maxCondition?: number;
 }
 
-export interface SelectedProduct {
-  productId: string;
-  quantity: number;
-}
+// ── Compradores de carros (NPCs na aba Vendas) ────────────────────
+export type BuyerPersonality = 'racional' | 'emocional' | 'pechincha' | 'apressado' | 'curioso';
 
-export interface Vehicle {
+export interface CarBuyerNPC {
   id: string;
   name: string;
-  capacity: number; // Unidades que pode carregar
-  fuelCost: number; // Custo de combustível por viagem
-  price: number; // Preço original do veículo
-  assigned: boolean;
-  driverId?: string;
-  productId?: string;
-  quantity?: number;
-  active: boolean; // Se está em operação
-  tripStartTime?: number; // Timestamp do início da viagem
-  tripDuration: number; // Duração da viagem em segundos
-  seized?: boolean; // Se foi apreendido pela polícia
-  seizedTime?: number; // Timestamp da apreensão
-  lawyerPaid?: boolean; // Se o advogado foi pago
-  towTruckPaid?: boolean; // Se o guincho foi pago
-  towTruckStartTime?: number; // Timestamp do início do guincho
-  broken?: boolean; // Se o veículo estragou
-  brokenTime?: number; // Timestamp quando estragou
-  towTruckPaidForBreakdown?: boolean; // Se o guincho foi pago para conserto
-  repairPaid?: boolean; // Se o conserto na REVISA AUTOCENTER foi pago
-  repairStartTime?: number; // Timestamp do início do conserto
-  // Estatísticas do veículo
-  tripsCompleted?: number; // Número de viagens completadas
-  seizuresCount?: number; // Número de apreensões
-  breakdownsCount?: number; // Número de estragos
-  breakdownChance?: number; // Chance base de quebra do veículo (0-0.1)
-  // Campos adicionais usados na lógica
-  status?: string; // 'idle' | 'assigned' | 'traveling' etc.
-  assignedProduct?: string;
-  assignedQuantity?: number;
-  operationalCost?: number;
-  selectedProducts?: { productId: string; quantity: number }[];
+  avatar: string; // emoji
+  personality: BuyerPersonality;
+  /** IDs dos modelos que esse NPC está procurando. Vazio = qualquer. */
+  targetModelIds: string[];
+  /** Categorias aceitas. Vazio = qualquer. */
+  targetCategories: string[];
+  /**
+   * Disposição de pagar em relação à FIPE do carro na condição atual.
+   * Ex: { min: 0.7, max: 1.15 } → paga entre 70% e 115% da FIPE × condition_factor
+   * A sorte do jogador decide onde dentro desse range vai cair.
+   */
+  payRange: { min: number; max: number };
+  /** Pode oferecer um carro como parte do pagamento? */
+  hasTradeIn: boolean;
+  /** Carro de troca (gerado na hora se hasTradeIn=true) */
+  tradeInCar?: OwnedCar;
+  /** Valor do carro de troca */
+  tradeInValue?: number;
+  /** Quanto tempo o NPC fica disponível (segundos reais) */
+  patience: number;
+  arrivedAt: number; // timestamp
+  /** Estado: esperando oferta, pensando, decidido */
+  state: 'waiting' | 'thinking' | 'accepted' | 'rejected' | 'expired';
+  /** Timestamp que entrou no estado thinking */
+  thinkingStartedAt?: number;
+  /** Oferta enviada pelo jogador */
+  playerOffer?: number;
+  /** Inclui trade-in? */
+  playerIncludedTradeIn?: boolean;
+  /** Resultado final */
+  finalPrice?: number;
+  targetCarInstanceId?: string; // qual carro da garagem quer comprar
 }
 
-
-
-export interface Driver {
-  id: string;
-  name: string;
-  dailyWage: number; // Salário diário
-  repairDiscount: number; // Desconto em conserto (0-1)
-  breakdownChanceModifier?: number; // Modificador da chance de quebra (-1 a 1, onde -0.5 = 50% menos chance)
-  seizureChanceModifier?: number; // Modificador da chance de apreensão (-1 a 1)
-  experience: 'iniciante' | 'experiente';
-  assigned: boolean;
-  photo?: string;
-  description?: string;
-  vehicles?: string[];
-  trait?: string;
-  speedModifier?: number;
-  // Campos adicionais usados na lógica
-  vehicleId?: string;
-  hired?: boolean;
-}
-
-export interface Stock {
-  [productId: string]: number; // quantidade em estoque
-}
-
-export interface Warehouse {
-  id: string;
-  name: string;
-  capacity: number;
-  weeklyCost: number;
-  unlockRequirement: number;
-  /** Nível mínimo de reputação para desbloquear (opcional — default 1). */
-  levelRequirement?: number;
-  description: string;
-}
-
-/**
- * Sistema de Reputação / Nível do jogador.
- *
- * - 1 XP por venda concluída.
- * - 1 XP por viagem concluída sem quebra nem apreensão.
- * - Cada level up dobra o XP exigido: Lv2 = 20xp, Lv3 = 40xp, Lv4 = 80xp, ..., até o Lv 100.
- */
+// ── Reputação ────────────────────────────────────────────────────
 export interface Reputation {
-  /** Nível atual (1..100). */
   level: number;
-  /** XP acumulado dentro do nível atual (zera no level up). */
   xp: number;
-  /** XP total ganho durante toda a partida (só estatística). */
   totalXp: number;
 }
 
-export interface PoliceInterception {
-  vehicleId: string;
-  productId: string;
-  quantity: number;
-  moneyLost: number;
-  timestamp: number;
-}
-
-
-
-export interface PendingDelivery {
+// ── Histórico de vendas ───────────────────────────────────────────
+export interface CarSaleRecord {
   id: string;
-  buyerName: string;
-  product: string;
-  quantity: number;
-  totalValue: number;
-  reservedAt: number;
-}
-
-/**
- * Mercadoria comprada num fornecedor e que está aguardando retirada
- * por um veículo. Vai pro pool global `gameState.pendingPickups`.
- *
- * - O dinheiro já foi debitado no momento da compra (`unitCost * quantity`).
- * - Quando um veículo busca, ele pega itens FIFO até encher a capacidade.
- */
-export interface PendingPickup {
-  id: string;
-  productId: string;
-  quantity: number;
-  /** Preço unitário pago ao fornecedor (pra referência/ranking). */
-  unitCost: number;
-  /** Id da loja onde foi comprado (define distância da viagem). */
-  supplierId: string;
-  /** Timestamp da compra (pra ordenar FIFO). */
-  purchasedAt: number;
-}
-
-export interface VehicleSale {
-  id: string;
-  vehicleId: string;
-  vehicleName: string;
-  vehicleType: 'vehicle';
+  carInstanceId: string;
+  fullName: string;
+  purchasePrice: number;
   salePrice: number;
-  originalPrice: number;
-  soldAt: number; // timestamp
-  gameDay: number;
-}
-
-export interface ProductSale {
-  id: string;
-  productId: string;
-  productName: string;
-  quantity: number;
-  totalValue: number;
+  fipePrice: number;
+  condition: number;
   profit: number;
+  soldAt: number;
   gameDay: number;
-  soldAt: number; // timestamp
 }
 
-/**
- * Estatísticas acumuladas por produto. Usado no Galpão pra mostrar
- * preço médio de compra, preço médio de venda e último preço pago
- * — dados estratégicos pro jogador decidir quando e onde comprar/vender.
- */
-export interface ProductStats {
-  /** Total de unidades compradas ao longo do jogo (fornecedores). */
-  totalBought: number;
-  /** Total gasto em compras (dinheiro), pra calcular avg buy price. */
-  totalSpent: number;
-  /** Total de unidades vendidas (clientes + lojas). */
-  totalSold: number;
-  /** Receita bruta total (dinheiro), pra calcular avg sell price. */
-  totalRevenue: number;
-  /** Último preço pago por unidade em compra. 0 se nunca comprou. */
-  lastPurchasePrice: number;
-  /** Última venda por unidade. 0 se nunca vendeu. */
-  lastSalePrice: number;
-  /** Timestamp da última compra. */
-  lastPurchaseAt?: number;
-  /** Timestamp da última venda. */
-  lastSaleAt?: number;
-}
-
-export interface Store {
-  id: string;
-  name: string;
-  location: string;
-  purchasePrice: number; // Preço para comprar a loja
-  level: number; // Nível da loja (1-5)
-  maxCapacity: number; // Capacidade máxima de produtos
-  sellInterval: number; // Intervalo entre vendas em segundos
-  profitMultiplier: number; // Multiplicador de lucro
-  products: StoreProduct[]; // Produtos depositados na loja
-  owned: boolean; // Se o jogador possui a loja
-  lastSaleTime: number; // Timestamp da última venda
-  category: string; // Categoria de produtos que a loja vende
-  customName: string; // Nome personalizado da loja
-  isLocked: boolean; // Se a loja está bloqueada para novos depósitos
-}
-
-export interface StoreProduct {
-  productId: string;
-  quantity: number;
-  depositedAt: number; // Timestamp quando foi depositado
-}
-
-
-
-export interface GameState {
-  money: number;
-  vehicles: Vehicle[];
-  drivers: Driver[];
-  motorcycles?: any[]; // Motocicletas para entregas
-  stock: Stock;
-  inventory?: any; // Inventário geral
-  warehouseCapacity: number;
-  warehouseLevel?: number; // Nível do armazém
-  currentWarehouse: string;
-  currentTrips?: any[]; // Viagens atuais
-  lawyerHired?: boolean; // Se o advogado foi contratado
-  towTruckHired?: boolean; // Se o guincho foi contratado
-  lastPriceUpdate: number;
-  lastWeeklyCostPaid: number;
-  policeInterceptions: PoliceInterception[];
-  // Cheque especial
-  overdraftLimit: number; // Limite do cheque especial (30.000)
-  lastInterestCalculation: number; // Último dia que os juros foram calculados
-  completedOrders: number; // Número de pedidos completados
-  completedSalesInCycle: number; // Vendas completadas no ciclo atual
-  // Timer para geração de novos compradores
-  isWaitingForNewBuyers: boolean; // Se está aguardando para gerar novos compradores
-  newBuyersTimerStart: number; // Timestamp do início do timer
-  newBuyersTimerDuration: number; // Duração do timer em segundos (30s)
-  lastBuyerGeneration?: number; // Último dia que compradores foram gerados
-  gameTime: {
-    day: number;
-    hour: number;
-    minute: number;
-    lastUpdate: number;
-  };
-  // Entregas
-  pendingDeliveries: PendingDelivery[]; // Entregas pendentes
-  /** Pool de compras nos fornecedores aguardando retirada por veículo. */
-  pendingPickups: PendingPickup[];
-  // Histórico de vendas de veículos
-  vehicleSales: VehicleSale[]; // Histórico de vendas de veículos
-  // Histórico de vendas de produtos
-  productSales: ProductSale[]; // Histórico de vendas de produtos com lucro
-  /** Estatísticas agregadas por productId (preço médio, último preço, etc). */
-  productStats: Record<string, ProductStats>;
-  // Lojas
-  stores: Store[]; // Lojas disponíveis
-  /** Reputação do jogador (level + xp). Opcional pra compatibilidade com saves antigos. */
-  reputation?: Reputation;
-  // Campos adicionais usados em partes legadas
-  buyers?: any[];
-  pending_deliveries?: any[];
-  completed_orders?: number;
-}
-
-export interface MarketplaceItem {
-  id: string;
-  type: 'vehicle' | 'driver';
-  name: string;
-  price: number;
-  description: string;
-  specs?: any; // Especificações específicas
-  unlockRequirement?: number; // Dinheiro necessário para desbloquear
-  /** Nível mínimo de reputação para aparecer desbloqueado (opcional — default 1). */
-  levelRequirement?: number;
-  // Vehicle specific
-  seller?: string;
-  condition?: string;
-  // Driver specific
-  photo?: string;
-  vehicles?: string[];
-  trait?: string;
-}
-
-// =============================================================
-// Mercado P2P entre jogadores
-// =============================================================
+// ── Mercado P2P (mantido) ─────────────────────────────────────────
 export type PlayerMarketListingStatus = 'active' | 'sold' | 'cancelled' | 'expired';
 
 export interface PlayerMarketListing {
@@ -350,4 +163,96 @@ export interface PayoutResult {
   total: number;
   count: number;
   listings: PlayerMarketListing[];
+}
+
+// ── GameState Principal ───────────────────────────────────────────
+export interface GameState {
+  money: number;
+
+  /** Slots da garagem (1 grátis, demais compráveis) */
+  garage: GarageSlot[];
+
+  /** Reparos ativos */
+  activeRepairs: {
+    carInstanceId: string;
+    repairTypeId: string;
+    startedAt: number;
+    durationSec: number;
+    conditionGain: number;
+    cost: number;
+  }[];
+
+  /** Carros disponíveis no marketplace de fornecedores */
+  marketplaceCars: MarketplaceCar[];
+  /** Última vez que o marketplace foi recarregado */
+  marketplaceLastRefresh: number;
+
+  /** NPCs compradores ativos na aba Vendas */
+  carBuyers: CarBuyerNPC[];
+  lastBuyerGeneration: number;
+  isWaitingForNewBuyers: boolean;
+  newBuyersTimerStart: number;
+  newBuyersTimerDuration: number;
+
+  /** Histórico de vendas */
+  carSales: CarSaleRecord[];
+
+  /** Dinheiro total ganho com carros */
+  totalRevenue: number;
+  /** Total gasto em compras de carros */
+  totalSpent: number;
+  /** Carros vendidos */
+  totalCarsSold: number;
+  /** Carros comprados */
+  totalCarsBought: number;
+
+  /** Reputação / Nível */
+  reputation: Reputation;
+
+  /** Tempo do jogo */
+  gameTime: {
+    day: number;
+    hour: number;
+    minute: number;
+    lastUpdate: number;
+  };
+
+  /** Limite do cheque especial */
+  overdraftLimit: number;
+  lastInterestCalculation: number;
+
+  completedOrders: number;
+
+  // P2P market compatibility
+  buyers?: unknown[];
+  pending_deliveries?: unknown[];
+  completed_orders?: number;
+}
+
+// ── Helpers de tipo ───────────────────────────────────────────────
+
+/** Garante backwards-compat para saves antigos */
+export function ensureGameState(raw: Partial<GameState>): GameState {
+  return {
+    money: raw.money ?? 15_000,
+    garage: raw.garage ?? [{ id: 1, unlocked: true, unlockCost: 0, car: undefined }],
+    activeRepairs: raw.activeRepairs ?? [],
+    marketplaceCars: raw.marketplaceCars ?? [],
+    marketplaceLastRefresh: raw.marketplaceLastRefresh ?? 0,
+    carBuyers: raw.carBuyers ?? [],
+    lastBuyerGeneration: raw.lastBuyerGeneration ?? 0,
+    isWaitingForNewBuyers: raw.isWaitingForNewBuyers ?? false,
+    newBuyersTimerStart: raw.newBuyersTimerStart ?? 0,
+    newBuyersTimerDuration: raw.newBuyersTimerDuration ?? 30,
+    carSales: raw.carSales ?? [],
+    totalRevenue: raw.totalRevenue ?? 0,
+    totalSpent: raw.totalSpent ?? 0,
+    totalCarsSold: raw.totalCarsSold ?? 0,
+    totalCarsBought: raw.totalCarsBought ?? 0,
+    reputation: raw.reputation ?? { level: 1, xp: 0, totalXp: 0 },
+    gameTime: raw.gameTime ?? { day: 1, hour: 8, minute: 0, lastUpdate: Date.now() },
+    overdraftLimit: raw.overdraftLimit ?? -30_000,
+    lastInterestCalculation: raw.lastInterestCalculation ?? 0,
+    completedOrders: raw.completedOrders ?? 0,
+  };
 }

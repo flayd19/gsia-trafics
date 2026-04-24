@@ -1,148 +1,176 @@
-import { Card } from '@/components/ui/card';
-import { Button } from '@/components/ui/button';
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
-import { Switch } from '@/components/ui/switch';
-
-import { GameState, Product } from '@/types/game';
+import { TrendingUp, TrendingDown, Car, DollarSign, Wrench, ShoppingBag } from 'lucide-react';
+import type { GameState } from '@/types/game';
+import { conditionValueFactor } from '@/data/cars';
+import { ensureReputation, levelProgress, xpRequiredForLevel, MAX_LEVEL } from '@/lib/reputation';
 
 interface HomeScreenProps {
   gameState: GameState;
-  warehouseOccupation: number;
-  products: Product[];
+  onNavigate: (tab: string) => void;
 }
 
-export const HomeScreen = ({ gameState, warehouseOccupation, products }: HomeScreenProps) => {
-  const formatMoney = (value: number) => {
-    return new Intl.NumberFormat('pt-BR', {
-      style: 'currency',
-      currency: 'BRL'
-    }).format(value);
-  };
+const fmt = (v: number) =>
+  new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL', maximumFractionDigits: 0 }).format(v);
 
-  const getOccupationColor = (occupation: number) => {
-    if (occupation < 60) return 'text-success';
-    if (occupation < 80) return 'text-warning';
-    return 'text-danger';
-  };
+export function HomeScreen({ gameState, onNavigate }: HomeScreenProps) {
+  const rep = ensureReputation(gameState.reputation);
+  const isMaxLevel = rep.level >= MAX_LEVEL;
+  const xpNeeded = isMaxLevel ? 0 : xpRequiredForLevel(rep.level + 1);
+  const xpPct = Math.round(levelProgress(rep) * 100);
 
-  // Calcular métricas para o resumo de operações
-  const totalTrips = gameState.vehicles.reduce((sum: number, vehicle: any) => sum + (vehicle.tripsCompleted || 0), 0);
-  const totalVehicles = gameState.vehicles.length;
-  const totalDrivers = gameState.drivers.length;
-  
-  // Calcular lucro total real (baseado no histórico de vendas)
-  const totalProfit = gameState.productSales?.reduce((sum, sale) => sum + sale.profit, 0) || 0;
-  
-  // Calcular lucro semanal
-  const getWeeklyProfit = () => {
-    const currentDay = gameState.gameTime.day;
-    const currentWeek = Math.ceil(currentDay / 7);
-    const weekStartDay = (currentWeek - 1) * 7 + 1;
-    const weekEndDay = currentWeek * 7;
-    
-    const weeklyProfit = gameState.productSales?.filter(sale => 
-      sale.gameDay >= weekStartDay && sale.gameDay <= weekEndDay
-    ).reduce((sum, sale) => sum + sale.profit, 0) || 0;
-    
-    return {
-      profit: weeklyProfit,
-      weekNumber: currentWeek,
-      weekRange: `Dia ${weekStartDay} - ${weekEndDay}`
-    };
-  };
-  
-  const weeklyData = getWeeklyProfit();
-  
-  // Encontrar produto mais vendido (simulado baseado no estoque atual - produtos com menos estoque foram mais vendidos)
-  const getMostSoldProduct = () => {
-    const stockEntries = Object.entries(gameState.stock as Record<string, number>);
-    if (stockEntries.length === 0) return 'Nenhum';
-    
-    // Produto com menor estoque relativo à capacidade inicial (mais vendido)
-    let mostSold = 'Nenhum';
-    let maxSales = 0;
-    
-    stockEntries.forEach(([productId, currentStock]) => {
-      const product = products.find(p => p.id === productId);
-      if (product) {
-        // Estimar vendas baseado na diferença do estoque inicial
-        const estimatedSales = Math.max(0, 100 - currentStock); // Assumindo estoque inicial de 100
-        if (estimatedSales > maxSales) {
-          maxSales = estimatedSales;
-          mostSold = product.displayName;
-        }
-      }
-    });
-    
-    return mostSold;
-  };
-  
-  const mostSoldProduct = getMostSoldProduct();
-  const activeVehicles = gameState.vehicles.filter((v: any) => v.active).length;
-  const totalStock = Object.values(gameState.stock as Record<string, number>).reduce((sum: number, qty: number) => sum + qty, 0);
+  const carsInGarage = gameState.garage.filter(s => s.unlocked && s.car).map(s => s.car!);
+  const garageValue = carsInGarage.reduce((sum, car) => sum + Math.round(car.fipePrice * conditionValueFactor(car.condition)), 0);
 
-  const hasAnyVehicle = gameState.vehicles.some((v: any) => v.id && !v.sold);
+  const totalCarsBought = gameState.totalCarsBought ?? 0;
+  const totalCarsSold = gameState.totalCarsSold ?? 0;
+  const totalRevenue = gameState.totalRevenue ?? 0;
+  const totalSpent = gameState.totalSpent ?? 0;
+  const netProfit = totalRevenue - totalSpent;
+
+  const lastSales = [...(gameState.carSales ?? [])].reverse().slice(0, 3);
+  const pendingRepairs = gameState.activeRepairs ?? [];
+  const activeBuyers = (gameState.carBuyers ?? []).filter(b => b.state === 'waiting' || b.state === 'thinking');
+
+  const quickActions = [
+    { icon: ShoppingBag, label: 'Comprar Carro', sub: `${gameState.marketplaceCars.length} disponíveis`, tab: 'fornecedores', color: 'text-blue-500 bg-blue-500/10' },
+    { icon: DollarSign, label: 'Vender', sub: `${activeBuyers.length} comprador(es)`, tab: 'vendas', color: 'text-emerald-500 bg-emerald-500/10' },
+    { icon: Wrench, label: 'Oficina', sub: `${carsInGarage.length} na garagem`, tab: 'oficina', color: 'text-orange-500 bg-orange-500/10' },
+    { icon: Car, label: 'Garagem', sub: `${carsInGarage.length} / ${gameState.garage.filter(s => s.unlocked).length} vagas`, tab: 'garagem', color: 'text-purple-500 bg-purple-500/10' },
+  ];
 
   return (
-    <div className="space-y-6">
-      {/* Aviso: jogador sem veículos */}
-      {!hasAnyVehicle && (
-        <Card className="p-4 border-primary/40 bg-primary/5">
-          <div className="text-center space-y-1">
-            <div className="text-primary font-bold text-base">🚗 Você não tem nenhum veículo</div>
-            <div className="text-sm text-muted-foreground">
-              Compre carros no <span className="font-semibold text-foreground">Marketplace</span> pra começar a fazer viagens.
-            </div>
+    <div className="space-y-5">
+      <div>
+        <h2 className="font-game-title text-2xl font-bold text-foreground tracking-tight">
+          Bem-vindo, Alife!
+        </h2>
+        <p className="text-[13px] text-muted-foreground mt-0.5">
+          Dia {gameState.gameTime.day} &middot; Compre, conserte e venda carros
+        </p>
+      </div>
+
+      <div className="grid grid-cols-2 gap-3">
+        <div className="ios-surface rounded-[16px] p-4 space-y-1">
+          <div className="text-[10px] uppercase tracking-wider text-muted-foreground font-semibold">Garagem</div>
+          <div className="font-game-title text-2xl font-bold text-foreground">{carsInGarage.length}</div>
+          <div className="text-[11px] text-muted-foreground">carros</div>
+          <div className="text-[12px] font-semibold text-emerald-500">{fmt(garageValue)}</div>
+        </div>
+        <div className="ios-surface rounded-[16px] p-4 space-y-1">
+          <div className="text-[10px] uppercase tracking-wider text-muted-foreground font-semibold">Lucro Total</div>
+          <div className={`font-game-title text-2xl font-bold ${netProfit >= 0 ? 'text-emerald-500' : 'text-red-500'}`}>
+            {netProfit >= 0 ? '+' : ''}{fmt(netProfit)}
           </div>
-        </Card>
+          <div className="text-[11px] text-muted-foreground">{totalCarsSold} vendidos</div>
+        </div>
+      </div>
+
+      <div className="grid grid-cols-3 gap-2">
+        <div className="ios-surface rounded-[14px] p-3 text-center">
+          <div className="text-[9px] uppercase tracking-wider text-muted-foreground font-semibold mb-1">Comprados</div>
+          <div className="font-bold text-[16px] text-foreground">{totalCarsBought}</div>
+        </div>
+        <div className="ios-surface rounded-[14px] p-3 text-center">
+          <div className="text-[9px] uppercase tracking-wider text-muted-foreground font-semibold mb-1">Vendidos</div>
+          <div className="font-bold text-[16px] text-foreground">{totalCarsSold}</div>
+        </div>
+        <div className="ios-surface rounded-[14px] p-3 text-center">
+          <div className="text-[9px] uppercase tracking-wider text-muted-foreground font-semibold mb-1">Reparos</div>
+          <div className="font-bold text-[16px] text-foreground">{pendingRepairs.length}</div>
+        </div>
+      </div>
+
+      <div>
+        <div className="text-[11px] uppercase tracking-wider text-muted-foreground font-semibold px-1 mb-3">
+          Acesso Rapido
+        </div>
+        <div className="grid grid-cols-2 gap-3">
+          {quickActions.map(({ icon: Icon, label, sub, tab, color }) => (
+            <button
+              key={tab}
+              onClick={() => onNavigate(tab)}
+              className="ios-surface rounded-[14px] p-4 text-left space-y-2 active:scale-[0.98] transition-transform"
+            >
+              <div className={`w-10 h-10 rounded-[12px] flex items-center justify-center ${color}`}>
+                <Icon size={20} />
+              </div>
+              <div>
+                <div className="font-semibold text-[13px] text-foreground">{label}</div>
+                <div className="text-[11px] text-muted-foreground">{sub}</div>
+              </div>
+            </button>
+          ))}
+        </div>
+      </div>
+
+      {activeBuyers.length > 0 && (
+        <div
+          className="bg-emerald-500/10 border border-emerald-500/30 rounded-[12px] px-4 py-3 cursor-pointer active:opacity-80"
+          onClick={() => onNavigate('vendas')}
+        >
+          <div className="font-semibold text-[14px] text-emerald-600">
+            {activeBuyers.length} comprador(es) esperando!
+          </div>
+          <div className="text-[11px] text-emerald-600/80 mt-0.5">Toque para ver as propostas</div>
+        </div>
       )}
 
-      {/* Aviso de galpão lotando */}
-      {warehouseOccupation >= 80 && (
-        <Card className="p-4 border-warning bg-warning/5">
-          <div className="text-center">
-            <div className="text-warning font-bold mb-2">📦 Galpão Lotando</div>
-            <div className="text-sm text-muted-foreground">
-              Galpão {warehouseOccupation}% ocupado. Considere fazer vendas.
-            </div>
+      {pendingRepairs.length > 0 && (
+        <div
+          className="bg-primary/10 border border-primary/30 rounded-[12px] px-4 py-3 cursor-pointer active:opacity-80"
+          onClick={() => onNavigate('oficina')}
+        >
+          <div className="font-semibold text-[14px] text-primary">
+            {pendingRepairs.length} carro(s) em reparo
           </div>
-        </Card>
+          <div className="text-[11px] text-primary/70 mt-0.5">Toque para acompanhar</div>
+        </div>
       )}
 
-      {/* Resumo da operação */}
-      <Card className="p-4">
-        <h3 className="font-semibold mb-3">Resumo da Operação</h3>
-        <div className="space-y-2 text-sm">
-          <div className="flex justify-between">
-            <span className="text-muted-foreground">🚛 Viagens Realizadas:</span>
-            <span className="font-medium">{totalTrips}</span>
+      {lastSales.length > 0 && (
+        <div>
+          <div className="text-[11px] uppercase tracking-wider text-muted-foreground font-semibold px-1 mb-3">
+            Ultimas Vendas
           </div>
-          <div className="flex justify-between">
-            <span className="text-muted-foreground">📦 Produto Mais Vendido:</span>
-            <span className="font-medium">{mostSoldProduct}</span>
-          </div>
-          <div className="flex justify-between">
-            <span className="text-muted-foreground">📊 Lucro Semanal ({weeklyData.weekRange}):</span>
-            <span className="font-medium text-success">{formatMoney(weeklyData.profit)}</span>
-          </div>
-          <div className="flex justify-between">
-            <span className="text-muted-foreground">💰 Lucro Total:</span>
-            <span className="font-medium text-green-600">{formatMoney(totalProfit)}</span>
-          </div>
-          <div className="flex justify-between">
-            <span className="text-muted-foreground">🚗 Carros:</span>
-            <span className="font-medium">{totalVehicles}</span>
-          </div>
-          <div className="flex justify-between">
-            <span className="text-muted-foreground">👨‍💼 Motoristas:</span>
-            <span className="font-medium">{totalDrivers}</span>
+          <div className="space-y-2">
+            {lastSales.map(sale => (
+              <div key={sale.id} className="ios-surface rounded-[12px] px-4 py-3 flex items-center gap-3">
+                <div className="flex-1 min-w-0">
+                  <div className="font-semibold text-[13px] truncate">{sale.fullName}</div>
+                  <div className="text-[11px] text-muted-foreground">Dia {sale.gameDay}</div>
+                </div>
+                <div className="text-right">
+                  <div className="font-bold text-[13px]">{fmt(sale.salePrice)}</div>
+                  <div className={`text-[11px] font-semibold flex items-center gap-0.5 justify-end ${sale.profit >= 0 ? 'text-emerald-500' : 'text-red-500'}`}>
+                    {sale.profit >= 0 ? <TrendingUp size={10} /> : <TrendingDown size={10} />}
+                    {sale.profit >= 0 ? '+' : ''}{fmt(sale.profit)}
+                  </div>
+                </div>
+              </div>
+            ))}
           </div>
         </div>
-      </Card>
+      )}
 
-
-
-
+      <div className="ios-surface rounded-[16px] p-4 space-y-3">
+        <div className="flex items-center justify-between">
+          <div>
+            <div className="font-bold text-[15px] text-foreground">Nivel {rep.level}</div>
+            <div className="text-[11px] text-muted-foreground">
+              {isMaxLevel ? 'Nivel maximo!' : `${rep.xp} / ${xpNeeded} XP`}
+            </div>
+          </div>
+          <div className="text-right text-[11px] text-muted-foreground">
+            <div>{totalCarsSold} vendidos</div>
+            <div>{totalCarsBought} comprados</div>
+          </div>
+        </div>
+        <div className="w-full h-2 bg-muted rounded-full overflow-hidden">
+          <div
+            className="h-full rounded-full transition-all"
+            style={{ width: `${xpPct}%`, background: 'var(--gradient-primary)' }}
+          />
+        </div>
+      </div>
     </div>
   );
-};
+}
