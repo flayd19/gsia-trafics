@@ -41,25 +41,25 @@ export function conditionColor(condition: number): string {
 }
 
 /**
- * Fator de valor de mercado baseado na condição — lógica fixa por faixa (+8 %).
+ * Fator de valor de mercado baseado na condição — lógica fixa por faixa (+12 %).
  *
- *   condition ≥ 85  →  1.08  (108 % da FIPE — excelente estado)
- *   condition 60–84 →  0.95  (95 %  da FIPE — bom / regular)
- *   condition < 60  →  0.65–0.81 da FIPE  (quanto pior, mais próximo de 0.65)
+ *   condition ≥ 85  →  1.12  (112 % da FIPE — excelente estado)
+ *   condition 60–84 →  0.99  (99 %  da FIPE — bom / regular)
+ *   condition < 60  →  0.68–0.84 da FIPE  (quanto pior, mais próximo de 0.68)
  *
  * Esta é a ÚNICA fórmula de valor de mercado do sistema.
  * Usada em: marketplace, compradores, negociações e exibição de preço.
  */
 export function conditionValueFactor(condition: number): number {
-  if (condition >= 85) return 1.08;
-  if (condition >= 60) return 0.95;
-  // Abaixo de 60: gravidade proporcional — condition 59 → 0.81, condition 0 → 0.65
+  if (condition >= 85) return 1.12;
+  if (condition >= 60) return 0.99;
+  // Abaixo de 60: gravidade proporcional — condition 59 → 0.84, condition 0 → 0.68
   const ratio = condition / 59; // mapeia [0, 59] → [0, 1]
-  return 0.65 + ratio * 0.16;
+  return 0.68 + ratio * 0.16;
 }
 
-/** Piso mínimo de listagem — nenhum veículo pode ser listado por menos que 95 % da FIPE. */
-export const MIN_SALE_PRICE_RATIO = 0.95;
+/** Piso mínimo de listagem na aba de compra — 85 % da FIPE. */
+export const MIN_SALE_PRICE_RATIO = 0.85;
 
 /**
  * Preço de listagem no mercado global.

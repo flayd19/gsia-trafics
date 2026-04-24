@@ -535,19 +535,26 @@ export function spawnBuyer(id: string): CarBuyerNPC {
  */
 export const COUNTER_OFFER_RATIO = 1.30;
 
-/** Calcula o valor que o comprador está disposto a pagar (com sorte) */
+/**
+ * Calcula o valor que o comprador está disposto a pagar.
+ *
+ * Range: entre valor_mercado (FIPE × conditionValueFactor) e FIPE puro.
+ * Aleatoriedade uniforme dentro do intervalo — quanto melhor o carro, mais
+ * próximo da FIPE o comprador tende a pagar.
+ *
+ *   low  = min(valor_mercado, FIPE)
+ *   high = max(valor_mercado, FIPE)
+ *   oferta = low + random × (high − low)
+ */
 export function calculateBuyerOffer(
-  buyer: CarBuyerNPC,
+  _buyer: CarBuyerNPC,
   fipePrice: number,
   condition: number,
 ): number {
-  const baseFipe = fipePrice * conditionValueFactor(condition);
-  // Range de pagamento baseado na personalidade
-  const { min, max } = buyer.payRange;
-  // Sorte: distribuição não-linear (mais provável pagar próximo do min)
-  const luck = Math.pow(Math.random(), 1.4); // skewed toward lower values
-  const factor = min + luck * (max - min);
-  return Math.round(baseFipe * factor);
+  const marketValue = fipePrice * conditionValueFactor(condition);
+  const low  = Math.min(marketValue, fipePrice);
+  const high = Math.max(marketValue, fipePrice);
+  return Math.round(low + Math.random() * (high - low));
 }
 
 /**
@@ -581,14 +588,17 @@ export function evaluatePlayerOffer(
   condition: number,
 ): boolean {
   const marketValue = fipePrice * conditionValueFactor(condition);
-  const ratio       = playerOfferPrice / marketValue;
+  // Teto real do comprador: o maior entre valor_mercado e FIPE
+  const buyerMax = Math.max(marketValue, fipePrice);
+  const ratio    = playerOfferPrice / buyerMax;
 
-  // ── 1. Chance base pelo ratio preço/mercado ─────────────────────
+  // ── 1. Chance base pelo ratio preço/teto_comprador ──────────────
+  // ratio ≤ 1.0 → pede dentro do que o comprador pagaria → alta chance
   let baseChance: number;
-  if (ratio <= 0.95) {
+  if (ratio <= 0.90) {
     baseChance = 90 + Math.random() * 10;  // 90–100 %
   } else if (ratio <= 1.00) {
-    baseChance = 70 + Math.random() * 20;  // 70–90 %
+    baseChance = 75 + Math.random() * 15;  // 75–90 %
   } else if (ratio <= 1.10) {
     baseChance = 40 + Math.random() * 30;  // 40–70 %
   } else {
