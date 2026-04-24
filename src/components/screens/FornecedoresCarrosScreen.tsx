@@ -34,6 +34,8 @@ const CATEGORY_LABELS: Record<CarCategory, string> = {
   pickup:    '🛻 Pickup',
   esportivo: '🏎️ Esportivo',
   eletrico:  '⚡ Elétrico',
+  classico:  '🏛️ Clássico',
+  luxo:      '💎 Luxo',
 };
 
 // ── Painel de oferta ──────────────────────────────────────────────

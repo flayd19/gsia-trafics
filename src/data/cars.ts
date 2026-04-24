@@ -51,15 +51,15 @@ export function conditionColor(condition: number): string {
  * Usada em: marketplace, compradores, negociações e exibição de preço.
  */
 export function conditionValueFactor(condition: number): number {
-  if (condition >= 85) return 1.12;
-  if (condition >= 60) return 0.99;
-  // Abaixo de 60: gravidade proporcional — condition 59 → 0.84, condition 0 → 0.68
+  if (condition >= 85) return 1.16;
+  if (condition >= 60) return 1.03;
+  // Abaixo de 60: gravidade proporcional — condition 59 → 0.88, condition 0 → 0.72
   const ratio = condition / 59; // mapeia [0, 59] → [0, 1]
-  return 0.68 + ratio * 0.16;
+  return 0.72 + ratio * 0.16;
 }
 
-/** Piso mínimo de listagem na aba de compra — 85 % da FIPE. */
-export const MIN_SALE_PRICE_RATIO = 0.85;
+/** Piso mínimo de listagem na aba de compra — 81 % da FIPE. */
+export const MIN_SALE_PRICE_RATIO = 0.81;
 
 /**
  * Preço de listagem no marketplace de compra.
