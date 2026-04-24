@@ -67,8 +67,8 @@ function rowToGlobalCar(row: MarketplaceRow): GlobalCar {
 }
 
 function carsToRows(cars: MarketplaceCar[], batchId: number) {
-  return cars.map(car => ({
-    id:            `${car.variantId}_b${batchId}`,
+  return cars.map((car, idx) => ({
+    id:            `${car.variantId}_b${batchId}_${idx}`,
     model_id:      car.modelId,
     variant_id:    car.variantId,
     brand:         car.brand,

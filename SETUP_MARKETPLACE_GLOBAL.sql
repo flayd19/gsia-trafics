@@ -161,6 +161,41 @@ $$;
 
 GRANT EXECUTE ON FUNCTION buy_marketplace_car(text, text) TO authenticated;
 
+-- ── activity_logs ──────────────────────────────────────────────���─
+-- Tabela de auditoria usada pelo useAuth para registrar login/logout.
+CREATE TABLE IF NOT EXISTS activity_logs (
+  id          uuid        PRIMARY KEY DEFAULT gen_random_uuid(),
+  user_id     uuid        REFERENCES auth.users(id) ON DELETE SET NULL,
+  action_type text        NOT NULL,
+  action_data jsonb,
+  session_id  text,
+  ip_address  inet,
+  created_at  timestamptz DEFAULT now()
+);
+
+CREATE INDEX IF NOT EXISTS idx_al_user_id ON activity_logs (user_id);
+CREATE INDEX IF NOT EXISTS idx_al_created ON activity_logs (created_at DESC);
+
+ALTER TABLE activity_logs ENABLE ROW LEVEL SECURITY;
+
+DROP POLICY IF EXISTS "activity_logs_insert" ON activity_logs;
+CREATE POLICY "activity_logs_insert"
+  ON activity_logs FOR INSERT
+  TO authenticated
+  WITH CHECK (user_id = auth.uid());
+
+DROP POLICY IF EXISTS "activity_logs_select" ON activity_logs;
+CREATE POLICY "activity_logs_select"
+  ON activity_logs FOR SELECT
+  TO authenticated
+  USING (user_id = auth.uid());
+
+DROP POLICY IF EXISTS "activity_logs_delete" ON activity_logs;
+CREATE POLICY "activity_logs_delete"
+  ON activity_logs FOR DELETE
+  TO authenticated
+  USING (user_id = auth.uid());
+
 -- ── Realtime publication ──────────────────────────────────────────
 -- Adiciona marketplace_global ao canal de Realtime do Supabase.
 -- (Só tem efeito se a publicação "supabase_realtime" existir.)
