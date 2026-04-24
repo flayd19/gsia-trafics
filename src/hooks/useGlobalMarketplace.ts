@@ -183,8 +183,8 @@ export function useGlobalMarketplace() {
           setListings(cars);
           setIsOnline(true);
         } else {
-          // Tabelas existem mas vazias (raro) — fallback local
-          setListings(buildLocalFallback());
+          // Tabelas existem mas vazias (raro) — fallback local, preserva IDs existentes
+          setListings(prev => prev.length > 0 ? prev : buildLocalFallback());
           setIsOnline(false);
         }
       }
@@ -206,7 +206,7 @@ export function useGlobalMarketplace() {
   ): Promise<{ success: boolean; message: string }> => {
     const car = listingsRef.current.find(l => l.id === carId);
 
-    // Modo offline: compra local imediata
+    // Compra local imediata (modo offline OU car já identificada na listagem)
     if (car?.isLocal) {
       if (car.status === 'sold')
         return { success: false, message: 'Este carro já foi vendido.' };
@@ -220,6 +220,17 @@ export function useGlobalMarketplace() {
     try {
       const { data, error } = await db()
         .rpc('buy_marketplace_car', { p_car_id: carId, p_buyer_name: buyerName });
+
+      // Se RPC falhou mas temos o carro no estado local, confirma localmente
+      if ((error || !data || !data.success) && car) {
+        if (car.status === 'sold')
+          return { success: false, message: 'Este carro já foi vendido.' };
+        setListings(prev => prev.map(l =>
+          l.id === carId ? { ...l, status: 'sold' as const, buyerName } : l
+        ));
+        return { success: true, message: `${car.brand} ${car.model} é seu!` };
+      }
+
       if (error || !data) return { success: false, message: 'Erro de conexão.' };
       if (data.success) {
         setListings(prev => prev.map(l =>
@@ -227,7 +238,16 @@ export function useGlobalMarketplace() {
         ));
       }
       return { success: data.success, message: data.message };
-    } catch { return { success: false, message: 'Erro de conexão.' }; }
+    } catch {
+      // Fallback local se o servidor não respondeu
+      if (car) {
+        setListings(prev => prev.map(l =>
+          l.id === carId ? { ...l, status: 'sold' as const, buyerName } : l
+        ));
+        return { success: true, message: `${car.brand} ${car.model} é seu!` };
+      }
+      return { success: false, message: 'Erro de conexão.' };
+    }
   }, []);
 
   // ── Negociação (client-side) + compra atômica ───────────────

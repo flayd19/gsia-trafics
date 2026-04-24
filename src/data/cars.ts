@@ -58,13 +58,17 @@ export function conditionValueFactor(condition: number): number {
   return 0.60 + ratio * 0.15;
 }
 
+/** Piso mínimo de venda — nenhum veículo pode ser vendido por menos que 88 % da FIPE. */
+export const MIN_SALE_PRICE_RATIO = 0.88;
+
 /**
  * Preço de listagem no mercado global.
- * Aplica diretamente conditionValueFactor — sem variação aleatória adicional,
- * garantindo consistência entre marketplace, compradores e negociações.
+ * Aplica conditionValueFactor com piso mínimo de MIN_SALE_PRICE_RATIO (88% da FIPE).
+ * Garante que nenhum veículo seja listado abaixo do valor mínimo de venda.
  */
 export function calcMarketAskingPrice(fipePrice: number, condition: number): number {
-  return Math.round(fipePrice * conditionValueFactor(condition));
+  const raw = Math.round(fipePrice * conditionValueFactor(condition));
+  return Math.max(raw, Math.round(fipePrice * MIN_SALE_PRICE_RATIO));
 }
 
 /**
