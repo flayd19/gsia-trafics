@@ -762,35 +762,36 @@ export function useCarGameLogic() {
       return { success: false, accepted: false, message: 'Carro não encontrado.' };
     }
 
-    const car           = slot.car;
-    const playerOffer   = buyer.playerOffer;
+    const car         = slot.car;
+    const playerOffer = buyer.playerOffer;
 
     // ── Avaliação em 3 vias ──────────────────────────────────────────
-    // buyerMax: valor máximo real que o comprador pagaria (calculado uma vez,
-    // sem re-randomização, para evitar inconsistências entre accept/counter)
-    const buyerMax       = calculateBuyerOffer(buyer, car.fipePrice, car.condition);
-    const tolerance      = buyer.personality === 'emocional' ? 0.05 : 0.01;
-    const acceptThreshold = buyerMax * (1 + tolerance);
+    // 1. Decisão probabilística baseada em condição e ratio de preço
+    const accepted = evaluatePlayerOffer(buyer, playerOffer, car.fipePrice, car.condition);
 
-    if (playerOffer > acceptThreshold && !buyer.counterOfferMade && playerOffer <= buyerMax * COUNTER_OFFER_RATIO) {
-      // ── Contraoferta: preço acima do ideal mas dentro da faixa de negociação ──
-      setGameState(prev => ({
-        ...prev,
-        carBuyers: prev.carBuyers.map(b =>
-          b.id === buyerId
-            ? { ...b, state: 'countering' as const, counterOffer: buyerMax, counterOfferMade: true }
-            : b
-        ),
-      }));
-      return {
-        success:      true,
-        accepted:     false,
-        counterOffer: buyerMax,
-        message:      `${buyer.name} fez uma contraoferta de ${formatMoney(buyerMax)}.`,
-      };
-    }
+    if (!accepted) {
+      // 2. Não aceitou → decide entre contraoferta e rejeição
+      // buyerMax: valor que o comprador pagaria (base para a contraoferta)
+      const buyerMax = calculateBuyerOffer(buyer, car.fipePrice, car.condition);
 
-    if (playerOffer > acceptThreshold) {
+      if (!buyer.counterOfferMade && playerOffer <= buyerMax * COUNTER_OFFER_RATIO) {
+        // ── Contraoferta: dentro da faixa negociável ──
+        setGameState(prev => ({
+          ...prev,
+          carBuyers: prev.carBuyers.map(b =>
+            b.id === buyerId
+              ? { ...b, state: 'countering' as const, counterOffer: buyerMax, counterOfferMade: true }
+              : b
+          ),
+        }));
+        return {
+          success:      true,
+          accepted:     false,
+          counterOffer: buyerMax,
+          message:      `${buyer.name} fez uma contraoferta de ${formatMoney(buyerMax)}.`,
+        };
+      }
+
       // ── Rejeição direta: preço muito alto ou já houve contraoferta ──
       const slotIdx   = buyer.slotIndex ?? -1;
       const lockEpoch = currentCycleEpoch();
@@ -807,9 +808,6 @@ export function useCarGameLogic() {
     }
 
     // ── Aceite ────────────────────────────────────────────────────────
-    const accepted = true;
-    void accepted; // satisfaz linter; variável mantida para clareza do fluxo
-
     let finalPrice = buyer.playerOffer;
     let tradeInCar: OwnedCar | undefined;
     if (buyer.playerIncludedTradeIn && buyer.tradeInCar && buyer.tradeInValue) {

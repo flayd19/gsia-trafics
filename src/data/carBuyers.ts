@@ -530,16 +530,66 @@ export function calculateBuyerOffer(
   return Math.round(baseFipe * factor);
 }
 
-/** Verifica se a oferta do jogador é aceitável para o comprador */
+/**
+ * Avalia a probabilidade de aceitação da oferta do jogador.
+ *
+ * Fluxo:
+ *  1. Calcula ratio = preço_jogador / valor_mercado  (FIPE × conditionValueFactor)
+ *  2. Define chance base pelo ratio:
+ *       ≤ 0.95 → 90–100 %
+ *       ≤ 1.00 → 70–90 %
+ *       ≤ 1.10 → 40–70 %
+ *       > 1.10 → 10–40 %
+ *  3. Ajuste por condição do veículo:
+ *       condition ≥ 60 → bônus = (condition − 60) × 0.5
+ *       condition < 60 → penalidade = (60 − condition) × 0.7
+ *  4. chance_final = base + bônus − penalidade, limitada a [0, 100]
+ *  5. Garantia mínima: se condition ≥ 60 → chance_final ≥ 60 %
+ *  6. Decisão: random [0,100] ≤ chance_final → aceita
+ *
+ * Compradores emocionais recebem +5 % de tolerância adicional no ratio.
+ */
 export function evaluatePlayerOffer(
   buyer: CarBuyerNPC,
   playerOfferPrice: number,
   fipePrice: number,
   condition: number,
 ): boolean {
-  const buyerWillingToPay = calculateBuyerOffer(buyer, fipePrice, condition);
-  // Aceita se o preço pedido for menor ou igual ao que está disposto a pagar
-  // + pequena tolerância emocional
-  const tolerance = buyer.personality === 'emocional' ? 0.05 : 0.01;
-  return playerOfferPrice <= buyerWillingToPay * (1 + tolerance);
+  const marketValue = fipePrice * conditionValueFactor(condition);
+  if (marketValue <= 0) return false;
+
+  // Tolerância extra para compradores emocionais
+  const emotionalBonus = buyer.personality === 'emocional' ? 5 : 0;
+
+  const ratio = playerOfferPrice / marketValue;
+
+  // 1. Chance base por ratio
+  let minChance: number;
+  let maxChance: number;
+  if (ratio <= 0.95) {
+    minChance = 90; maxChance = 100;
+  } else if (ratio <= 1.00) {
+    minChance = 70; maxChance = 90;
+  } else if (ratio <= 1.10) {
+    minChance = 40; maxChance = 70;
+  } else {
+    minChance = 10; maxChance = 40;
+  }
+  const baseChance = minChance + Math.random() * (maxChance - minChance);
+
+  // 2. Ajuste por condição
+  const bonus   = condition >= 60 ? (condition - 60) * 0.5 : 0;
+  const penalty = condition <  60 ? (60 - condition) * 0.7 : 0;
+
+  // 3. Chance final
+  let chance = baseChance + bonus - penalty + emotionalBonus;
+
+  // 4. Garantia mínima para carros em bom estado
+  if (condition >= 60) {
+    chance = Math.max(chance, 60);
+  }
+
+  // 5. Clamp e decisão
+  chance = Math.min(100, Math.max(0, chance));
+  return Math.random() * 100 <= chance;
 }

@@ -49,24 +49,55 @@ export function conditionValueFactor(condition: number): number {
 }
 
 /**
- * Proporção mínima do preço de venda/compra em relação à FIPE.
- * Nenhum veículo pode ser listado ou transacionado abaixo deste piso,
- * independentemente de condição, RNG ou modificadores de mercado.
+ * Proporção mínima do preço de negociação em relação à FIPE.
+ * Usado nas ofertas de compradores e no sistema de negociação.
  */
 export const MIN_ASKING_PRICE_RATIO = 0.22;
 
 /**
- * Aplica o piso econômico ao preço calculado.
- *
- * Ordem de cálculo esperada:
- *   1. Valor base  →  FIPE × conditionValueFactor(condition)
- *   2. Modificadores  →  variações de mercado, RNG, raridade
- *   3. Validação  →  clampAskingPrice()   ← obrigatório aqui
- *
- * Se o preço calculado for menor que 22 % da FIPE, é ajustado para o piso.
+ * Aplica o piso de negociação ao preço calculado (usado em negociações,
+ * não no marketplace — para marketplace use calcMarketAskingPrice).
  */
 export function clampAskingPrice(price: number, fipePrice: number): number {
   return Math.max(price, Math.round(fipePrice * MIN_ASKING_PRICE_RATIO));
+}
+
+/**
+ * Calcula o preço de listagem no mercado global com base em faixas de condição.
+ *
+ * Faixas de valor base:
+ *   condition > 80  →  90–97 % da FIPE  (bom/ótimo)
+ *   condition 60-80 →  85–90 % da FIPE  (regular)
+ *   condition < 60  →  79–85 % da FIPE  (ruim/sucata)
+ *
+ * Após definir o valor base, aplica variação de mercado: −4 % a +3 %.
+ * Piso absoluto: MIN_ASKING_PRICE_RATIO (22 % da FIPE).
+ */
+export function calcMarketAskingPrice(fipePrice: number, condition: number): number {
+  let minRatio: number;
+  let maxRatio: number;
+
+  if (condition > 80) {
+    minRatio = 0.90; maxRatio = 0.97;
+  } else if (condition >= 60) {
+    minRatio = 0.85; maxRatio = 0.90;
+  } else {
+    minRatio = 0.79; maxRatio = 0.85;
+  }
+
+  // 1. Valor base uniforme dentro da faixa
+  const baseRatio = minRatio + Math.random() * (maxRatio - minRatio);
+
+  // 2. Variação de mercado: −4 % a +3 %
+  const variation = 0.96 + Math.random() * 0.07;
+
+  const finalRatio = baseRatio * variation;
+
+  // 3. Piso absoluto: 22 % da FIPE
+  return Math.max(
+    Math.round(fipePrice * finalRatio),
+    Math.round(fipePrice * MIN_ASKING_PRICE_RATIO),
+  );
 }
 
 /**
@@ -774,50 +805,134 @@ export function carYear(modelId: string, variantId: string): number {
   return findVariant(model, variantId)?.year ?? 0;
 }
 
-/** Carros disponíveis no marketplace de fornecedores (todos com variações) */
+// ── Constantes de geração do mercado ────────────────────────────
+/** Mínimo de veículos gerados por ciclo de 30 min. */
+const MARKET_MIN_BATCH = 40;
+/** Máximo de veículos gerados por ciclo de 30 min. */
+const MARKET_MAX_BATCH = 60;
+/** Proporção mínima de veículos populares no mercado. */
+const POPULAR_MIN_RATIO = 0.30;
+/** Quantas vezes o mesmo modelo pode aparecer no mesmo ciclo. */
+const MAX_SAME_MODEL = 2;
+
+/**
+ * Gera um único veículo aleatório a partir de um modelo.
+ * Condições ponderadas: 30% bom-ótimo · 40% regular · 25% ruim · 5% sucata.
+ */
+function buildOneCar(model: CarModel): MarketplaceCar {
+  const variant = model.variants[Math.floor(Math.random() * model.variants.length)];
+  const roll = Math.random();
+  const condition = roll > 0.70
+    ? Math.floor(70 + Math.random() * 25)  // 70-95  (bom-ótimo)  30%
+    : roll > 0.30
+    ? Math.floor(40 + Math.random() * 30)  // 40-70  (regular)    40%
+    : roll > 0.05
+    ? Math.floor(15 + Math.random() * 25)  // 15-40  (ruim)       25%
+    : Math.floor(1  + Math.random() * 15); //  1-15  (sucata)      5%
+
+  return {
+    id:           `mp_${variant.id}_${Date.now()}_${Math.random().toString(36).slice(2, 6)}`,
+    modelId:      model.id,
+    variantId:    variant.id,
+    brand:        model.brand,
+    model:        model.model,
+    trim:         variant.trim,
+    year:         variant.year,
+    fipePrice:    variant.fipePrice,
+    condition,
+    askingPrice:  calcMarketAskingPrice(variant.fipePrice, condition),
+    icon:         model.icon,
+    category:     model.category,
+    seller:       MARKETPLACE_SELLERS[Math.floor(Math.random() * MARKETPLACE_SELLERS.length)],
+    pendingOffer: null,
+  };
+}
+
+/**
+ * Seleciona `count` modelos de `pool` com limite de repetição por modelo
+ * (`MAX_SAME_MODEL`). Garante variedade mesmo em pools pequenos.
+ */
+function pickModels(pool: CarModel[], count: number): CarModel[] {
+  if (pool.length === 0) return [];
+  const picked: CarModel[] = [];
+  const usage = new Map<string, number>();
+
+  for (let attempts = 0; attempts < count * 12 && picked.length < count; attempts++) {
+    const m = pool[Math.floor(Math.random() * pool.length)];
+    if ((usage.get(m.id) ?? 0) < MAX_SAME_MODEL) {
+      picked.push(m);
+      usage.set(m.id, (usage.get(m.id) ?? 0) + 1);
+    }
+  }
+  // Fallback sem restrição caso o pool seja muito pequeno
+  while (picked.length < count) {
+    picked.push(pool[Math.floor(Math.random() * pool.length)]);
+  }
+  return picked;
+}
+
+/**
+ * Gera o inventário do mercado global para um ciclo de 30 min.
+ *
+ * Distribuição por ciclo:
+ *   • Total: 40–60 veículos (aleatório)
+ *   • ≥ 30 % populares
+ *   • 1 garantido de cada outra categoria (medio / suv / pickup / esportivo / eletrico)
+ *   • Restante: preenchimento aleatório de qualquer categoria
+ *   • Máximo de 2 aparições do mesmo modelo por ciclo
+ */
 export function buildMarketplaceInventory(): MarketplaceCar[] {
-  const result: MarketplaceCar[] = [];
-  CAR_MODELS.forEach(model => {
-    model.variants.forEach(variant => {
-      // Condição varia: maioria boa, poucos em estado de sucata
-      // A faixa mais baixa (sucata: 1-15) combinada com a nova fórmula
-      // de conditionValueFactor produz preços abaixo de 22% da FIPE,
-      // ativando corretamente o piso de MIN_ASKING_PRICE_RATIO.
-      const conditionRoll = Math.random();
-      const condition = conditionRoll > 0.70
-        ? Math.floor(70 + Math.random() * 25)  // 70-95  (bom-ótimo)    30%
-        : conditionRoll > 0.30
-        ? Math.floor(40 + Math.random() * 30)  // 40-70  (regular-bom)  40%
-        : conditionRoll > 0.05
-        ? Math.floor(15 + Math.random() * 25)  // 15-40  (ruim)         25%
-        : Math.floor(1  + Math.random() * 15); //  1-15  (sucata)        5%
+  // Agrupa modelos por categoria
+  const byCategory = new Map<CarCategory, CarModel[]>();
+  for (const m of CAR_MODELS) {
+    const list = byCategory.get(m.category) ?? [];
+    list.push(m);
+    byCategory.set(m.category, list);
+  }
 
-      // 1. Valor base: FIPE × fator de condição
-      const basePrice = Math.round(variant.fipePrice * conditionValueFactor(condition));
-      // 2. Modificador de mercado: variação aleatória ±15 %
-      const rawPrice  = Math.round(basePrice * (0.85 + Math.random() * 0.30));
-      // 3. Validação: aplica piso mínimo de MIN_ASKING_PRICE_RATIO × FIPE
-      const askingPrice = clampAskingPrice(rawPrice, variant.fipePrice);
+  const nonPopularCategories = (
+    ['medio', 'suv', 'pickup', 'esportivo', 'eletrico'] as CarCategory[]
+  ).filter(c => byCategory.has(c));
 
-      result.push({
-        id: `mp_${variant.id}_${Date.now()}_${Math.random().toString(36).slice(2, 6)}`,
-        modelId: model.id,
-        variantId: variant.id,
-        brand: model.brand,
-        model: model.model,
-        trim: variant.trim,
-        year: variant.year,
-        fipePrice: variant.fipePrice,
-        condition,
-        askingPrice,
-        icon: model.icon,
-        category: model.category,
-        seller: MARKETPLACE_SELLERS[Math.floor(Math.random() * MARKETPLACE_SELLERS.length)],
-        pendingOffer: null,
-      });
-    });
-  });
-  return result;
+  // Total do ciclo: 40–60
+  const total = MARKET_MIN_BATCH
+    + Math.floor(Math.random() * (MARKET_MAX_BATCH - MARKET_MIN_BATCH + 1));
+
+  // Quota de populares (mínimo 30 %)
+  const popularCount = Math.max(Math.ceil(total * POPULAR_MIN_RATIO), 1);
+
+  // 1 garantido por categoria não-popular
+  const guaranteedOtherCount = nonPopularCategories.length;
+
+  // Preenchimento dinâmico do restante
+  const fillCount = Math.max(0, total - popularCount - guaranteedOtherCount);
+
+  const selected: CarModel[] = [];
+
+  // 1. Populares
+  const popularPool = byCategory.get('popular') ?? [];
+  selected.push(...pickModels(popularPool, popularCount));
+
+  // 2. 1 garantido por categoria
+  for (const cat of nonPopularCategories) {
+    const pool = byCategory.get(cat) ?? [];
+    if (pool.length > 0) {
+      selected.push(pool[Math.floor(Math.random() * pool.length)]);
+    }
+  }
+
+  // 3. Preenchimento aleatório (qualquer categoria)
+  if (fillCount > 0) {
+    selected.push(...pickModels(CAR_MODELS, fillCount));
+  }
+
+  // Embaralha para não agrupar por categoria na UI
+  for (let i = selected.length - 1; i > 0; i--) {
+    const j = Math.floor(Math.random() * (i + 1));
+    [selected[i], selected[j]] = [selected[j], selected[i]];
+  }
+
+  return selected.map(buildOneCar);
 }
 
 /** Vendedores fictícios para o marketplace */
