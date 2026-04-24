@@ -10,6 +10,7 @@ import {
   garageSlotDailyCost,
   CAR_MODELS,
   conditionValueFactor,
+  MIN_ASKING_PRICE_RATIO,
   type MarketplaceCar,
 } from '@/data/cars';
 import { REPAIR_TYPES } from '@/data/repairTypes';
@@ -452,13 +453,15 @@ export function useCarGameLogic() {
     const emptySlot = state.garage.find(s => s.unlocked && !s.car);
     if (!emptySlot) return { success: false, message: 'Garagem cheia!' };
 
-    // Máximo 10% de desconto sobre o preço solicitado
-    const minOffer = Math.round(car.askingPrice * 0.90);
+    // Piso da oferta: o maior entre 90 % do preço pedido e 22 % da FIPE.
+    // Garante que nenhuma transação aconteça abaixo do piso econômico,
+    // mesmo que o preço de listagem esteja próximo do limite mínimo.
+    const minOffer = Math.max(
+      Math.round(car.askingPrice * 0.90),
+      Math.round(car.fipePrice * MIN_ASKING_PRICE_RATIO),
+    );
     if (offerValue < minOffer)
-      return {
-        success: false,
-        message: `Desconto máximo de 10%. Oferta mínima: ${formatMoney(minOffer)}.`,
-      };
+      return { success: false, message: 'Proposta muito baixa. O vendedor não aceita.' };
 
     if (state.money - offerValue < state.overdraftLimit)
       return { success: false, message: 'Saldo insuficiente.' };

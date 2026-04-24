@@ -47,6 +47,27 @@ export function conditionValueFactor(condition: number): number {
 }
 
 /**
+ * Proporção mínima do preço de venda/compra em relação à FIPE.
+ * Nenhum veículo pode ser listado ou transacionado abaixo deste piso,
+ * independentemente de condição, RNG ou modificadores de mercado.
+ */
+export const MIN_ASKING_PRICE_RATIO = 0.22;
+
+/**
+ * Aplica o piso econômico ao preço calculado.
+ *
+ * Ordem de cálculo esperada:
+ *   1. Valor base  →  FIPE × conditionValueFactor(condition)
+ *   2. Modificadores  →  variações de mercado, RNG, raridade
+ *   3. Validação  →  clampAskingPrice()   ← obrigatório aqui
+ *
+ * Se o preço calculado for menor que 22 % da FIPE, é ajustado para o piso.
+ */
+export function clampAskingPrice(price: number, fipePrice: number): number {
+  return Math.max(price, Math.round(fipePrice * MIN_ASKING_PRICE_RATIO));
+}
+
+/**
  * Daily rental cost for a garage slot (charged only when occupied).
  * Formula: 100 × 2^(n−1)
  * Slot 1 → R$100/day · Slot 2 → R$200/day · Slot 10 → R$51 200/day …
@@ -764,9 +785,12 @@ export function buildMarketplaceInventory(): MarketplaceCar[] {
         ? Math.floor(45 + Math.random() * 30)  // 45-75 (regular-bom)
         : Math.floor(20 + Math.random() * 30); // 20-50 (ruim-regular)
 
-      // Base = FIPE × condition factor → apply ±15% RNG
-      const basePrice   = Math.round(variant.fipePrice * conditionValueFactor(condition));
-      const askingPrice = Math.round(basePrice * (0.85 + Math.random() * 0.30));
+      // 1. Valor base: FIPE × fator de condição
+      const basePrice = Math.round(variant.fipePrice * conditionValueFactor(condition));
+      // 2. Modificador de mercado: variação aleatória ±15 %
+      const rawPrice  = Math.round(basePrice * (0.85 + Math.random() * 0.30));
+      // 3. Validação: aplica piso mínimo de MIN_ASKING_PRICE_RATIO × FIPE
+      const askingPrice = clampAskingPrice(rawPrice, variant.fipePrice);
 
       result.push({
         id: `mp_${variant.id}_${Date.now()}_${Math.random().toString(36).slice(2, 6)}`,

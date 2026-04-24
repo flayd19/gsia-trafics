@@ -9,7 +9,7 @@
  */
 import { useState, useEffect, useCallback, useRef } from 'react';
 import { supabase } from '@/integrations/supabase/client';
-import { buildMarketplaceInventory } from '@/data/cars';
+import { buildMarketplaceInventory, MIN_ASKING_PRICE_RATIO } from '@/data/cars';
 import type { MarketplaceCar } from '@/types/game';
 
 export interface GlobalCar extends MarketplaceCar {
@@ -243,13 +243,13 @@ export function useGlobalMarketplace() {
     if (car.status === 'sold') return { success: false, message: 'Este carro já foi vendido por outro jogador!' };
     if (offerValue <= 0)       return { success: false, message: 'Oferta inválida.' };
 
-    // Máximo 10% de desconto sobre o preço solicitado
-    const minOffer = Math.round(car.askingPrice * 0.90);
+    // Piso da oferta: o maior entre 90 % do preço pedido e 22 % da FIPE.
+    const minOffer = Math.max(
+      Math.round(car.askingPrice * 0.90),
+      Math.round(car.fipePrice * MIN_ASKING_PRICE_RATIO),
+    );
     if (offerValue < minOffer)
-      return {
-        success: false,
-        message: `Desconto máximo de 10%. Oferta mínima: ${fmt(minOffer)}.`,
-      };
+      return { success: false, message: 'Proposta muito baixa. O vendedor não aceita.' };
 
     if (playerMoney - offerValue < overdraftLimit)
       return { success: false, message: 'Saldo insuficiente para esta oferta.' };
