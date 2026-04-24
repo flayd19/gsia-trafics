@@ -233,16 +233,19 @@ export function nextCycleTimestamp(): number {
 
 /**
  * Número máximo de slots de comprador disponíveis para o nível do jogador.
- *   Nível 1  → 2 slots
- *   Nível 30 → 3 slots
- *   Nível 50 → 4 slots
- *   Nível 100 → 5 slots
+ *
+ * Progressão:
+ *   Nível  1–9  → 2 slots (base)
+ *   Nível 10    → 3 slots  (+1 a cada 10 níveis a partir daqui)
+ *   Nível 20    → 4 slots
+ *   Nível 30    → 5 slots
+ *   Nível 40    → 6 slots
+ *   Nível 50    → 7 slots  … e assim por diante
+ *
+ * Fórmula: 2 + floor(level / 10)
  */
 export function maxBuyerSlots(level: number): number {
-  if (level >= 100) return 5;
-  if (level >= 50)  return 4;
-  if (level >= 30)  return 3;
-  return 2;
+  return 2 + Math.floor(level / 10);
 }
 
 // ─────────────────────────────────────────────────────────────────

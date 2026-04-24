@@ -358,6 +358,20 @@ export function useCarGameLogic() {
           next = { ...next, activeRepairs: pendingRepairs, garage: updatedGarage };
         }
 
+        // ── Expansão imediata de slots ao subir de nível ──────────
+        // Garante que novos slots aparecem assim que o nível aumenta,
+        // sem esperar o próximo ciclo de 10 min.
+        {
+          const expectedSlots = maxBuyerSlots(next.reputation.level);
+          if ((next.buyerSlotLocks ?? []).length < expectedSlots) {
+            const extra = expectedSlots - (next.buyerSlotLocks ?? []).length;
+            next = {
+              ...next,
+              buyerSlotLocks: [...(next.buyerSlotLocks ?? []), ...new Array(extra).fill(-1)],
+            };
+          }
+        }
+
         // ── Ciclo de compradores (10 min) ─────────────────────────
         if (now >= next.nextBuyerCycleAt) {
           // Novo ciclo: regenera todos os slots (nenhum bloqueado no início do ciclo)
