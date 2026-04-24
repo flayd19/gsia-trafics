@@ -563,4 +563,57 @@ export function calculateBuyerOffer(
  *  3. Ajuste por condição do veículo:
  *       condition ≥ 60 → bônus = (condition − 60) × 0.5
  *       condition < 60 → penalidade = (60 − condition) × 0.7
- *  4. chance_final = base + bônus −
+ *  4. chance_final = base + bônus −penalidade, clampado em [0, 100].
+ *  5. Se condition ≥ 60 → chance mínima garantida de 60 %.
+ *  6. Retorna true se random × 100 ≤ chance_final.
+ *
+ * Bônus por personalidade:
+ *   emocional  → +10  (decide pelo coração)
+ *   apressado  → +8   (quer fechar logo)
+ *   curioso    → +0
+ *   racional   → +0
+ *   pechincha  → −8   (sempre tenta pagar menos)
+ */
+export function evaluatePlayerOffer(
+  buyer: CarBuyerNPC,
+  playerOfferPrice: number,
+  fipePrice: number,
+  condition: number,
+): boolean {
+  const marketValue = fipePrice * conditionValueFactor(condition);
+  const ratio       = playerOfferPrice / marketValue;
+
+  // ── 1. Chance base pelo ratio preço/mercado ─────────────────────
+  let baseChance: number;
+  if (ratio <= 0.95) {
+    baseChance = 90 + Math.random() * 10;  // 90–100 %
+  } else if (ratio <= 1.00) {
+    baseChance = 70 + Math.random() * 20;  // 70–90 %
+  } else if (ratio <= 1.10) {
+    baseChance = 40 + Math.random() * 30;  // 40–70 %
+  } else {
+    baseChance = 10 + Math.random() * 30;  // 10–40 %
+  }
+
+  // ── 2. Ajuste por condição do veículo ───────────────────────────
+  const bonus    = condition >= 60 ? (condition - 60) * 0.5 : 0;
+  const penalty  = condition <  60 ? (60 - condition) * 0.7 : 0;
+
+  // ── 3. Bônus por personalidade ──────────────────────────────────
+  const personalityBonus: Record<BuyerPersonality, number> = {
+    emocional: 10,
+    apressado:  8,
+    curioso:    0,
+    racional:   0,
+    pechincha: -8,
+  };
+  const emotionalBonus = personalityBonus[buyer.personality] ?? 0;
+
+  // ── 4. Chance final ─────────────────────────────────────────────
+  let chance = baseChance + bonus - penalty + emotionalBonus;
+
+  // ── 5. Garantia mínima para veículos em bom estado ─────────────
+  if (condition >= 60) chance = Math.max(chance, 60);
+
+  return Math.random() * 100 <= Math.min(100, Math.max(0, chance));
+}

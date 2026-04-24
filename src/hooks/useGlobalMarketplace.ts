@@ -9,7 +9,7 @@
  */
 import { useState, useEffect, useCallback, useRef } from 'react';
 import { supabase } from '@/integrations/supabase/client';
-import { buildMarketplaceInventory, MIN_ASKING_PRICE_RATIO } from '@/data/cars';
+import { buildMarketplaceInventory } from '@/data/cars';
 import type { MarketplaceCar } from '@/types/game';
 
 export interface GlobalCar extends MarketplaceCar {
@@ -243,11 +243,8 @@ export function useGlobalMarketplace() {
     if (car.status === 'sold') return { success: false, message: 'Este carro já foi vendido por outro jogador!' };
     if (offerValue <= 0)       return { success: false, message: 'Oferta inválida.' };
 
-    // Piso da oferta: o maior entre 90 % do preço pedido e 22 % da FIPE.
-    const minOffer = Math.max(
-      Math.round(car.askingPrice * 0.90),
-      Math.round(car.fipePrice * MIN_ASKING_PRICE_RATIO),
-    );
+    // Piso da oferta: 90 % do preço de listagem (que já reflete conditionValueFactor).
+    const minOffer = Math.round(car.askingPrice * 0.90);
     if (offerValue < minOffer)
       return { success: false, message: 'Vendedor recusou sua oferta.' };
 
@@ -299,36 +296,4 @@ export function useGlobalMarketplace() {
                   ? {
                       ...l,
                       status:    'sold' as const,
-                      buyerName: row.buyer_name ?? undefined,
-                      soldAt:    row.sold_at    ?? undefined,
-                    }
-                  : l
-              )
-            );
-          }
-        }
-      )
-      .subscribe();
-
-    // Poll de fallback (15 s) — cobre ambientes sem Realtime habilitado
-    const poll = setInterval(async () => {
-      if (!mountedRef.current) return;
-      if (nextRefreshRef.current && Date.now() > nextRefreshRef.current.getTime()) {
-        void loadMarketplace();
-        return;
-      }
-      if (!isOnline) return;
-      const cars = await fetchListings();
-      if (cars && mountedRef.current) setListings(cars);
-    }, POLL_MS);
-
-    return () => {
-      mountedRef.current = false;
-      clearInterval(poll);
-      void db().removeChannel(realtimeChannel);
-    };
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
-
-  return { listings, loading, isOnline, minsLeft, loadMarketplace, buyGlobal, makeOfferGlobal };
-}
+      

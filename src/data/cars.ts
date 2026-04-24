@@ -40,64 +40,31 @@ export function conditionColor(condition: number): string {
   return 'text-red-500';
 }
 
-/** Fator de valor de mercado baseado na condição (0-100 → 0.35 a 1.0) */
+/**
+ * Fator de valor de mercado baseado na condição — lógica fixa por faixa.
+ *
+ *   condition ≥ 85  →  1.00  (100 % da FIPE — excelente estado)
+ *   condition 60–84 →  0.88  (88 %  da FIPE — bom / regular)
+ *   condition < 60  →  0.60–0.75 da FIPE  (quanto pior, mais próximo de 0.60)
+ *
+ * Esta é a ÚNICA fórmula de valor de mercado do sistema.
+ * Usada em: marketplace, compradores, negociações e exibição de preço.
+ */
 export function conditionValueFactor(condition: number): number {
-  // Novo (100) = 100% da FIPE; Sucata (0) = 10%
-  // Faixa real: [0.10, 1.00] — permite que veículos com condition baixa
-  // sejam gerados abaixo do piso de 22% e recebam o clamp corretamente.
-  return 0.10 + (condition / 100) * 0.90;
+  if (condition >= 85) return 1.00;
+  if (condition >= 60) return 0.88;
+  // Abaixo de 60: gravidade proporcional — condition 59 → 0.75, condition 0 → 0.60
+  const ratio = condition / 59; // mapeia [0, 59] → [0, 1]
+  return 0.60 + ratio * 0.15;
 }
 
 /**
- * Proporção mínima do preço de negociação em relação à FIPE.
- * Usado nas ofertas de compradores e no sistema de negociação.
- */
-export const MIN_ASKING_PRICE_RATIO = 0.22;
-
-/**
- * Aplica o piso de negociação ao preço calculado (usado em negociações,
- * não no marketplace — para marketplace use calcMarketAskingPrice).
- */
-export function clampAskingPrice(price: number, fipePrice: number): number {
-  return Math.max(price, Math.round(fipePrice * MIN_ASKING_PRICE_RATIO));
-}
-
-/**
- * Calcula o preço de listagem no mercado global com base em faixas de condição.
- *
- * Faixas de valor base:
- *   condition > 80  →  90–97 % da FIPE  (bom/ótimo)
- *   condition 60-80 →  85–90 % da FIPE  (regular)
- *   condition < 60  →  79–85 % da FIPE  (ruim/sucata)
- *
- * Após definir o valor base, aplica variação de mercado: −4 % a +3 %.
- * Piso absoluto: MIN_ASKING_PRICE_RATIO (22 % da FIPE).
+ * Preço de listagem no mercado global.
+ * Aplica diretamente conditionValueFactor — sem variação aleatória adicional,
+ * garantindo consistência entre marketplace, compradores e negociações.
  */
 export function calcMarketAskingPrice(fipePrice: number, condition: number): number {
-  let minRatio: number;
-  let maxRatio: number;
-
-  if (condition > 80) {
-    minRatio = 0.90; maxRatio = 0.97;
-  } else if (condition >= 60) {
-    minRatio = 0.85; maxRatio = 0.90;
-  } else {
-    minRatio = 0.79; maxRatio = 0.85;
-  }
-
-  // 1. Valor base uniforme dentro da faixa
-  const baseRatio = minRatio + Math.random() * (maxRatio - minRatio);
-
-  // 2. Variação de mercado: −4 % a +3 %
-  const variation = 0.96 + Math.random() * 0.07;
-
-  const finalRatio = baseRatio * variation;
-
-  // 3. Piso absoluto: 22 % da FIPE
-  return Math.max(
-    Math.round(fipePrice * finalRatio),
-    Math.round(fipePrice * MIN_ASKING_PRICE_RATIO),
-  );
+  return Math.round(fipePrice * conditionValueFactor(condition));
 }
 
 /**
