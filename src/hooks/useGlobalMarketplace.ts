@@ -1,11 +1,11 @@
 /**
  * useGlobalMarketplace — Marketplace compartilhado entre todos os jogadores.
  *
- * - Todos os usuários veem os mesmos carros (tabela marketplace_global no Supabase)
- * - Quando alguém compra, o carro fica marcado como "Vendido para [nome]"
- * - A cada 30 minutos o inventário é renovado (novos carros entram)
- * - O primeiro usuário a carregar após 30 min "ganha" o slot de refresh e publica o novo lote
- * - Poll a cada 60s para refletir compras de outros jogadores em tempo real
+ * Comportamento:
+ *  - Modo online (Supabase OK): todos os usuários veem os mesmos carros
+ *  - Modo offline (tabelas não existem ainda): gera carros localmente como
+ *    fallback, o jogador ainda pode comprar (só não é compartilhado)
+ *  - Poll a cada 60s para refletir compras de outros jogadores em tempo real
  */
 import { useState, useEffect, useCallback, useRef } from 'react';
 import { supabase } from '@/integrations/supabase/client';
@@ -17,6 +17,8 @@ export interface GlobalCar extends MarketplaceCar {
   buyerName?: string;
   soldAt?: string;
   batchId: number;
+  /** true = Supabase indisponível; compra funciona só localmente */
+  isLocal?: boolean;
 }
 
 interface MarketplaceRow {
@@ -39,8 +41,8 @@ interface MarketplaceRow {
   batch_id: number;
 }
 
-const REFRESH_MS = 30 * 60 * 1000; // 30 minutos
-const POLL_MS    = 60 * 1000;       // poll a cada 60s
+const REFRESH_MS = 30 * 60 * 1000; // 30 min
+const POLL_MS    = 60 * 1_000;      // poll a cada 60s
 const db = () => supabase as any;
 
 function rowToGlobalCar(row: MarketplaceRow): GlobalCar {
@@ -63,26 +65,39 @@ function rowToGlobalCar(row: MarketplaceRow): GlobalCar {
     buyerName:    row.buyer_name  ?? undefined,
     soldAt:       row.sold_at     ?? undefined,
     batchId:      row.batch_id,
+    isLocal:      false,
   };
 }
 
 function carsToRows(cars: MarketplaceCar[], batchId: number) {
   return cars.map(car => ({
-    id:           `${car.variantId}_b${batchId}`,
-    model_id:     car.modelId,
-    variant_id:   car.variantId,
-    brand:        car.brand,
-    model:        car.model,
-    trim:         car.trim,
-    year:         car.year,
-    fipe_price:   car.fipePrice,
-    asking_price: car.askingPrice,
+    id:            `${car.variantId}_b${batchId}`,
+    model_id:      car.modelId,
+    variant_id:    car.variantId,
+    brand:         car.brand,
+    model:         car.model,
+    trim:          car.trim,
+    year:          car.year,
+    fipe_price:    car.fipePrice,
+    asking_price:  car.askingPrice,
     condition_pct: car.condition,
-    icon:         car.icon,
-    category:     car.category,
-    seller_name:  car.seller,
-    status:       'available',
-    batch_id:     batchId,
+    icon:          car.icon,
+    category:      car.category,
+    seller_name:   car.seller,
+    status:        'available',
+    batch_id:      batchId,
+  }));
+}
+
+/** Gera lote local quando o Supabase ainda não tem as tabelas configuradas */
+function buildLocalFallback(): GlobalCar[] {
+  const batchId = Math.floor(Date.now() / 1000);
+  return buildMarketplaceInventory().map(car => ({
+    ...car,
+    id:       `${car.variantId}_b${batchId}`,
+    status:   'available' as const,
+    batchId,
+    isLocal:  true,
   }));
 }
 
@@ -92,12 +107,17 @@ const fmt = (v: number) =>
 export function useGlobalMarketplace() {
   const [listings, setListings]           = useState<GlobalCar[]>([]);
   const [loading, setLoading]             = useState(true);
+  const [isOnline, setIsOnline]           = useState(false);
   const [nextRefreshAt, setNextRefreshAt] = useState<Date | null>(null);
   const [minsLeft, setMinsLeft]           = useState<number | null>(null);
   const mountedRef                        = useRef(true);
   const nextRefreshRef                    = useRef<Date | null>(null);
+  const listingsRef                       = useRef<GlobalCar[]>([]);
 
-  // ── Fetch current listings from Supabase ────────────────────
+  // Mantém ref sincronizado para usar em callbacks
+  useEffect(() => { listingsRef.current = listings; }, [listings]);
+
+  // ── Fetch listings do Supabase ───────────────────────────────
   const fetchListings = useCallback(async (): Promise<GlobalCar[] | null> => {
     try {
       const { data, error } = await db()
@@ -109,39 +129,41 @@ export function useGlobalMarketplace() {
     } catch { return null; }
   }, []);
 
-  // ── Full load: check freshness, maybe refresh, fetch all ────
+  // ── Carga completa: verifica freshness, faz refresh se necessário ──
   const loadMarketplace = useCallback(async () => {
     if (!mountedRef.current) return;
     setLoading(true);
     try {
-      // Get meta
-      const { data: meta } = await db()
+      // Lê o meta (último refresh)
+      const { data: meta, error: metaErr } = await db()
         .from('marketplace_meta')
         .select('last_refresh, batch_id')
         .eq('id', 1)
         .maybeSingle();
 
-      const lastMs  = meta?.last_refresh ? new Date(meta.last_refresh).getTime() : 0;
-      const ageMs   = Date.now() - lastMs;
-      const stale   = ageMs >= REFRESH_MS || !meta;
+      // Tabelas não existem ainda → fallback local
+      if (metaErr) throw metaErr;
+
+      const lastMs = meta?.last_refresh ? new Date(meta.last_refresh).getTime() : 0;
+      const stale  = Date.now() - lastMs >= REFRESH_MS || !meta;
 
       if (stale) {
-        // Try to claim the refresh slot (atomic UPDATE that only succeeds once)
-        const { data: newBatch } = await db().rpc('try_claim_marketplace_refresh');
+        // Tenta "ganhar" o slot de refresh (UPDATE atômico)
+        const { data: newBatch, error: rpcErr } = await db()
+          .rpc('try_claim_marketplace_refresh');
+
+        if (rpcErr) throw rpcErr;
 
         if (newBatch != null) {
-          // We won — generate new inventory and push to Supabase
+          // Ganhou: gera novo inventário e publica
           const freshCars = buildMarketplaceInventory();
           const rows      = carsToRows(freshCars, newBatch as number);
-
-          // Purge old batches then insert new
           await db().from('marketplace_global').delete().lt('batch_id', newBatch);
           await db().from('marketplace_global').insert(rows);
         }
-        // (if newBatch === null, another client already claimed it — just fetch below)
       }
 
-      // Re-read meta for next refresh time
+      // Relê meta para saber quando é o próximo refresh
       const { data: freshMeta } = await db()
         .from('marketplace_meta')
         .select('last_refresh')
@@ -154,18 +176,47 @@ export function useGlobalMarketplace() {
         nextRefreshRef.current = next;
       }
 
-      // Fetch listings
+      // Busca os carros
       const cars = await fetchListings();
-      if (cars && mountedRef.current) setListings(cars);
-    } catch { /* Supabase indisponível — listagem fica vazia */ }
-    finally { if (mountedRef.current) setLoading(false); }
+      if (mountedRef.current) {
+        if (cars && cars.length > 0) {
+          setListings(cars);
+          setIsOnline(true);
+        } else {
+          // Tabelas existem mas vazias (raro) — fallback local
+          setListings(buildLocalFallback());
+          setIsOnline(false);
+        }
+      }
+    } catch {
+      // Supabase indisponível ou tabelas não configuradas → fallback local
+      if (mountedRef.current) {
+        setListings(prev => prev.length > 0 ? prev : buildLocalFallback());
+        setIsOnline(false);
+      }
+    } finally {
+      if (mountedRef.current) setLoading(false);
+    }
   }, [fetchListings]);
 
-  // ── Atomic buy via RPC ───────────────────────────────────────
+  // ── Compra atômica via RPC ───────────────────────────────────
   const buyGlobal = useCallback(async (
     carId: string,
     buyerName: string
   ): Promise<{ success: boolean; message: string }> => {
+    const car = listingsRef.current.find(l => l.id === carId);
+
+    // Modo offline: compra local imediata
+    if (car?.isLocal) {
+      if (car.status === 'sold')
+        return { success: false, message: 'Este carro já foi vendido.' };
+      setListings(prev => prev.map(l =>
+        l.id === carId ? { ...l, status: 'sold' as const, buyerName } : l
+      ));
+      return { success: true, message: `${car.brand} ${car.model} é seu!` };
+    }
+
+    // Modo online: RPC atômica no Supabase
     try {
       const { data, error } = await db()
         .rpc('buy_marketplace_car', { p_car_id: carId, p_buyer_name: buyerName });
@@ -179,7 +230,7 @@ export function useGlobalMarketplace() {
     } catch { return { success: false, message: 'Erro de conexão.' }; }
   }, []);
 
-  // ── Make offer (client-side negotiation, then atomic buy) ───
+  // ── Negociação (client-side) + compra atômica ───────────────
   const makeOfferGlobal = useCallback(async (
     carId: string,
     offerValue: number,
@@ -187,13 +238,14 @@ export function useGlobalMarketplace() {
     playerMoney: number,
     overdraftLimit: number
   ): Promise<{ success: boolean; message: string; finalPrice?: number }> => {
-    const car = listings.find(l => l.id === carId);
-    if (!car)               return { success: false, message: 'Carro não encontrado.' };
+    const car = listingsRef.current.find(l => l.id === carId);
+    if (!car)                 return { success: false, message: 'Carro não encontrado.' };
     if (car.status === 'sold') return { success: false, message: 'Este carro já foi vendido por outro jogador!' };
-    if (offerValue <= 0)    return { success: false, message: 'Oferta inválida.' };
+    if (offerValue <= 0)      return { success: false, message: 'Oferta inválida.' };
     if (playerMoney - offerValue < overdraftLimit)
       return { success: false, message: 'Saldo insuficiente para esta oferta.' };
 
+    // Lógica de aceitação: ≥80% → sempre aceita; abaixo → probabilidade progressiva
     const accepted = offerValue >= car.askingPrice * 0.80
       ? true
       : Math.random() < (offerValue / car.askingPrice) * 0.85;
@@ -204,14 +256,15 @@ export function useGlobalMarketplace() {
     const result = await buyGlobal(carId, buyerName);
     if (!result.success) return result;
 
-    const msg = offerValue >= car.askingPrice * 0.90
-      ? `Oferta aceita! ${car.brand} ${car.model} na garagem.`
-      : `Desconto de ${Math.round(((car.askingPrice - offerValue) / car.askingPrice) * 100)}%! ${car.brand} ${car.model} por ${fmt(offerValue)}.`;
+    const discount = Math.round(((car.askingPrice - offerValue) / car.askingPrice) * 100);
+    const msg = discount <= 5
+      ? `Oferta aceita! ${car.brand} ${car.model} adicionado à garagem.`
+      : `Desconto de ${discount}%! ${car.brand} ${car.model} por ${fmt(offerValue)}.`;
 
     return { success: true, message: msg, finalPrice: offerValue };
-  }, [listings, buyGlobal]);
+  }, [buyGlobal]);
 
-  // ── Countdown timer (atualiza a cada 30s) ───────────────────
+  // ── Countdown (atualiza a cada 30s) ─────────────────────────
   useEffect(() => {
     const tick = () => {
       const next = nextRefreshRef.current;
@@ -223,19 +276,19 @@ export function useGlobalMarketplace() {
     return () => clearInterval(t);
   }, []);
 
-  // ── Mount: load + poll ───────────────────────────────────────
+  // ── Mount: carga inicial + poll ──────────────────────────────
   useEffect(() => {
     mountedRef.current = true;
     void loadMarketplace();
 
     const poll = setInterval(async () => {
       if (!mountedRef.current) return;
-      // Refresh completo se passou 30 min
       if (nextRefreshRef.current && Date.now() > nextRefreshRef.current.getTime()) {
         void loadMarketplace();
         return;
       }
-      // Senão só atualiza quem comprou
+      // Só atualiza status (quem comprou) se estiver online
+      if (!isOnline) return;
       const cars = await fetchListings();
       if (cars && mountedRef.current) setListings(cars);
     }, POLL_MS);
@@ -244,7 +297,8 @@ export function useGlobalMarketplace() {
       mountedRef.current = false;
       clearInterval(poll);
     };
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  return { listings, loading, minsLeft, loadMarketplace, buyGlobal, makeOfferGlobal };
+  return { listings, loading, isOnline, minsLeft, loadMarketplace, buyGlobal, makeOfferGlobal };
 }

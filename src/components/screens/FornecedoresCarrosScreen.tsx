@@ -16,6 +16,8 @@ import { conditionLabel, conditionColor, conditionValueFactor, type CarCategory 
 interface FornecedoresCarrosScreenProps {
   gameState: GameState;
   globalCars: GlobalCar[];
+  loading: boolean;
+  isOnline: boolean;
   minsLeft: number | null;
   onBuyCar: (car: GlobalCar) => Promise<{ success: boolean; message: string }>;
   onMakeOffer: (carId: string, value: number) => Promise<{ success: boolean; message: string; finalPrice?: number }>;
@@ -417,6 +419,8 @@ function MarketplaceCard({
 export function FornecedoresCarrosScreen({
   gameState,
   globalCars,
+  loading,
+  isOnline,
   minsLeft,
   onBuyCar,
   onMakeOffer,
@@ -474,11 +478,14 @@ export function FornecedoresCarrosScreen({
           <div>
             <h2 className="text-[18px] font-bold text-foreground">Comprar Veículos</h2>
             <p className="text-[12px] text-muted-foreground">
-              {availableCount} disponíveis · {globalCars.length - availableCount} vendidos
+              {loading ? 'Carregando…' : `${availableCount} disponíveis · ${globalCars.length - availableCount} vendidos`}
+              {!loading && !isOnline && globalCars.length > 0 && (
+                <span className="ml-1 text-amber-500">· modo local</span>
+              )}
             </p>
           </div>
           <div className="flex items-center gap-2">
-            {minsLeft != null && (
+            {!loading && minsLeft != null && isOnline && (
               <div className="flex items-center gap-1 px-2 py-1 rounded-full bg-muted text-[10px] font-semibold text-muted-foreground">
                 <Clock size={10} />
                 <span>{minsLeft}min</span>
@@ -502,8 +509,8 @@ export function FornecedoresCarrosScreen({
           </span>
         </div>
 
-        {/* Próxima renovação */}
-        {minsLeft != null && (
+        {/* Próxima renovação — só mostra quando online */}
+        {minsLeft != null && isOnline && (
           <div className="flex items-center gap-2 px-3 py-2 rounded-[10px] bg-primary/5 border border-primary/10">
             <Clock size={12} className="text-primary shrink-0" />
             <span className="text-[11px] text-primary font-medium">
@@ -556,11 +563,23 @@ export function FornecedoresCarrosScreen({
 
       {/* Grid */}
       <div className="flex-1 overflow-y-auto px-4 pb-4">
-        {globalCars.length === 0 ? (
-          <div className="text-center py-12 text-muted-foreground">
-            <div className="text-[40px] mb-3">🔄</div>
-            <p className="text-[14px] font-semibold">Carregando mercado…</p>
-            <p className="text-[12px] mt-1">Os carros aparecem em instantes</p>
+        {loading ? (
+          <div className="text-center py-16 text-muted-foreground">
+            <div className="text-[40px] mb-3 animate-spin inline-block">🔄</div>
+            <p className="text-[14px] font-semibold mt-2">Carregando mercado…</p>
+            <p className="text-[12px] mt-1">Buscando carros disponíveis</p>
+          </div>
+        ) : globalCars.length === 0 ? (
+          <div className="text-center py-16 text-muted-foreground space-y-3">
+            <div className="text-[40px]">🏎️</div>
+            <p className="text-[14px] font-semibold">Nenhum carro no momento</p>
+            <p className="text-[12px]">Toque em atualizar para tentar novamente</p>
+            <button
+              onClick={() => void onRefreshMarketplace()}
+              className="mt-2 px-4 py-2 rounded-full bg-primary text-primary-foreground text-[12px] font-semibold active:scale-95 transition-transform"
+            >
+              Atualizar mercado
+            </button>
           </div>
         ) : cars.length === 0 ? (
           <div className="text-center py-12 text-muted-foreground">

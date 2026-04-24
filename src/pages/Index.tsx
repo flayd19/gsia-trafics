@@ -66,6 +66,8 @@ const Index = () => {
 
   const {
     listings: globalCars,
+    loading: marketplaceLoading,
+    isOnline: marketplaceOnline,
     minsLeft,
     loadMarketplace,
     buyGlobal,
@@ -183,6 +185,8 @@ const Index = () => {
           <FornecedoresCarrosScreen
             gameState={gameState}
             globalCars={globalCars}
+            loading={marketplaceLoading}
+            isOnline={marketplaceOnline}
             minsLeft={minsLeft}
             onBuyCar={handleBuyCar}
             onMakeOffer={handleMakeOffer}
