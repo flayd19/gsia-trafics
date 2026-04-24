@@ -265,9 +265,20 @@ export function OficinaScreen({
 
   const selectedCar    = carsInGarage.find(c => c.instanceId === selectedCarId) ?? null;
   const cleaningRepair = repairTypes.find(r => r.isAlwaysAvailable) ?? null;
-  // undefined = nunca diagnosticado | [] = diagnosticado, nada encontrado | [...] = reparos pendentes
+
+  // Diagnóstico disponível quando QUALQUER atributo está abaixo de 60%
+  const attrs         = selectedCar?.attributes;
+  const needsDiagnosis = attrs
+    ? Object.values(attrs).some((v: number) => v < 60)
+    : (selectedCar ? selectedCar.condition < 60 : false);
+
+  // Lavagem: apenas uma por veículo
+  const alreadyWashed = cleaningRepair
+    ? (selectedCar?.completedRepairs ?? []).includes(cleaningRepair.id)
+    : false;
+
+  // Resultados do último diagnóstico
   const diagnosis: DiagnosisResult[] | null | undefined = selectedCar?.diagnosisResult;
-  const neverDiagnosed = diagnosis === undefined || diagnosis === null;
 
   const handleDiagnose = () => {
     if (!selectedCar) return;
@@ -442,11 +453,15 @@ export function OficinaScreen({
                         <Button
                           size="sm"
                           className="w-full gap-2 text-[13px]"
-                          disabled={gameState.money < cleaningRepair.baseCost}
+                          disabled={alreadyWashed || gameState.money < cleaningRepair.baseCost}
                           onClick={() => handleStartRepair(cleaningRepair.id)}
                         >
                           <Wrench size={14} />
-                          {gameState.money < cleaningRepair.baseCost ? 'Sem saldo' : 'Iniciar Lavagem'}
+                          {alreadyWashed
+                            ? 'Já lavado'
+                            : gameState.money < cleaningRepair.baseCost
+                            ? 'Sem saldo'
+                            : 'Iniciar Lavagem'}
                         </Button>
                       </div>
                     </div>
@@ -458,8 +473,21 @@ export function OficinaScreen({
                       Diagnóstico
                     </div>
 
-                    {/* Nunca diagnosticado → mostra botão com custo */}
-                    {neverDiagnosed && !isDiagnosing && (
+                    {/* Todos os atributos saudáveis — diagnóstico desnecessário */}
+                    {!needsDiagnosis && !isDiagnosing && (
+                      <div className="flex items-center gap-2.5 bg-emerald-500/10 rounded-[12px] px-4 py-3">
+                        <CheckCircle2 size={16} className="text-emerald-500 shrink-0" />
+                        <div>
+                          <div className="text-[12px] font-bold text-emerald-600">Carro em ótimas condições</div>
+                          <div className="text-[11px] text-muted-foreground">
+                            Todos os atributos estão acima de 60%. Nenhum reparo necessário.
+                          </div>
+                        </div>
+                      </div>
+                    )}
+
+                    {/* Há atributo(s) abaixo de 60% → botão de diagnóstico disponível */}
+                    {needsDiagnosis && !isDiagnosing && (
                       <div className="ios-surface rounded-[14px] p-4 space-y-3">
                         <div className="flex items-center gap-2.5">
                           <div className="w-10 h-10 rounded-[12px] bg-amber-500/10 flex items-center justify-center">
@@ -468,7 +496,7 @@ export function OficinaScreen({
                           <div>
                             <div className="font-bold text-[14px] text-foreground">Diagnóstico Técnico</div>
                             <div className="text-[11px] text-muted-foreground">
-                              Identifica todos os reparos necessários · Uma execução por veículo
+                              Identifica reparos para todos os atributos abaixo de 60%
                             </div>
                           </div>
                         </div>
@@ -512,21 +540,10 @@ export function OficinaScreen({
                       </div>
                     )}
 
-                    {/* Diagnosticado, nenhum reparo necessário */}
-                    {!neverDiagnosed && !isDiagnosing && diagnosis!.length === 0 && (
-                      <div className="flex items-center gap-2.5 bg-emerald-500/10 rounded-[12px] px-4 py-3">
-                        <CheckCircle2 size={16} className="text-emerald-500 shrink-0" />
-                        <div>
-                          <div className="text-[12px] font-bold text-emerald-600">Carro em ótimas condições</div>
-                          <div className="text-[11px] text-muted-foreground">Nenhum reparo necessário no diagnóstico</div>
-                        </div>
-                      </div>
-                    )}
-
-                    {/* Diagnosticado com reparos pendentes */}
-                    {!neverDiagnosed && !isDiagnosing && diagnosis!.length > 0 && (
+                    {/* Resultados do último diagnóstico */}
+                    {!isDiagnosing && diagnosis != null && diagnosis.length > 0 && (
                       <DiagnosisRepairList
-                        results={diagnosis!}
+                        results={diagnosis}
                         repairTypes={repairTypes}
                         car={selectedCar}
                         money={gameState.money}

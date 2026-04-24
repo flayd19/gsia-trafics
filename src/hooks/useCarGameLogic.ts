@@ -531,8 +531,12 @@ export function useCarGameLogic() {
     const car   = slot.car;
     const attrs = car.attributes ?? generateAttributes(car.condition);
 
-    // Lavagem sempre disponível; demais exigem atributo < 60
-    if (!repairType.isAlwaysAvailable) {
+    if (repairType.isAlwaysAvailable) {
+      // Lavagem: permitida apenas uma vez por veículo
+      if ((car.completedRepairs ?? []).includes(repairTypeId))
+        return { success: false, message: 'Este carro já foi lavado.' };
+    } else {
+      // Reparos comuns: atributo alvo deve estar abaixo de 60
       const attrVal = attrs[repairType.attribute];
       if (attrVal >= 60)
         return { success: false, message: `${ATTR_LABELS[repairType.attribute]} já está em boas condições (${attrVal}%).` };
@@ -593,14 +597,17 @@ export function useCarGameLogic() {
     const slot  = state.garage.find(s => s.car?.instanceId === carInstanceId);
     if (!slot?.car)        return { success: false, message: 'Carro não encontrado.' };
     if (slot.car.inRepair) return { success: false, message: 'Carro está em reparo.' };
-    // Diagnóstico já foi realizado para este carro
-    if (slot.car.diagnosisResult !== undefined)
-      return { success: false, message: 'Diagnóstico já realizado para este carro.' };
-    if (state.money < DIAGNOSIS_COST)
-      return { success: false, message: `Saldo insuficiente. Diagnóstico custa ${formatMoney(DIAGNOSIS_COST)}.` };
 
     const car   = slot.car;
     const attrs = car.attributes ?? generateAttributes(car.condition);
+
+    // Diagnóstico só é bloqueado quando TODOS os atributos estão saudáveis (≥ 60)
+    const allHealthy = (Object.values(attrs) as number[]).every(v => v >= 60);
+    if (allHealthy)
+      return { success: false, message: 'Todos os atributos estão em boas condições. Nenhum reparo necessário.' };
+
+    if (state.money < DIAGNOSIS_COST)
+      return { success: false, message: `Saldo insuficiente. Diagnóstico custa ${formatMoney(DIAGNOSIS_COST)}.` };
 
     // Coleta TODOS os reparos disponíveis para TODOS os atributos com problema (< 60)
     const results: DiagnosisResult[] = [];
@@ -633,7 +640,7 @@ export function useCarGameLogic() {
     setTimeout(() => void saveGame(), 400);
 
     if (results.length === 0)
-      return { success: true, message: 'Carro em ótimas condições! Nenhum reparo necessário.', results: [] };
+      return { success: true, message: 'Nenhum tipo de reparo disponível para os atributos com problema.', results: [] };
 
     const brokenLabels = [...new Set(results.map(r => r.attributeLabel))].join(', ');
     return {
