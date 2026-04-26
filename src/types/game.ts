@@ -61,6 +61,14 @@ export interface OwnedCar {
   attributes?: CarAttributes;
   /** Todos os reparos identificados no último diagnóstico */
   diagnosisResult?: DiagnosisResult[] | null;
+
+  // ── Sistema de Desempenho + Tunagem ──────────────────────────────
+  /** Stats de performance (calculado lazily via performanceEngine) */
+  performance?: import('./performance').PerformanceStats;
+  /** Upgrades de tunagem aplicados */
+  tuneUpgrades?: import('./performance').TuneUpgrade[];
+  /** Histórico de rachas deste carro */
+  raceHistory?: import('./performance').RaceRecord[];
 }
 
 // ── Slots da garagem ─────────────────────────────────────────────

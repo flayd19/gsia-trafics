@@ -9,7 +9,9 @@ import { ComprarScreen } from '@/components/screens/ComprarScreen';
 import { CarSalesScreen } from '@/components/screens/CarSalesScreen';
 import RankingScreen from '@/components/screens/RankingScreen';
 import { SettingsScreen } from '@/components/screens/SettingsScreen';
+import { RachaScreen } from '@/components/screens/RachaScreen';
 import { useCarGameLogic } from '@/hooks/useCarGameLogic';
+import type { TuneUpgrade } from '@/types/performance';
 import { useGlobalMarketplace, type GlobalCar } from '@/hooks/useGlobalMarketplace';
 import { supabase } from '@/integrations/supabase/client';
 import { toast } from 'sonner';
@@ -65,6 +67,7 @@ const Index = () => {
 
     repairTypes,
     garageSlotDefs,
+    applyCarTune,
   } = useCarGameLogic();
 
   const {
@@ -151,6 +154,10 @@ const Index = () => {
     return result;
   };
 
+  const handleUpdateCarTunes = (carInstanceId: string, upgrades: TuneUpgrade[]) => {
+    applyCarTune(carInstanceId, upgrades);
+  };
+
   const handleGoToOficina = (carInstanceId: string) => {
     setOficinaPendingCar(carInstanceId);
     setCurrentTab('oficina');
@@ -196,6 +203,8 @@ const Index = () => {
             preSelectedCarId={oficinaPendingCar}
             onStartRepair={handleStartRepair}
             onRunDiagnosis={handleRunDiagnosis}
+            onApplyTune={(carInstanceId, upgrades) => applyCarTune(carInstanceId, upgrades)}
+            onSpendMoney={spendMoney}
           />
         );
 
@@ -226,6 +235,16 @@ const Index = () => {
             onResolveDecision={handleResolveDecision}
             onResolveCounterOffer={handleResolveCounterOffer}
             onDismissBuyer={dismissBuyer}
+          />
+        );
+
+      case 'rachas':
+        return (
+          <RachaScreen
+            gameState={gameState}
+            onSpendMoney={spendMoney}
+            onAddMoney={addMoney}
+            onUpdateCarTunes={handleUpdateCarTunes}
           />
         );
 

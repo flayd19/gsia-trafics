@@ -4,6 +4,7 @@
 import { useState, useEffect, useCallback, useRef } from 'react';
 import type { GameState, OwnedCar, CarAttributes, AttributeKey, DiagnosisResult } from '@/types/game';
 import { ensureGameState } from '@/types/game';
+import type { TuneUpgrade } from '@/types/performance';
 import {
   GARAGE_SLOTS,
   buildMarketplaceInventory,
@@ -1062,6 +1063,27 @@ export function useCarGameLogic() {
   }, [saveGame]);
 
   /**
+   * applyCarTune — salva upgrades de tunagem no carro da garagem.
+   * O desconto de dinheiro é feito pelo chamador (DesempenhoPanel via onSpendMoney).
+   */
+  const applyCarTune = useCallback((carInstanceId: string, upgrades: TuneUpgrade[]): { success: boolean; message: string } => {
+    const state = stateRef.current;
+    const slot  = state.garage.find(s => s.car?.instanceId === carInstanceId);
+    if (!slot?.car) return { success: false, message: 'Carro não encontrado.' };
+
+    setGameState(prev => ({
+      ...prev,
+      garage: prev.garage.map(s =>
+        s.car?.instanceId === carInstanceId
+          ? { ...s, car: { ...s.car!, tuneUpgrades: upgrades } }
+          : s
+      ),
+    }));
+    setTimeout(() => void saveGame(), 400);
+    return { success: true, message: 'Tunagem aplicada!' };
+  }, [saveGame]);
+
+  /**
    * removeCarFromGarage — remove um carro da garagem pelo instanceId.
    * Usado quando uma listagem P2P do vendedor é marcada como vendida.
    */
@@ -1098,6 +1120,7 @@ export function useCarGameLogic() {
     unlockGarageSlot,
     startRepair,
     runDiagnosis,
+    applyCarTune,
 
     sendOfferToBuyer,
     resolveBuyerDecision,

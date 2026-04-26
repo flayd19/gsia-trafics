@@ -1,13 +1,15 @@
 // =====================================================================
-// OficinaScreen — Diagnóstico + reparos por atributo
+// OficinaScreen — Diagnóstico + reparos por atributo + Desempenho/Tunagem
 // =====================================================================
 import { useState, useEffect } from 'react';
 import { toast } from 'sonner';
-import { Wrench, Stethoscope, ChevronRight, AlertTriangle, CheckCircle2, Loader2 } from 'lucide-react';
+import { Wrench, Stethoscope, ChevronRight, AlertTriangle, CheckCircle2, Loader2, Zap } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import type { GameState, OwnedCar, RepairType, DiagnosisResult, AttributeKey } from '@/types/game';
 import { conditionLabel, conditionColor } from '@/data/cars';
+import { DesempenhoPanel } from './DesempenhoPanel';
+import type { TuneType, TuneUpgrade } from '@/types/performance';
 
 // ── Props ────────────────────────────────────────────────────────
 interface OficinaScreenProps {
@@ -16,6 +18,8 @@ interface OficinaScreenProps {
   preSelectedCarId?: string | null;
   onStartRepair:    (carInstanceId: string, repairTypeId: string) => { success: boolean; message: string };
   onRunDiagnosis:   (carInstanceId: string) => { success: boolean; message: string; result?: DiagnosisResult };
+  onApplyTune?:     (carInstanceId: string, upgrades: TuneUpgrade[]) => { success: boolean; message: string };
+  onSpendMoney?:    (amount: number) => boolean;
 }
 
 // ── Helpers ──────────────────────────────────────────────────────
@@ -126,7 +130,7 @@ function RepairTimer({ completesAt }: { completesAt: number }) {
 
 /** Lista completa de reparos retornados pelo diagnóstico, agrupados por atributo */
 function DiagnosisRepairList({
-  results, repairTypes, car, money, onStart, onDiagnoseAgain,
+  results, repairTypes, car, money, onStart,
 }: {
   results:     DiagnosisResult[];
   repairTypes: RepairType[];
@@ -230,13 +234,14 @@ function DiagnosisRepairList({
 
 // ── Tela principal ───────────────────────────────────────────────
 export function OficinaScreen({
-  gameState, repairTypes, preSelectedCarId, onStartRepair, onRunDiagnosis,
+  gameState, repairTypes, preSelectedCarId, onStartRepair, onRunDiagnosis, onApplyTune, onSpendMoney,
 }: OficinaScreenProps) {
   const carsInGarage = gameState.garage.filter(s => s.unlocked && s.car).map(s => s.car!);
 
   const [selectedCarId, setSelectedCarId] = useState<string | null>(
     preSelectedCarId ?? (carsInGarage.length > 0 ? carsInGarage[0].instanceId : null)
   );
+  const [activeTab, setActiveTab] = useState<'reparo' | 'desempenho'>('reparo');
 
   // ── Timer de diagnóstico (UI-only, 10 s) ──────────────────────
   const [diagnosingUntil, setDiagnosingUntil] = useState<number | null>(null);
@@ -368,6 +373,55 @@ export function OficinaScreen({
           {/* Painel do carro selecionado */}
           {selectedCar && (
             <div className="space-y-4">
+              {/* Toggle de abas */}
+              <div className="flex rounded-[12px] bg-muted p-1 gap-1">
+                <button
+                  onClick={() => setActiveTab('reparo')}
+                  className={`flex-1 flex items-center justify-center gap-1.5 py-2 rounded-[10px] text-[13px] font-semibold transition-all ${
+                    activeTab === 'reparo'
+                      ? 'bg-background text-foreground shadow-sm'
+                      : 'text-muted-foreground hover:text-foreground'
+                  }`}
+                >
+                  <Wrench size={14} />
+                  Reparo
+                </button>
+                <button
+                  onClick={() => setActiveTab('desempenho')}
+                  className={`flex-1 flex items-center justify-center gap-1.5 py-2 rounded-[10px] text-[13px] font-semibold transition-all ${
+                    activeTab === 'desempenho'
+                      ? 'bg-background text-foreground shadow-sm'
+                      : 'text-muted-foreground hover:text-foreground'
+                  }`}
+                >
+                  <Zap size={14} />
+                  Desempenho
+                </button>
+              </div>
+
+              {/* Aba Desempenho */}
+              {activeTab === 'desempenho' && (
+                <DesempenhoPanel
+                  car={selectedCar}
+                  money={gameState.money}
+                  onApplyTune={(instanceId, type, newUpgrades) => {
+                    if (onApplyTune) {
+                      const result = onApplyTune(instanceId, newUpgrades);
+                      if (!result.success) toast.error(result.message);
+                    }
+                    void type;
+                  }}
+                  onSpendMoney={(amount) => {
+                    if (onSpendMoney) return onSpendMoney(amount);
+                    if (gameState.money < amount) return false;
+                    return true;
+                  }}
+                />
+              )}
+
+              {/* Aba Reparo — conteúdo existente */}
+              {activeTab === 'reparo' && (
+              <div className="space-y-4">
               {/* Card de atributos */}
               {selectedCar.attributes && (
                 <div className="ios-surface rounded-[16px] p-4 space-y-3">
@@ -552,6 +606,8 @@ export function OficinaScreen({
                     )}
                   </div>
                 </>
+              )}
+              </div>
               )}
             </div>
           )}
