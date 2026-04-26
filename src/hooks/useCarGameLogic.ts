@@ -161,13 +161,18 @@ async function saveSupabase(userId: string, state: GameState): Promise<boolean> 
       );
     if (error) return false;
 
-    // Atualiza perfil para ranking (fire-and-forget)
+    // Atualiza perfil para ranking — patrimônio real: saldo + valor de mercado dos carros
+    const carValue = (state.garage ?? [])
+      .filter(s => s.car)
+      .reduce((sum, s) => sum + s.car!.fipePrice * conditionValueFactor(s.car!.condition), 0);
+    const totalPatrimony = state.money + carValue;
+
     void (supabase as any)
       .from('player_profiles')
       .upsert(
         {
           user_id:         userId,
-          total_patrimony: state.money,
+          total_patrimony: Math.round(totalPatrimony),
           level:           state.reputation?.level ?? 1,
           updated_at:      new Date().toISOString(),
         },
