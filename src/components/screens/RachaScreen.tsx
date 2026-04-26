@@ -2,6 +2,7 @@
 // RachaScreen — PvP Lobby Aberto (2-4 jogadores)
 // =====================================================================
 import { useState } from 'react';
+import type { CSSProperties } from 'react';
 import { Zap, Plus, Users, Trophy, Clock, RefreshCw, X, ArrowLeft } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import type { GameState, OwnedCar } from '@/types/game';
@@ -342,7 +343,7 @@ function CreateLobbyModal({
   const canCreate = selectedCar && bet > 0 && bet <= gameState.money;
 
   return (
-    <div className="fixed inset-0 z-[60] flex flex-col bg-background">
+    <div className="fixed inset-0 z-[60] flex flex-col bg-background" style={{ height: '100dvh' }}>
       {/* Header fixo — respeita safe-area-top */}
       <div
         className="shrink-0 flex items-center gap-3 px-4 border-b border-border bg-background"
@@ -360,8 +361,9 @@ function CreateLobbyModal({
         </span>
       </div>
 
-      {/* Conteúdo scrollável */}
-      <div className="flex-1 overflow-y-auto px-4 py-4 space-y-5">
+      {/* Conteúdo scrollável — min-h-0 é essencial p/ flex+overflow funcionar no iOS */}
+      <div className="flex-1 min-h-0 overflow-y-auto overscroll-contain px-4 py-4 space-y-5"
+           style={{ WebkitOverflowScrolling: 'touch' } as CSSProperties}>
 
         {/* Carro */}
         <div>
@@ -510,7 +512,7 @@ function JoinLobbyModal({
   const canJoin = gameState.money >= lobby.bet;
 
   return (
-    <div className="fixed inset-0 z-[60] flex flex-col bg-background">
+    <div className="fixed inset-0 z-[60] flex flex-col bg-background" style={{ height: '100dvh' }}>
       {/* Header fixo */}
       <div
         className="shrink-0 flex items-center gap-3 px-4 border-b border-border bg-background"
@@ -525,8 +527,9 @@ function JoinLobbyModal({
         <h2 className="font-bold text-[17px] text-foreground flex-1">⚡ Entrar no Racha</h2>
       </div>
 
-      {/* Conteúdo scrollável */}
-      <div className="flex-1 overflow-y-auto px-4 py-4 space-y-5">
+      {/* Conteúdo scrollável — min-h-0 é essencial p/ flex+overflow funcionar no iOS */}
+      <div className="flex-1 min-h-0 overflow-y-auto overscroll-contain px-4 py-4 space-y-5"
+           style={{ WebkitOverflowScrolling: 'touch' } as CSSProperties}>
 
         {/* Resumo do lobby */}
         <div className="ios-surface rounded-[16px] p-4 space-y-3">
