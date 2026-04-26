@@ -159,8 +159,8 @@ export function useRachaLobby({ onSpendMoney, onAddMoney }: UseRachaLobbyOptions
   const [isLoading,     setIsLoading]     = useState(false);
   const [error,         setError]         = useState<string | null>(null);
 
-  const lobbyChannelRef  = useRef<ReturnType<typeof (supabase as any).channel> | null>(null);
-  const listChannelRef   = useRef<ReturnType<typeof (supabase as any).channel> | null>(null);
+  const lobbyChannelRef  = useRef<unknown>(null);
+  const listChannelRef   = useRef<unknown>(null);
   const animFrameRef     = useRef<number | null>(null);
   const currentBetRef    = useRef<number>(0);
 
