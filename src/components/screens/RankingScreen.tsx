@@ -16,6 +16,7 @@ interface PlayerRanking {
   display_name: string;
   total_patrimony: number;
   level: number;
+  races_won: number;
   position: number;
 }
 
@@ -50,6 +51,13 @@ function calcPatrimony(gs: GameState): number {
   return Math.round(gs.money + carValue);
 }
 
+/** Conta vitórias de racha em todos os carros da garagem */
+function calcRacesWon(gs: GameState): number {
+  return (gs.garage ?? [])
+    .filter(s => s.car?.raceHistory)
+    .reduce((sum, s) => sum + (s.car!.raceHistory!.filter(r => r.won).length), 0);
+}
+
 const POLL_INTERVAL_MS = 30_000; // 30 s
 
 const RankingScreen = ({ gameState }: RankingScreenProps) => {
@@ -73,6 +81,7 @@ const RankingScreen = ({ gameState }: RankingScreenProps) => {
       'Jogador';
 
     const patrimony = calcPatrimony(gs);
+    const racesWon  = calcRacesWon(gs);
 
     await (supabase as any)
       .from('player_profiles')
@@ -82,6 +91,7 @@ const RankingScreen = ({ gameState }: RankingScreenProps) => {
           display_name:    displayName,
           total_patrimony: patrimony,
           level:           gs.reputation?.level ?? 1,
+          races_won:       racesWon,
           updated_at:      new Date().toISOString(),
         },
         { onConflict: 'user_id' }
@@ -96,7 +106,7 @@ const RankingScreen = ({ gameState }: RankingScreenProps) => {
 
     const { data: viewData, error: viewError } = await (supabase as any)
       .from('v_ranking')
-      .select('user_id, display_name, total_patrimony, level')
+      .select('user_id, display_name, total_patrimony, level, races_won')
       .limit(50);
 
     if (!viewError) {
@@ -105,7 +115,7 @@ const RankingScreen = ({ gameState }: RankingScreenProps) => {
       // fallback: tabela direta
       const { data: tableData, error: tableError } = await (supabase as any)
         .from('player_profiles')
-        .select('user_id, display_name, total_patrimony, level')
+        .select('user_id, display_name, total_patrimony, level, races_won')
         .order('total_patrimony', { ascending: false })
         .limit(50);
       if (!tableError) data = tableData;
@@ -118,6 +128,7 @@ const RankingScreen = ({ gameState }: RankingScreenProps) => {
       display_name:    getSafeName(p.display_name),
       total_patrimony: p.total_patrimony ?? 0,
       level:           p.level ?? 1,
+      races_won:       p.races_won ?? 0,
       position:        i + 1,
     }));
 
@@ -245,9 +256,16 @@ const RankingScreen = ({ gameState }: RankingScreenProps) => {
                   <p className="text-[12px] text-muted-foreground">{myRank.display_name}</p>
                 </div>
               </div>
-              <div className="text-right">
+              <div className="text-right space-y-0.5">
                 <p className="font-bold text-primary text-[15px]">{fmt(myRank.total_patrimony)}</p>
-                <Badge variant="outline" className="text-[10px]">Nível {myRank.level}</Badge>
+                <div className="flex items-center justify-end gap-1.5">
+                  <Badge variant="outline" className="text-[10px]">Nível {myRank.level}</Badge>
+                  {myRank.races_won > 0 && (
+                    <Badge variant="outline" className="text-[10px] text-emerald-400 border-emerald-400/40">
+                      🏁 {myRank.races_won}V
+                    </Badge>
+                  )}
+                </div>
               </div>
             </div>
           </CardContent>
@@ -285,6 +303,9 @@ const RankingScreen = ({ gameState }: RankingScreenProps) => {
                     </p>
                     <p className="text-[10px] text-muted-foreground">
                       #{player.position} · Nível {player.level}
+                      {player.races_won > 0 && (
+                        <span className="ml-1.5 text-emerald-400 font-semibold">· 🏁 {player.races_won}V</span>
+                      )}
                     </p>
                   </div>
 

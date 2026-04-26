@@ -9,9 +9,10 @@ import { createPortal } from 'react-dom';
 import { RefreshCw, Search, X, Tag, CheckCircle, TrendingDown, TrendingUp, ChevronLeft, Clock } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
-import type { GameState } from '@/types/game';
+import type { GameState, OwnedCar } from '@/types/game';
 import type { GlobalCar } from '@/hooks/useGlobalMarketplace';
 import { conditionLabel, conditionColor, conditionValueFactor, fmtKm, type CarCategory } from '@/data/cars';
+import { generateBasePerformance } from '@/lib/performanceEngine';
 
 interface FornecedoresCarrosScreenProps {
   gameState: GameState;
@@ -277,6 +278,63 @@ function CarDetailSheet({
               : 'Estado ruim — necessita reparos urgentes'}
           </div>
         </div>
+
+        {/* Atributos de Performance */}
+        {(() => {
+          const fakeOwnedCar = { instanceId: car.id, modelId: car.modelId, fipePrice: car.fipePrice } as OwnedCar;
+          const perf = generateBasePerformance(fakeOwnedCar);
+          const igpColor = perf.igp > 75 ? '#10b981' : perf.igp > 50 ? '#f59e0b' : '#ef4444';
+          const igpBg    = perf.igp > 75 ? 'bg-emerald-500/10 border-emerald-500/25'
+                         : perf.igp > 50 ? 'bg-amber-500/10 border-amber-500/25'
+                         : 'bg-red-500/10 border-red-500/25';
+          const statBar = (label: string, icon: string, val: number) => (
+            <div key={label} className="space-y-0.5">
+              <div className="flex items-center justify-between text-[10px]">
+                <span className="text-muted-foreground flex items-center gap-1">{icon} {label}</span>
+                <span className="font-bold text-foreground tabular-nums">{val}</span>
+              </div>
+              <div className="w-full h-1.5 bg-muted rounded-full overflow-hidden">
+                <div className="h-full rounded-full" style={{
+                  width: `${val}%`,
+                  background: val >= 70
+                    ? 'linear-gradient(90deg,#10b981,#059669)'
+                    : val >= 40
+                    ? 'linear-gradient(90deg,#f59e0b,#f97316)'
+                    : 'linear-gradient(90deg,#ef4444,#dc2626)',
+                }} />
+              </div>
+            </div>
+          );
+          return (
+            <div className={`ios-surface rounded-[14px] p-3.5 border ${igpBg}`}>
+              <div className="flex items-center gap-3 mb-3">
+                <div className="flex flex-col items-center w-12 shrink-0">
+                  <div className="text-[38px] font-black tabular-nums leading-none" style={{ color: igpColor }}>
+                    {perf.igp}
+                  </div>
+                  <div className="text-[9px] uppercase tracking-widest text-muted-foreground font-bold">IGP</div>
+                </div>
+                <div className="flex-1 space-y-0.5">
+                  <div className="font-semibold text-[12px] text-foreground">
+                    {perf.traction}
+                    {perf._hasTurbo && <span className="ml-1.5 text-blue-400 text-[11px]">· 💨 Turbo</span>}
+                  </div>
+                  <div className="text-[10px] text-muted-foreground">
+                    {perf._hp} cv · {perf._torqueNm} Nm · 0–100 em {perf._0to100}s · {perf._topSpeedKmh} km/h
+                  </div>
+                </div>
+              </div>
+              <div className="grid grid-cols-2 gap-x-4 gap-y-1.5">
+                {statBar('Velocidade', '🏁', perf.topSpeed)}
+                {statBar('Aceleração', '⚡', perf.acceleration)}
+                {statBar('Potência',   '💪', perf.power)}
+                {statBar('Torque',     '🔄', perf.torque)}
+                {statBar('Grip',       '🛞', perf.grip)}
+                {statBar('Estabilid.', '🎯', perf.stability)}
+              </div>
+            </div>
+          );
+        })()}
 
         {!isSold && !hasGarageSpace && (
           <div className="bg-orange-500/10 border border-orange-500/30 rounded-[12px] px-3 py-2.5 flex items-center gap-2">

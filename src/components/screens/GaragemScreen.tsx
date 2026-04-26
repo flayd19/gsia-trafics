@@ -88,11 +88,29 @@ function CarCard({ car, slotId, onRepair }: { car: OwnedCar; slotId: number; onR
         </div>
       </div>
 
-      {/* Aluguel diário desta vaga */}
+      {/* Rachas / aluguel */}
       <div className="flex items-center justify-between text-[11px] px-1">
         <span className="text-muted-foreground">Aluguel vaga {slotId}</span>
         <span className="font-bold text-amber-500">{fmt(garageSlotDailyCost(slotId))}/dia</span>
       </div>
+
+      {/* Rachas vencidos com este carro */}
+      {(() => {
+        const total  = car.raceHistory?.length ?? 0;
+        const wins   = car.raceHistory?.filter(r => r.won).length ?? 0;
+        if (total === 0) return null;
+        return (
+          <div className="flex items-center justify-between bg-muted/30 rounded-[10px] px-3 py-1.5 text-[11px]">
+            <span className="text-muted-foreground">🏁 Rachas</span>
+            <span className="font-bold">
+              <span className="text-emerald-400">{wins}V</span>
+              <span className="text-muted-foreground mx-1">·</span>
+              <span className="text-red-400">{total - wins}D</span>
+              <span className="text-muted-foreground ml-1 font-normal">({total} total)</span>
+            </span>
+          </div>
+        );
+      })()}
 
       {/* Status de reparo */}
       {car.inRepair && car.repairCompletesAt && (
