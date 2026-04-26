@@ -1,21 +1,20 @@
 // =====================================================================
-// RachaScreen — Tela de rachas
+// RachaScreen — PvP Lobby Aberto (2-4 jogadores)
 // =====================================================================
-import { useState, useEffect } from 'react';
-import { Zap, X, Trophy, TrendingDown, Clock } from 'lucide-react';
+import { useState } from 'react';
+import { Zap, Plus, Users, Trophy, Clock, RefreshCw, X, ArrowLeft } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import type { GameState, OwnedCar } from '@/types/game';
 import type { TuneUpgrade, RaceRecord } from '@/types/performance';
 import { getFullPerformance } from '@/lib/performanceEngine';
-import { useRacing } from '@/hooks/useRacing';
-import { supabase } from '@/integrations/supabase/client';
+import { useRachaLobby, type OpenLobby, type RacePlayerAnim } from '@/hooks/useRachaLobby';
 
 // ── Props ────────────────────────────────────────────────────────
 interface RachaScreenProps {
-  gameState:         GameState;
-  onSpendMoney:      (amount: number) => boolean;
-  onAddMoney:        (amount: number) => void;
-  onUpdateCarTunes:  (carInstanceId: string, upgrades: TuneUpgrade[]) => void;
+  gameState:        GameState;
+  onSpendMoney:     (amount: number) => boolean;
+  onAddMoney:       (amount: number) => void;
+  onUpdateCarTunes: (carInstanceId: string, upgrades: TuneUpgrade[]) => void;
 }
 
 // ── Helpers ──────────────────────────────────────────────────────
@@ -24,240 +23,89 @@ const fmt = (v: number) =>
 
 const BET_PRESETS = [500, 1_000, 5_000, 10_000, 25_000];
 
-function igpBadgeClass(igp: number): string {
-  if (igp > 75) return 'bg-emerald-500/15 text-emerald-500 border border-emerald-500/30';
-  if (igp > 50) return 'bg-amber-500/15 text-amber-500 border border-amber-500/30';
-  return 'bg-red-500/15 text-red-500 border border-red-500/30';
+function igpClass(igp: number) {
+  if (igp > 75) return 'text-emerald-400 bg-emerald-500/10 border-emerald-500/25';
+  if (igp > 50) return 'text-amber-400 bg-amber-500/10 border-amber-500/25';
+  return 'text-red-400 bg-red-500/10 border-red-500/25';
+}
+
+function positionMedal(pos: number) {
+  return pos === 1 ? '🥇' : pos === 2 ? '🥈' : pos === 3 ? '🥉' : '4º';
+}
+
+function positionColor(pos: number) {
+  if (pos === 1) return 'text-yellow-400';
+  if (pos === 2) return 'text-gray-300';
+  if (pos === 3) return 'text-amber-600';
+  return 'text-muted-foreground';
+}
+
+function barColor(pos: number) {
+  if (pos === 1) return 'linear-gradient(90deg, #fbbf24, #f59e0b)';
+  if (pos === 2) return 'linear-gradient(90deg, #9ca3af, #6b7280)';
+  if (pos === 3) return 'linear-gradient(90deg, #d97706, #b45309)';
+  return 'linear-gradient(90deg, #6366f1, #4f46e5)';
 }
 
 // ── Componente principal ─────────────────────────────────────────
-export function RachaScreen({ gameState, onSpendMoney, onAddMoney, onUpdateCarTunes }: RachaScreenProps) {
+export function RachaScreen({ gameState, onSpendMoney, onAddMoney }: RachaScreenProps) {
   const carsInGarage = gameState.garage
     .filter(s => s.unlocked && s.car)
     .map(s => s.car!);
 
-  const [selectedCar, setSelectedCar] = useState<OwnedCar | null>(
-    carsInGarage.length > 0 ? carsInGarage[0] : null
-  );
-  const [bet,         setBet]         = useState(1_000);
-  const [betInput,    setBetInput]    = useState('');
-  const [customBet,   setCustomBet]   = useState(false);
-  const [playerName,  setPlayerName]  = useState('Jogador');
-
-  // Tenta buscar nome do jogador
-  useEffect(() => {
-    supabase.auth.getUser().then(({ data: { user } }) => {
-      if (!user) return;
-      (supabase as any)
-        .from('player_profiles')
-        .select('display_name')
-        .eq('user_id', user.id)
-        .maybeSingle()
-        .then(({ data }: { data: { display_name?: string } | null }) => {
-          if (data?.display_name) setPlayerName(data.display_name);
-        });
-    });
-  }, []);
-
   const {
-    state, opponent, countdown, raceProgress, result, raceHistory,
-    joinRace, cancelSearch, resetRace,
-  } = useRacing();
+    state, openLobbies, currentLobby, countdown,
+    racePlayers, raceHistory, myUserId, myName,
+    isLoading, error,
+    createLobby, joinLobby, leaveLobby, resetRace, refetchLobbies,
+  } = useRachaLobby({ onSpendMoney, onAddMoney });
 
-  const handleUpdateHistory = (carInstanceId: string, record: RaceRecord) => {
-    // Atualiza no OwnedCar via closure (gameState.garage)
-    const slot = gameState.garage.find(s => s.car?.instanceId === carInstanceId);
-    if (!slot?.car) return;
-    // raceHistory é armazenado no OwnedCar mas não precisamos de prop específica
-    // O useRacing já mantém histórico local
-    void (record); void (carInstanceId);
-  };
-
-  const handleJoinRace = () => {
-    if (!selectedCar) return;
-    void joinRace(selectedCar, bet, playerName, onSpendMoney, onAddMoney, handleUpdateHistory);
-  };
-
-  // ── Tela: idle / seleção ─────────────────────────────────────
+  // ── idle ──────────────────────────────────────────────────────
   if (state === 'idle') {
     return (
-      <div className="space-y-5">
-        {/* Header */}
-        <div>
-          <h2 className="font-game-title text-xl font-bold text-foreground tracking-tight flex items-center gap-2">
-            <Zap size={20} className="text-primary" />
-            Rachas
-          </h2>
-          <p className="text-[12px] text-muted-foreground mt-0.5">
-            Desafie outros jogadores com seu carro mais tunado
-          </p>
-        </div>
-
-        {carsInGarage.length === 0 ? (
-          <div className="text-center py-12 space-y-3">
-            <div className="text-5xl">🏁</div>
-            <div className="text-[15px] font-semibold text-muted-foreground">Garagem vazia</div>
-            <div className="text-[12px] text-muted-foreground">
-              Compre um carro para participar de rachas
-            </div>
-          </div>
-        ) : (
-          <>
-            {/* Seleção de carro */}
-            <div>
-              <div className="text-[11px] uppercase tracking-wider text-muted-foreground font-semibold px-1 mb-2">
-                Selecionar Carro
-              </div>
-              <div className="space-y-2">
-                {carsInGarage.map(car => {
-                  const perf = getFullPerformance(car);
-                  const sel  = selectedCar?.instanceId === car.instanceId;
-                  return (
-                    <button
-                      key={car.instanceId}
-                      onClick={() => setSelectedCar(car)}
-                      className={`w-full flex items-center gap-3 p-3 rounded-[14px] border transition-all text-left ${
-                        sel ? 'border-primary/40 bg-primary/5' : 'border-border bg-muted/20 hover:bg-muted/40'
-                      }`}
-                    >
-                      <span className="text-2xl">{car.icon}</span>
-                      <div className="flex-1 min-w-0">
-                        <div className="font-semibold text-[13px] text-foreground truncate">
-                          {car.fullName}
-                        </div>
-                        <div className="text-[10px] text-muted-foreground">{car.year}</div>
-                      </div>
-                      <span className={`px-2 py-0.5 rounded-full text-[11px] font-black ${igpBadgeClass(perf.igp)}`}>
-                        IGP {perf.igp}
-                      </span>
-                    </button>
-                  );
-                })}
-              </div>
-            </div>
-
-            {/* Aposta */}
-            <div>
-              <div className="text-[11px] uppercase tracking-wider text-muted-foreground font-semibold px-1 mb-2">
-                Aposta
-              </div>
-              <div className="ios-surface rounded-[16px] p-4 space-y-3">
-                {/* Presets */}
-                <div className="flex gap-2 flex-wrap">
-                  {BET_PRESETS.map(preset => (
-                    <button
-                      key={preset}
-                      onClick={() => { setBet(preset); setCustomBet(false); setBetInput(''); }}
-                      className={`px-3 py-1.5 rounded-[10px] text-[12px] font-bold transition-all active:scale-95 ${
-                        !customBet && bet === preset
-                          ? 'bg-primary text-primary-foreground'
-                          : 'bg-muted text-foreground hover:bg-muted/80'
-                      }`}
-                    >
-                      {fmt(preset)}
-                    </button>
-                  ))}
-                  <button
-                    onClick={() => setCustomBet(v => !v)}
-                    className={`px-3 py-1.5 rounded-[10px] text-[12px] font-bold transition-all active:scale-95 ${
-                      customBet ? 'bg-primary text-primary-foreground' : 'bg-muted text-foreground'
-                    }`}
-                  >
-                    Personalizado
-                  </button>
-                </div>
-
-                {/* Campo custom */}
-                {customBet && (
-                  <div className="flex items-center gap-2">
-                    <span className="text-muted-foreground text-[13px] font-semibold">R$</span>
-                    <input
-                      type="number"
-                      value={betInput}
-                      onChange={e => {
-                        setBetInput(e.target.value);
-                        const v = parseFloat(e.target.value);
-                        if (!isNaN(v) && v > 0) setBet(Math.round(v));
-                      }}
-                      placeholder="Valor da aposta"
-                      className="flex-1 bg-muted rounded-[10px] px-3 py-2 text-[13px] text-foreground border border-border focus:outline-none focus:ring-1 focus:ring-primary"
-                    />
-                  </div>
-                )}
-
-                <div className="text-[12px] text-muted-foreground">
-                  Aposta atual: <span className="font-bold text-foreground">{fmt(bet)}</span>
-                  {' '}· Pot total: <span className="font-bold text-primary">{fmt(bet * 2)}</span>
-                  {' '}· Prêmio (90%): <span className="font-bold text-emerald-500">{fmt(Math.round(bet * 2 * 0.9))}</span>
-                </div>
-              </div>
-            </div>
-
-            {/* Botão de racha */}
-            <Button
-              size="lg"
-              className="w-full gap-2 font-bold text-[15px]"
-              disabled={!selectedCar || bet > gameState.money || bet <= 0}
-              onClick={handleJoinRace}
-            >
-              <Zap size={18} />
-              Entrar na Fila — {fmt(bet)}
-            </Button>
-            {bet > gameState.money && (
-              <p className="text-center text-[12px] text-red-500">Saldo insuficiente</p>
-            )}
-
-            {/* Histórico */}
-            {raceHistory.length > 0 && (
-              <HistorySection history={raceHistory.slice(0, 10)} />
-            )}
-
-            {/* Histórico do carro selecionado */}
-            {selectedCar && (selectedCar.raceHistory ?? []).length > 0 && (
-              <HistorySection history={(selectedCar.raceHistory ?? []).slice(0, 10)} title="Histórico do Carro" />
-            )}
-          </>
-        )}
-      </div>
-    );
-  }
-
-  // ── Tela: buscando ────────────────────────────────────────────
-  if (state === 'searching') {
-    return (
-      <SearchingScreen onCancel={cancelSearch} bet={bet} />
-    );
-  }
-
-  // ── Tela: countdown ───────────────────────────────────────────
-  if (state === 'countdown') {
-    return (
-      <CountdownScreen
-        countdown={countdown}
-        myCar={selectedCar}
-        opponent={opponent}
+      <LobbyListView
+        openLobbies={openLobbies}
+        carsInGarage={carsInGarage}
+        gameState={gameState}
+        myUserId={myUserId}
+        myName={myName}
+        isLoading={isLoading}
+        error={error}
+        raceHistory={raceHistory}
+        onCreateLobby={createLobby}
+        onJoinLobby={joinLobby}
+        onRefresh={refetchLobbies}
       />
     );
   }
 
-  // ── Tela: corrida ─────────────────────────────────────────────
+  // ── in_lobby ──────────────────────────────────────────────────
+  if (state === 'in_lobby' && currentLobby) {
+    return (
+      <WaitingRoomView
+        lobby={currentLobby}
+        myUserId={myUserId}
+        onLeave={leaveLobby}
+      />
+    );
+  }
+
+  // ── countdown ─────────────────────────────────────────────────
+  if (state === 'countdown' && currentLobby) {
+    return <CountdownView lobby={currentLobby} countdown={countdown} />;
+  }
+
+  // ── racing ────────────────────────────────────────────────────
   if (state === 'racing') {
-    return (
-      <RacingScreen
-        myCar={selectedCar}
-        opponent={opponent}
-        progress={raceProgress}
-      />
-    );
+    return <RaceView players={racePlayers} />;
   }
 
-  // ── Tela: resultado ───────────────────────────────────────────
-  if (state === 'result' && result) {
+  // ── result ────────────────────────────────────────────────────
+  if (state === 'result') {
     return (
-      <ResultScreen
-        result={result}
-        myCar={selectedCar}
-        onRevanche={() => { resetRace(); handleJoinRace(); }}
+      <ResultView
+        players={racePlayers}
+        myUserId={myUserId}
         onBack={resetRace}
       />
     );
@@ -266,215 +114,740 @@ export function RachaScreen({ gameState, onSpendMoney, onAddMoney, onUpdateCarTu
   return null;
 }
 
-// ── Sub-telas ────────────────────────────────────────────────────
+// ══════════════════════════════════════════════════════════════════
+// Sub-views
+// ══════════════════════════════════════════════════════════════════
 
-function SearchingScreen({ onCancel, bet }: { onCancel: () => void; bet: number }) {
+// ── Lista de lobbies ─────────────────────────────────────────────
+interface LobbyListViewProps {
+  openLobbies:   OpenLobby[];
+  carsInGarage:  OwnedCar[];
+  gameState:     GameState;
+  myUserId:      string | null;
+  myName:        string;
+  isLoading:     boolean;
+  error:         string | null;
+  raceHistory:   RaceRecord[];
+  onCreateLobby: (car: OwnedCar, bet: number, maxPlayers: number) => Promise<void>;
+  onJoinLobby:   (lobby: OpenLobby, car: OwnedCar) => Promise<void>;
+  onRefresh:     () => void;
+}
+
+function LobbyListView({
+  openLobbies, carsInGarage, gameState, myUserId, myName,
+  isLoading, error, raceHistory,
+  onCreateLobby, onJoinLobby, onRefresh,
+}: LobbyListViewProps) {
+  const [showCreate, setShowCreate] = useState(false);
+  const [joinLobbyTarget, setJoinLobbyTarget] = useState<OpenLobby | null>(null);
+
   return (
-    <div className="flex flex-col items-center justify-center min-h-[60vh] space-y-8">
-      <div className="text-5xl animate-bounce">🏎️</div>
-      <div className="space-y-2 text-center">
-        <div className="font-bold text-[18px] text-foreground">Procurando oponente...</div>
-        <div className="text-[13px] text-muted-foreground">Aposta: {new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL', maximumFractionDigits: 0 }).format(bet)}</div>
-        <div className="text-[12px] text-muted-foreground">Se não encontrar adversário em 10s, um bot será criado</div>
+    <div className="space-y-4">
+      {/* Header */}
+      <div className="flex items-start justify-between">
+        <div>
+          <h2 className="font-game-title text-xl font-bold text-foreground flex items-center gap-2">
+            <Zap size={20} className="text-primary" />
+            Rachas
+          </h2>
+          <p className="text-[12px] text-muted-foreground mt-0.5">
+            PvP · Lobby aberto · Até 4 jogadores
+          </p>
+        </div>
+        <div className="flex gap-2">
+          <Button variant="ghost" size="sm" onClick={onRefresh} disabled={isLoading} className="gap-1.5 text-[12px]">
+            <RefreshCw size={13} className={isLoading ? 'animate-spin' : ''} />
+          </Button>
+          {carsInGarage.length > 0 && (
+            <Button size="sm" className="gap-1.5 text-[12px]" onClick={() => setShowCreate(true)}>
+              <Plus size={14} />
+              Criar Racha
+            </Button>
+          )}
+        </div>
       </div>
-      {/* Spinner */}
-      <div className="w-12 h-12 rounded-full border-4 border-muted border-t-primary animate-spin" />
-      <Button variant="outline" size="sm" onClick={onCancel} className="gap-2">
-        <X size={14} />
-        Cancelar
+
+      {error && (
+        <div className="px-4 py-2.5 rounded-[12px] bg-red-500/10 border border-red-500/25 text-red-400 text-[12px]">
+          {error}
+        </div>
+      )}
+
+      {/* Sem carros */}
+      {carsInGarage.length === 0 && (
+        <div className="text-center py-10 space-y-2">
+          <div className="text-5xl">🏁</div>
+          <div className="text-[14px] font-semibold text-muted-foreground">Garagem vazia</div>
+          <div className="text-[11px] text-muted-foreground">Compre um carro para participar</div>
+        </div>
+      )}
+
+      {/* Lobbies abertos */}
+      {carsInGarage.length > 0 && (
+        <div className="space-y-2">
+          <div className="text-[11px] uppercase tracking-wider text-muted-foreground font-semibold px-1">
+            Lobbies Abertos
+          </div>
+
+          {openLobbies.filter(l => l.status === 'waiting').length === 0 ? (
+            <div className="ios-surface rounded-[16px] p-6 text-center space-y-2">
+              <div className="text-3xl">🕹️</div>
+              <div className="text-[13px] text-muted-foreground">Nenhum lobby aberto</div>
+              <div className="text-[11px] text-muted-foreground">Crie um racha para começar!</div>
+            </div>
+          ) : (
+            openLobbies
+              .filter(l => l.status === 'waiting' && l.hostId !== myUserId)
+              .map(lobby => (
+                <LobbyCard
+                  key={lobby.id}
+                  lobby={lobby}
+                  canJoin={gameState.money >= lobby.bet && carsInGarage.length > 0}
+                  onJoin={() => setJoinLobbyTarget(lobby)}
+                />
+              ))
+          )}
+
+          {/* Meus lobbies (criados por mim) */}
+          {openLobbies.filter(l => l.hostId === myUserId).map(lobby => (
+            <LobbyCard
+              key={lobby.id}
+              lobby={lobby}
+              canJoin={false}
+              isOwn={true}
+              onJoin={() => {}}
+            />
+          ))}
+        </div>
+      )}
+
+      {/* Histórico */}
+      {raceHistory.length > 0 && (
+        <RaceHistorySection history={raceHistory.slice(0, 8)} />
+      )}
+
+      {/* Modal: criar racha */}
+      {showCreate && (
+        <CreateLobbyModal
+          carsInGarage={carsInGarage}
+          gameState={gameState}
+          onConfirm={(car, bet, maxPlayers) => {
+            setShowCreate(false);
+            void onCreateLobby(car, bet, maxPlayers);
+          }}
+          onClose={() => setShowCreate(false)}
+        />
+      )}
+
+      {/* Modal: entrar em lobby */}
+      {joinLobbyTarget && (
+        <JoinLobbyModal
+          lobby={joinLobbyTarget}
+          carsInGarage={carsInGarage}
+          gameState={gameState}
+          onConfirm={(car) => {
+            const target = joinLobbyTarget;
+            setJoinLobbyTarget(null);
+            void onJoinLobby(target, car);
+          }}
+          onClose={() => setJoinLobbyTarget(null)}
+        />
+      )}
+    </div>
+  );
+}
+
+// ── Card de lobby na lista ────────────────────────────────────────
+function LobbyCard({
+  lobby, canJoin, isOwn = false, onJoin,
+}: {
+  lobby: OpenLobby;
+  canJoin: boolean;
+  isOwn?: boolean;
+  onJoin: () => void;
+}) {
+  const currentPlayers = lobby.players.length;
+  const spotsFilled    = `${currentPlayers}/${lobby.maxPlayers}`;
+
+  return (
+    <div className={`ios-surface rounded-[14px] p-3.5 flex items-center gap-3 ${
+      isOwn ? 'border border-primary/20 bg-primary/3' : ''
+    }`}>
+      {/* Info */}
+      <div className="flex-1 min-w-0 space-y-1">
+        <div className="flex items-center gap-2 flex-wrap">
+          <span className="font-bold text-[13px] text-foreground truncate">{lobby.hostName}</span>
+          {isOwn && (
+            <span className="text-[10px] text-primary font-bold bg-primary/10 px-1.5 py-0.5 rounded-full">
+              Seu lobby
+            </span>
+          )}
+        </div>
+        <div className="text-[11px] text-muted-foreground">
+          {lobby.players[0]?.carName ?? '—'}
+          {lobby.players[0]?.igp != null && (
+            <span className={`ml-2 px-1.5 py-0.5 rounded-full text-[10px] font-bold border ${igpClass(lobby.players[0].igp)}`}>
+              IGP {lobby.players[0].igp}
+            </span>
+          )}
+        </div>
+        <div className="flex items-center gap-3 text-[11px]">
+          <span className="text-emerald-400 font-semibold">{fmt(lobby.bet)}</span>
+          <span className="flex items-center gap-1 text-muted-foreground">
+            <Users size={10} />
+            {spotsFilled}
+          </span>
+          {/* Vagas visuais */}
+          <div className="flex gap-0.5">
+            {Array.from({ length: lobby.maxPlayers }, (_, i) => (
+              <div
+                key={i}
+                className={`w-2 h-2 rounded-full ${i < currentPlayers ? 'bg-primary' : 'bg-muted'}`}
+              />
+            ))}
+          </div>
+        </div>
+      </div>
+
+      {/* Botão entrar */}
+      {!isOwn && (
+        <Button
+          size="sm"
+          disabled={!canJoin}
+          onClick={onJoin}
+          className="text-[12px] px-3 shrink-0"
+        >
+          Entrar
+        </Button>
+      )}
+    </div>
+  );
+}
+
+// ── Modal: criar racha ────────────────────────────────────────────
+function CreateLobbyModal({
+  carsInGarage, gameState, onConfirm, onClose,
+}: {
+  carsInGarage: OwnedCar[];
+  gameState:    GameState;
+  onConfirm:    (car: OwnedCar, bet: number, maxPlayers: number) => void;
+  onClose:      () => void;
+}) {
+  const [selectedCar, setSelectedCar] = useState<OwnedCar>(carsInGarage[0]!);
+  const [bet,         setBet]         = useState(1_000);
+  const [customBet,   setCustomBet]   = useState(false);
+  const [betInput,    setBetInput]    = useState('');
+  const [maxPlayers,  setMaxPlayers]  = useState(2);
+
+  const canCreate = selectedCar && bet > 0 && bet <= gameState.money;
+
+  return (
+    <div className="fixed inset-0 bg-background/90 backdrop-blur-sm z-50 flex items-end justify-center p-4">
+      <div className="w-full max-w-sm ios-surface rounded-[20px] p-5 space-y-4 shadow-2xl">
+        {/* Header */}
+        <div className="flex items-center justify-between">
+          <h3 className="font-bold text-[16px] text-foreground">Criar Racha</h3>
+          <button onClick={onClose} className="text-muted-foreground hover:text-foreground">
+            <X size={18} />
+          </button>
+        </div>
+
+        {/* Carro */}
+        <div>
+          <div className="text-[11px] uppercase tracking-wider text-muted-foreground font-semibold mb-1.5">Carro</div>
+          <div className="space-y-1.5 max-h-[180px] overflow-y-auto">
+            {carsInGarage.map(car => {
+              const perf = getFullPerformance(car);
+              const sel  = selectedCar?.instanceId === car.instanceId;
+              return (
+                <button
+                  key={car.instanceId}
+                  onClick={() => setSelectedCar(car)}
+                  className={`w-full flex items-center gap-2.5 p-2.5 rounded-[12px] text-left transition-all ${
+                    sel ? 'bg-primary/10 border border-primary/30' : 'bg-muted/30 border border-transparent hover:bg-muted/50'
+                  }`}
+                >
+                  <span className="text-xl">{car.icon}</span>
+                  <span className="flex-1 text-[12px] font-semibold text-foreground truncate">{car.fullName}</span>
+                  <span className={`px-1.5 py-0.5 rounded-full text-[10px] font-black border ${igpClass(perf.igp)}`}>
+                    {perf.igp}
+                  </span>
+                </button>
+              );
+            })}
+          </div>
+        </div>
+
+        {/* Vagas */}
+        <div>
+          <div className="text-[11px] uppercase tracking-wider text-muted-foreground font-semibold mb-1.5">
+            Máx. Jogadores
+          </div>
+          <div className="flex gap-2">
+            {[2, 3, 4].map(n => (
+              <button
+                key={n}
+                onClick={() => setMaxPlayers(n)}
+                className={`flex-1 py-2 rounded-[10px] text-[13px] font-bold transition-all ${
+                  maxPlayers === n ? 'bg-primary text-primary-foreground' : 'bg-muted text-foreground'
+                }`}
+              >
+                {n}
+              </button>
+            ))}
+          </div>
+        </div>
+
+        {/* Aposta */}
+        <div>
+          <div className="text-[11px] uppercase tracking-wider text-muted-foreground font-semibold mb-1.5">Aposta</div>
+          <div className="flex flex-wrap gap-1.5 mb-2">
+            {BET_PRESETS.map(p => (
+              <button
+                key={p}
+                onClick={() => { setBet(p); setCustomBet(false); setBetInput(''); }}
+                className={`px-2.5 py-1 rounded-[8px] text-[11px] font-bold transition-all ${
+                  !customBet && bet === p ? 'bg-primary text-primary-foreground' : 'bg-muted text-foreground'
+                }`}
+              >
+                {fmt(p)}
+              </button>
+            ))}
+            <button
+              onClick={() => setCustomBet(v => !v)}
+              className={`px-2.5 py-1 rounded-[8px] text-[11px] font-bold transition-all ${
+                customBet ? 'bg-primary text-primary-foreground' : 'bg-muted text-foreground'
+              }`}
+            >
+              Outro
+            </button>
+          </div>
+          {customBet && (
+            <input
+              type="number"
+              value={betInput}
+              onChange={e => { setBetInput(e.target.value); const v = parseFloat(e.target.value); if (!isNaN(v) && v > 0) setBet(Math.round(v)); }}
+              placeholder="Valor personalizado"
+              className="w-full bg-muted rounded-[10px] px-3 py-2 text-[12px] text-foreground border border-border focus:outline-none focus:ring-1 focus:ring-primary"
+            />
+          )}
+          <div className="mt-1.5 text-[11px] text-muted-foreground space-y-0.5">
+            <div>Pot total: <span className="font-bold text-foreground">{fmt(bet * maxPlayers)}</span></div>
+            <div>1º lugar receberá: <span className="font-bold text-emerald-400">{fmt(Math.round(bet * maxPlayers * 0.9 * 0.7))}</span></div>
+          </div>
+          {bet > gameState.money && (
+            <div className="text-[11px] text-red-400 mt-1">Saldo insuficiente</div>
+          )}
+        </div>
+
+        {/* Confirmar */}
+        <Button
+          className="w-full gap-2"
+          disabled={!canCreate}
+          onClick={() => onConfirm(selectedCar!, bet, maxPlayers)}
+        >
+          <Zap size={15} />
+          Criar Racha · {fmt(bet)}
+        </Button>
+      </div>
+    </div>
+  );
+}
+
+// ── Modal: entrar em lobby ────────────────────────────────────────
+function JoinLobbyModal({
+  lobby, carsInGarage, gameState, onConfirm, onClose,
+}: {
+  lobby:        OpenLobby;
+  carsInGarage: OwnedCar[];
+  gameState:    GameState;
+  onConfirm:    (car: OwnedCar) => void;
+  onClose:      () => void;
+}) {
+  const [selectedCar, setSelectedCar] = useState<OwnedCar>(carsInGarage[0]!);
+  const canJoin = gameState.money >= lobby.bet;
+
+  return (
+    <div className="fixed inset-0 bg-background/90 backdrop-blur-sm z-50 flex items-end justify-center p-4">
+      <div className="w-full max-w-sm ios-surface rounded-[20px] p-5 space-y-4 shadow-2xl">
+        <div className="flex items-center justify-between">
+          <h3 className="font-bold text-[16px] text-foreground">Entrar no Racha</h3>
+          <button onClick={onClose}><X size={18} className="text-muted-foreground" /></button>
+        </div>
+
+        {/* Info do lobby */}
+        <div className="bg-muted/30 rounded-[12px] p-3 space-y-1.5">
+          <div className="flex justify-between text-[12px]">
+            <span className="text-muted-foreground">Host</span>
+            <span className="font-semibold text-foreground">{lobby.hostName}</span>
+          </div>
+          <div className="flex justify-between text-[12px]">
+            <span className="text-muted-foreground">Vagas</span>
+            <span className="font-semibold text-foreground">{lobby.players.length}/{lobby.maxPlayers}</span>
+          </div>
+          <div className="flex justify-between text-[12px]">
+            <span className="text-muted-foreground">Aposta</span>
+            <span className="font-bold text-emerald-400">{fmt(lobby.bet)}</span>
+          </div>
+          <div className="flex justify-between text-[12px]">
+            <span className="text-muted-foreground">1º lugar</span>
+            <span className="font-bold text-yellow-400">{fmt(Math.round(lobby.bet * lobby.maxPlayers * 0.9 * 0.7))}</span>
+          </div>
+        </div>
+
+        {/* Jogadores no lobby */}
+        <div>
+          <div className="text-[11px] uppercase tracking-wider text-muted-foreground font-semibold mb-1.5">
+            No lobby
+          </div>
+          <div className="space-y-1">
+            {lobby.players.map(p => (
+              <div key={p.userId} className="flex items-center gap-2 text-[12px]">
+                <span>{p.carIcon}</span>
+                <span className="text-foreground font-medium">{p.name}</span>
+                <span className="text-muted-foreground">— {p.carName}</span>
+                <span className={`ml-auto px-1.5 py-0.5 rounded-full text-[10px] font-bold border ${igpClass(p.igp)}`}>
+                  {p.igp}
+                </span>
+              </div>
+            ))}
+          </div>
+        </div>
+
+        {/* Seleção de carro */}
+        <div>
+          <div className="text-[11px] uppercase tracking-wider text-muted-foreground font-semibold mb-1.5">Seu Carro</div>
+          <div className="space-y-1.5 max-h-[150px] overflow-y-auto">
+            {carsInGarage.map(car => {
+              const perf = getFullPerformance(car);
+              const sel  = selectedCar?.instanceId === car.instanceId;
+              return (
+                <button
+                  key={car.instanceId}
+                  onClick={() => setSelectedCar(car)}
+                  className={`w-full flex items-center gap-2.5 p-2.5 rounded-[12px] text-left transition-all ${
+                    sel ? 'bg-primary/10 border border-primary/30' : 'bg-muted/30 border border-transparent hover:bg-muted/50'
+                  }`}
+                >
+                  <span className="text-xl">{car.icon}</span>
+                  <span className="flex-1 text-[12px] font-semibold text-foreground truncate">{car.fullName}</span>
+                  <span className={`px-1.5 py-0.5 rounded-full text-[10px] font-black border ${igpClass(perf.igp)}`}>
+                    {perf.igp}
+                  </span>
+                </button>
+              );
+            })}
+          </div>
+        </div>
+
+        {!canJoin && (
+          <div className="text-[11px] text-red-400">Saldo insuficiente para esta aposta</div>
+        )}
+
+        <Button
+          className="w-full gap-2"
+          disabled={!canJoin || !selectedCar}
+          onClick={() => onConfirm(selectedCar!)}
+        >
+          <Zap size={15} />
+          Confirmar Entrada · {fmt(lobby.bet)}
+        </Button>
+      </div>
+    </div>
+  );
+}
+
+// ── Sala de espera ────────────────────────────────────────────────
+function WaitingRoomView({
+  lobby, myUserId, onLeave,
+}: {
+  lobby:    OpenLobby;
+  myUserId: string | null;
+  onLeave:  () => void;
+}) {
+  const currentPlayers = lobby.players.length;
+  const waitingFor     = lobby.maxPlayers - currentPlayers;
+
+  return (
+    <div className="space-y-5">
+      {/* Header */}
+      <div className="flex items-center gap-3">
+        <button onClick={onLeave} className="text-muted-foreground hover:text-foreground">
+          <ArrowLeft size={18} />
+        </button>
+        <div>
+          <h2 className="font-bold text-[16px] text-foreground">Sala de Espera</h2>
+          <p className="text-[11px] text-muted-foreground">Aguardando jogadores...</p>
+        </div>
+      </div>
+
+      {/* Status */}
+      <div className="ios-surface rounded-[16px] p-4 text-center space-y-2">
+        <div className="text-[48px]">
+          {waitingFor > 0 ? '⏳' : '🏁'}
+        </div>
+        <div className="font-bold text-[16px] text-foreground">
+          {waitingFor > 0
+            ? `Aguardando ${waitingFor} jogador${waitingFor > 1 ? 'es' : ''}...`
+            : 'Lobby completo! Iniciando...'}
+        </div>
+        <div className="flex items-center justify-center gap-2">
+          <span className="text-[12px] text-muted-foreground">Aposta: </span>
+          <span className="text-[13px] font-bold text-emerald-400">{fmt(lobby.bet)}</span>
+          <span className="text-muted-foreground">·</span>
+          <span className="text-[12px] text-muted-foreground">{currentPlayers}/{lobby.maxPlayers} jogadores</span>
+        </div>
+        {/* Vagas visuais */}
+        <div className="flex justify-center gap-2 mt-1">
+          {Array.from({ length: lobby.maxPlayers }, (_, i) => (
+            <div
+              key={i}
+              className={`w-4 h-4 rounded-full transition-colors duration-300 ${
+                i < currentPlayers ? 'bg-primary scale-110' : 'bg-muted'
+              }`}
+            />
+          ))}
+        </div>
+      </div>
+
+      {/* Lista de jogadores */}
+      <div className="space-y-2">
+        <div className="text-[11px] uppercase tracking-wider text-muted-foreground font-semibold px-1">
+          Participantes ({currentPlayers}/{lobby.maxPlayers})
+        </div>
+        {lobby.players.map((p, i) => (
+          <div key={p.userId} className={`ios-surface rounded-[12px] p-3 flex items-center gap-3 ${
+            p.userId === myUserId ? 'border border-primary/30 bg-primary/3' : ''
+          }`}>
+            <span className="text-xl">{p.carIcon}</span>
+            <div className="flex-1 min-w-0">
+              <div className="text-[13px] font-semibold text-foreground flex items-center gap-1.5">
+                {p.name}
+                {p.userId === myUserId && (
+                  <span className="text-[10px] text-primary font-normal">(você)</span>
+                )}
+                {i === 0 && <span className="text-[10px] text-amber-400">👑 Host</span>}
+              </div>
+              <div className="text-[11px] text-muted-foreground truncate">{p.carName}</div>
+            </div>
+            <span className={`px-2 py-0.5 rounded-full text-[11px] font-black border ${igpClass(p.igp)}`}>
+              IGP {p.igp}
+            </span>
+          </div>
+        ))}
+        {/* Slots vazios */}
+        {Array.from({ length: lobby.maxPlayers - currentPlayers }, (_, i) => (
+          <div key={`empty-${i}`} className="ios-surface rounded-[12px] p-3 flex items-center gap-3 opacity-40 border border-dashed border-border">
+            <div className="w-9 h-9 rounded-full bg-muted flex items-center justify-center text-muted-foreground">?</div>
+            <div className="text-[12px] text-muted-foreground">Aguardando jogador...</div>
+          </div>
+        ))}
+      </div>
+
+      <Button variant="outline" size="sm" onClick={onLeave} className="gap-2 w-full text-[12px]">
+        <X size={13} />
+        Sair do Lobby (recebe aposta de volta)
       </Button>
     </div>
   );
 }
 
-function CountdownScreen({
-  countdown,
-  myCar,
-  opponent,
-}: {
-  countdown: number;
-  myCar: OwnedCar | null;
-  opponent: { name: string; carName: string; igp: number } | null;
-}) {
+// ── Countdown ─────────────────────────────────────────────────────
+function CountdownView({ lobby, countdown }: { lobby: OpenLobby; countdown: number }) {
   return (
     <div className="flex flex-col items-center justify-center min-h-[70vh] space-y-6">
-      <div className="w-full ios-surface rounded-[16px] p-4 flex justify-between items-center gap-4">
-        <div className="text-center flex-1">
-          <div className="text-2xl">{myCar?.icon ?? '🚗'}</div>
-          <div className="text-[12px] font-bold text-foreground truncate">{myCar?.brand}</div>
-          <div className="text-[10px] text-muted-foreground truncate">{myCar?.model}</div>
-        </div>
-        <div className="text-2xl text-muted-foreground font-bold">VS</div>
-        <div className="text-center flex-1">
-          <div className="text-2xl">🏎️</div>
-          <div className="text-[12px] font-bold text-foreground truncate">{opponent?.name}</div>
-          <div className="text-[10px] text-muted-foreground truncate">{opponent?.carName}</div>
-        </div>
+      {/* Jogadores */}
+      <div className="w-full ios-surface rounded-[16px] p-4 space-y-2">
+        {lobby.players.map(p => (
+          <div key={p.userId} className="flex items-center gap-2 text-[12px]">
+            <span className="text-lg">{p.carIcon}</span>
+            <span className="font-semibold text-foreground flex-1 truncate">{p.name}</span>
+            <span className={`px-1.5 py-0.5 rounded-full text-[10px] font-black border ${igpClass(p.igp)}`}>
+              IGP {p.igp}
+            </span>
+          </div>
+        ))}
       </div>
-      <div
-        className={`text-[80px] font-black tabular-nums leading-none transition-transform ${
-          countdown > 0 ? 'scale-110 text-primary' : 'text-emerald-500 scale-125'
-        }`}
-      >
+      {/* Número */}
+      <div className={`text-[96px] font-black tabular-nums leading-none transition-all duration-300 ${
+        countdown > 0 ? 'text-primary scale-110' : 'text-emerald-400 scale-125'
+      }`}>
         {countdown > 0 ? countdown : 'GO!'}
       </div>
-      <div className="text-[14px] text-muted-foreground">Prepare-se...</div>
+      <div className="text-[15px] text-muted-foreground animate-pulse">Prepare-se...</div>
     </div>
   );
 }
 
-function RacingScreen({
-  myCar,
-  opponent,
-  progress,
-}: {
-  myCar: OwnedCar | null;
-  opponent: { name: string; carName: string; igp: number } | null;
-  progress: { me: number; opp: number };
-}) {
+// ── Corrida animada ───────────────────────────────────────────────
+function RaceView({ players }: { players: RacePlayerAnim[] }) {
+  // Calcula posição atual de cada barra em tempo real
+  const sorted = [...players].sort((a, b) => b.barProgress - a.barProgress);
+  const posMap  = new Map(sorted.map((p, i) => [p.userId, i + 1]));
+
   return (
-    <div className="flex flex-col justify-center min-h-[70vh] space-y-6 px-2">
-      <div className="text-center font-bold text-[16px] text-foreground animate-pulse">
-        🏁 Corrida em andamento...
+    <div className="space-y-4">
+      <div className="text-center space-y-1">
+        <div className="font-bold text-[17px] text-foreground animate-pulse">🏁 Corrida em andamento...</div>
       </div>
-      {/* Meu carro */}
-      <div className="space-y-2">
-        <div className="flex items-center gap-2">
-          <span className="text-xl">{myCar?.icon ?? '🚗'}</span>
-          <span className="text-[13px] font-bold text-foreground flex-1 truncate">Você ({myCar?.model})</span>
-          <span className="text-[12px] font-bold text-primary tabular-nums">{Math.round(progress.me)}%</span>
-        </div>
-        <div className="w-full h-5 bg-muted rounded-full overflow-hidden">
-          <div
-            className="h-full rounded-full transition-none"
-            style={{ width: `${progress.me}%`, background: 'var(--gradient-primary)' }}
-          />
-        </div>
-      </div>
-      {/* Oponente */}
-      <div className="space-y-2">
-        <div className="flex items-center gap-2">
-          <span className="text-xl">🏎️</span>
-          <span className="text-[13px] font-bold text-foreground flex-1 truncate">{opponent?.name}</span>
-          <span className="text-[12px] font-bold text-red-500 tabular-nums">{Math.round(progress.opp)}%</span>
-        </div>
-        <div className="w-full h-5 bg-muted rounded-full overflow-hidden">
-          <div
-            className="h-full rounded-full transition-none bg-red-500"
-            style={{ width: `${progress.opp}%` }}
-          />
-        </div>
+
+      <div className="space-y-3">
+        {players.map(p => {
+          const livePos = posMap.get(p.userId) ?? 1;
+          return (
+            <div key={p.userId} className={`space-y-1.5 ${p.isMe ? 'ring-1 ring-primary/40 rounded-[14px] p-2' : ''}`}>
+              <div className="flex items-center gap-2">
+                <span className={`text-[13px] font-bold w-6 shrink-0 ${positionColor(livePos)}`}>
+                  {livePos}º
+                </span>
+                <span className="text-lg">{p.carIcon}</span>
+                <div className="flex-1 min-w-0">
+                  <span className="text-[12px] font-semibold text-foreground truncate block">
+                    {p.name}
+                    {p.isMe && <span className="ml-1 text-[10px] text-primary font-normal">(você)</span>}
+                  </span>
+                  <span className="text-[10px] text-muted-foreground truncate block">{p.carName}</span>
+                </div>
+                <span className="text-[11px] font-bold tabular-nums text-muted-foreground shrink-0">
+                  {Math.round(p.barProgress)}%
+                </span>
+              </div>
+              <div className="w-full h-5 bg-muted rounded-full overflow-hidden relative">
+                <div
+                  className="h-full rounded-full transition-none"
+                  style={{
+                    width:      `${p.barProgress}%`,
+                    background: barColor(livePos),
+                  }}
+                />
+              </div>
+            </div>
+          );
+        })}
       </div>
     </div>
   );
 }
 
-function ResultScreen({
-  result,
-  myCar,
-  onRevanche,
-  onBack,
+// ── Resultado ─────────────────────────────────────────────────────
+function ResultView({
+  players, myUserId, onBack,
 }: {
-  result: {
-    won: boolean;
-    myIgp: number;
-    opponentIgp: number;
-    bet: number;
-    payout: number;
-    record: RaceRecord;
-  };
-  myCar: OwnedCar | null;
-  onRevanche: () => void;
-  onBack: () => void;
+  players:  RacePlayerAnim[];
+  myUserId: string | null;
+  onBack:   () => void;
 }) {
-  const fmt2 = (v: number) =>
-    new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL', maximumFractionDigits: 0 }).format(v);
+  const sorted = [...players].sort((a, b) => a.position - b.position);
+  const me     = sorted.find(p => p.isMe);
 
   return (
-    <div className="space-y-5">
-      {/* Resultado */}
-      <div className={`ios-surface rounded-[20px] p-6 text-center space-y-3 border-2 ${
-        result.won ? 'border-emerald-500/40 bg-emerald-500/5' : 'border-red-500/40 bg-red-500/5'
-      }`}>
-        <div className="text-6xl">{result.won ? '🏆' : '💔'}</div>
-        <div className={`font-black text-[28px] ${result.won ? 'text-emerald-500' : 'text-red-500'}`}>
-          {result.won ? 'VITÓRIA!' : 'DERROTA'}
-        </div>
-        {result.won ? (
-          <div className="text-[18px] font-bold text-foreground">
-            +{fmt2(result.payout)}
+    <div className="space-y-4">
+      {/* Resultado do jogador */}
+      {me && (
+        <div className={`ios-surface rounded-[20px] p-5 text-center border-2 ${
+          me.position === 1
+            ? 'border-yellow-400/50 bg-yellow-400/5'
+            : me.position === 2
+            ? 'border-gray-400/50 bg-gray-400/5'
+            : me.position === 3
+            ? 'border-amber-600/50 bg-amber-600/5'
+            : 'border-border bg-muted/20'
+        }`}>
+          <div className="text-6xl mb-2">{positionMedal(me.position)}</div>
+          <div className={`font-black text-[28px] ${positionColor(me.position)}`}>
+            {me.position === 1 ? 'VITÓRIA!'
+             : me.position === 2 ? '2º LUGAR'
+             : me.position === 3 ? '3º LUGAR'
+             : '4º LUGAR'}
           </div>
-        ) : (
-          <div className="text-[18px] font-bold text-red-500">
-            -{fmt2(result.bet)}
+          <div className="mt-2 text-[14px] font-semibold text-foreground">
+            {me.payout > 0
+              ? <span className="text-emerald-400">+{fmt(me.payout)}</span>
+              : <span className="text-red-400">Nenhum prêmio</span>
+            }
           </div>
-        )}
-        <div className="text-[12px] text-muted-foreground">
-          vs. {result.record.opponentName} ({result.record.opponentCar})
+          <div className="text-[11px] text-muted-foreground mt-1">
+            IGP {me.igp} · Score {me.score.toFixed(1)}
+          </div>
         </div>
-      </div>
+      )}
 
-      {/* Comparativo IGP */}
-      <div className="ios-surface rounded-[16px] p-4 space-y-2">
+      {/* Pódio completo */}
+      <div className="ios-surface rounded-[16px] p-4 space-y-3">
         <div className="text-[11px] uppercase tracking-wider text-muted-foreground font-semibold">
-          Comparativo de Performance
+          Classificação Final
         </div>
-        <div className="flex justify-around text-center py-2">
-          <div>
-            <div className="text-[30px] font-black tabular-nums text-primary">{result.myIgp}</div>
-            <div className="text-[11px] text-muted-foreground">{myCar?.model ?? 'Você'}</div>
+        {sorted.map(p => (
+          <div
+            key={p.userId}
+            className={`flex items-center gap-3 p-2.5 rounded-[12px] transition-colors ${
+              p.isMe ? 'bg-primary/5 border border-primary/20' : 'bg-muted/20'
+            }`}
+          >
+            <span className="text-[18px] w-8 text-center shrink-0">
+              {positionMedal(p.position)}
+            </span>
+            <span className="text-xl">{p.carIcon}</span>
+            <div className="flex-1 min-w-0">
+              <div className="text-[12px] font-semibold text-foreground truncate">
+                {p.name}
+                {p.isMe && <span className="ml-1.5 text-[10px] text-primary font-normal">(você)</span>}
+              </div>
+              <div className="text-[10px] text-muted-foreground truncate">
+                {p.carName} · IGP {p.igp}
+              </div>
+            </div>
+            <div className="text-right shrink-0">
+              {p.payout > 0
+                ? <div className="text-[12px] font-bold text-emerald-400">+{fmt(p.payout)}</div>
+                : <div className="text-[12px] text-muted-foreground">—</div>
+              }
+              <div className="text-[10px] text-muted-foreground tabular-nums">
+                {p.score.toFixed(1)}
+              </div>
+            </div>
           </div>
-          <div className="flex items-center text-muted-foreground font-bold text-[16px]">VS</div>
-          <div>
-            <div className="text-[30px] font-black tabular-nums text-red-500">{result.opponentIgp}</div>
-            <div className="text-[11px] text-muted-foreground">{result.record.opponentName}</div>
-          </div>
-        </div>
+        ))}
       </div>
 
-      {/* Ações */}
-      <div className="flex gap-3">
-        <Button variant="outline" className="flex-1 gap-2" onClick={onBack}>
-          <X size={14} />
-          Voltar
-        </Button>
-        <Button className="flex-1 gap-2" onClick={onRevanche}>
-          <Zap size={14} />
-          Revanche
-        </Button>
-      </div>
+      <Button className="w-full gap-2" onClick={onBack}>
+        <ArrowLeft size={14} />
+        Voltar aos Lobbies
+      </Button>
     </div>
   );
 }
 
-function HistorySection({ history, title = 'Histórico de Rachas' }: { history: RaceRecord[]; title?: string }) {
+// ── Histórico ─────────────────────────────────────────────────────
+function RaceHistorySection({ history }: { history: RaceRecord[] }) {
   return (
     <div className="space-y-2">
       <div className="text-[11px] uppercase tracking-wider text-muted-foreground font-semibold px-1">
-        {title}
+        Histórico
       </div>
-      {history.map(r => (
-        <div key={r.id} className="ios-surface rounded-[12px] p-3 flex items-center gap-3">
-          <div className={`w-8 h-8 rounded-full flex items-center justify-center shrink-0 ${
-            r.won ? 'bg-emerald-500/15' : 'bg-red-500/15'
-          }`}>
-            {r.won ? <Trophy size={14} className="text-emerald-500" /> : <TrendingDown size={14} className="text-red-500" />}
-          </div>
-          <div className="flex-1 min-w-0">
-            <div className="text-[12px] font-semibold text-foreground truncate">
-              vs. {r.opponentName} ({r.opponentCar})
+      {history.map(r => {
+        const pos = r.myPosition ?? (r.won ? 1 : 2);
+        return (
+          <div key={r.id} className="ios-surface rounded-[12px] p-3 flex items-center gap-3">
+            <span className="text-[20px]">{positionMedal(pos)}</span>
+            <div className="flex-1 min-w-0">
+              <div className="text-[12px] font-semibold text-foreground truncate">
+                {r.participants
+                  ? `${r.totalPlayers ?? '?'} jogadores · ${pos}º lugar`
+                  : `vs. ${r.opponentName}`}
+              </div>
+              <div className="text-[10px] text-muted-foreground flex items-center gap-1">
+                <Clock size={9} />
+                {new Date(r.createdAt).toLocaleDateString('pt-BR')}
+                {' · '}Aposta {fmt(r.bet)}
+              </div>
             </div>
-            <div className="text-[10px] text-muted-foreground flex items-center gap-1">
-              <Clock size={9} />
-              {new Date(r.createdAt).toLocaleDateString('pt-BR')}
-              {' · '}IGP {r.myIgp} vs {r.opponentIgp}
+            <div className={`text-[12px] font-bold tabular-nums ${r.payout > 0 ? 'text-emerald-400' : 'text-red-400'}`}>
+              {r.payout > 0 ? `+${fmt(r.payout)}` : `-${fmt(r.bet)}`}
             </div>
           </div>
-          <div className={`text-[12px] font-bold tabular-nums ${r.won ? 'text-emerald-500' : 'text-red-500'}`}>
-            {r.won ? `+${new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL', maximumFractionDigits: 0 }).format(r.payout)}` : `-${new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL', maximumFractionDigits: 0 }).format(r.bet)}`}
-          </div>
-        </div>
-      ))}
+        );
+      })}
     </div>
   );
 }

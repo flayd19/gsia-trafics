@@ -54,80 +54,10 @@ const STAT_META: Record<StatKey, { label: string; icon: string }> = {
   gearShift:    { label: 'Câmbio',       icon: '⚙️' },
 };
 
-const RADAR_STATS: StatKey[] = [
+const STAT_KEYS: StatKey[] = [
   'topSpeed', 'acceleration', 'power', 'torque',
-  'aerodynamics', 'stability', 'grip',
+  'aerodynamics', 'stability', 'grip', 'gearShift',
 ];
-
-// ── SVG Radar Chart ──────────────────────────────────────────────
-function RadarChart({
-  base,
-  tuned,
-  hasTune,
-}: {
-  base: Record<string, number>;
-  tuned: Record<string, number>;
-  hasTune: boolean;
-}) {
-  const size = 200;
-  const cx = size / 2;
-  const cy = size / 2;
-  const r = 80;
-  const n = RADAR_STATS.length;
-
-  const angle = (i: number) => (Math.PI * 2 * i) / n - Math.PI / 2;
-
-  const toXY = (i: number, value: number) => {
-    const a = angle(i);
-    const dist = (value / 100) * r;
-    return { x: cx + Math.cos(a) * dist, y: cy + Math.sin(a) * dist };
-  };
-
-  const gridPoly = (pct: number) =>
-    RADAR_STATS.map((_, i) => {
-      const a = angle(i);
-      const d = (pct / 100) * r;
-      return `${cx + Math.cos(a) * d},${cy + Math.sin(a) * d}`;
-    }).join(' ');
-
-  const makePoly = (data: Record<string, number>) =>
-    RADAR_STATS.map((k, i) => {
-      const p = toXY(i, data[k] ?? 0);
-      return `${p.x},${p.y}`;
-    }).join(' ');
-
-  return (
-    <svg viewBox={`0 0 ${size} ${size}`} className="w-full max-w-[220px] mx-auto">
-      {/* Grid */}
-      {[20, 40, 60, 80, 100].map(pct => (
-        <polygon key={pct} points={gridPoly(pct)} fill="none" stroke="rgba(255,255,255,0.06)" strokeWidth="1" />
-      ))}
-      {/* Axis lines */}
-      {RADAR_STATS.map((_, i) => {
-        const p = toXY(i, 100);
-        return <line key={i} x1={cx} y1={cy} x2={p.x} y2={p.y} stroke="rgba(255,255,255,0.08)" strokeWidth="1" />;
-      })}
-      {/* Base polygon */}
-      <polygon points={makePoly(base)} fill="rgba(99,102,241,0.15)" stroke="rgba(99,102,241,0.5)" strokeWidth="1.5" />
-      {/* Tuned polygon */}
-      {hasTune && (
-        <polygon points={makePoly(tuned)} fill="rgba(16,185,129,0.18)" stroke="rgba(16,185,129,0.7)" strokeWidth="1.5" />
-      )}
-      {/* Labels */}
-      {RADAR_STATS.map((k, i) => {
-        const a = angle(i);
-        const lx = cx + Math.cos(a) * (r + 18);
-        const ly = cy + Math.sin(a) * (r + 18);
-        return (
-          <text key={k} x={lx} y={ly} textAnchor="middle" dominantBaseline="middle" fontSize="10" fill="rgba(255,255,255,0.5)">
-            {STAT_META[k].icon}
-          </text>
-        );
-      })}
-      <circle cx={cx} cy={cy} r="2.5" fill="rgba(99,102,241,0.8)" />
-    </svg>
-  );
-}
 
 // ── Barra de stat com before/after ───────────────────────────────
 function StatBar({ label, icon, base, current }: { label: string; icon: string; base: number; current: number }) {
@@ -431,36 +361,12 @@ export function DesempenhoPanel({ car, money, onApplyTune, onSpendMoney }: Desem
       {/* ── Tab: Visão Geral ── */}
       {activeTab === 'visao' && (
         <div className="space-y-4">
-          {/* Radar */}
-          <div className="ios-surface rounded-[16px] p-4">
-            <div className="text-[11px] uppercase tracking-wider text-muted-foreground font-semibold mb-3">
-              Radar de Performance
-            </div>
-            <RadarChart
-              base={baseStat as unknown as Record<string, number>}
-              tuned={perf as unknown as Record<string, number>}
-              hasTune={hasTune}
-            />
-            {hasTune && (
-              <div className="flex items-center justify-center gap-4 mt-2 text-[10px]">
-                <span className="flex items-center gap-1.5">
-                  <span className="w-4 h-0.5 bg-indigo-400 inline-block rounded" />
-                  <span className="text-muted-foreground">Base</span>
-                </span>
-                <span className="flex items-center gap-1.5">
-                  <span className="w-4 h-0.5 bg-emerald-400 inline-block rounded" />
-                  <span className="text-muted-foreground">Tunado</span>
-                </span>
-              </div>
-            )}
-          </div>
-
           {/* Barras */}
           <div className="ios-surface rounded-[16px] p-4 space-y-3">
             <div className="text-[11px] uppercase tracking-wider text-muted-foreground font-semibold">
               Atributos
             </div>
-            {RADAR_STATS.map(key => (
+            {STAT_KEYS.map(key => (
               <StatBar
                 key={key}
                 label={STAT_META[key].label}
@@ -469,13 +375,6 @@ export function DesempenhoPanel({ car, money, onApplyTune, onSpendMoney }: Desem
                 current={perf[key] as number}
               />
             ))}
-            {/* Câmbio separado pois não está no radar */}
-            <StatBar
-              label={STAT_META.gearShift.label}
-              icon={STAT_META.gearShift.icon}
-              base={baseStat.gearShift}
-              current={perf.gearShift}
-            />
             <div className="pt-1 border-t border-border text-[10px] text-muted-foreground">
               ⚖️ Peso interno: {perf.weight}/100 (quanto maior, mais penaliza o IGP)
             </div>

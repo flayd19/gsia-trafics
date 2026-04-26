@@ -59,8 +59,20 @@ export interface TuneUpgrade {
   appliedAt: number;
 }
 
+// ── Participante de corrida multiplayer ──────────────────────────
+export interface RaceParticipant {
+  userId:   string;
+  name:     string;
+  carName:  string;
+  carIcon:  string;
+  igp:      number;
+  position: number; // 1-4
+  payout:   number;
+}
+
 export interface RaceRecord {
   id:           string;
+  // v1 legacy — em corridas multiplayer, opponentName = "X jogadores"
   opponentName: string;
   opponentCar:  string;
   myIgp:        number;
@@ -69,6 +81,10 @@ export interface RaceRecord {
   won:          boolean;
   payout:       number;
   createdAt:    string;
+  // v2 multiplayer
+  participants?: RaceParticipant[];
+  myPosition?:   number; // 1-4
+  totalPlayers?: number;
 }
 
 // ── Seções de tunagem para organização da UI ─────────────────────
