@@ -2,7 +2,6 @@
 // RachaScreen — PvP Lobby Aberto (2-4 jogadores)
 // =====================================================================
 import { useState } from 'react';
-import type { CSSProperties } from 'react';
 import { Zap, Plus, Users, Trophy, Clock, RefreshCw, X, ArrowLeft } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import type { GameState, OwnedCar } from '@/types/game';
@@ -54,12 +53,48 @@ export function RachaScreen({ gameState, onSpendMoney, onAddMoney }: RachaScreen
     .filter(s => s.unlocked && s.car)
     .map(s => s.car!);
 
+  // Estados de navegação interna — renderizados como views normais (sem overlay fixed)
+  const [showCreate,      setShowCreate]      = useState(false);
+  const [joinLobbyTarget, setJoinLobbyTarget] = useState<OpenLobby | null>(null);
+
   const {
     state, openLobbies, currentLobby, countdown,
     racePlayers, raceHistory, myUserId, myName,
     isLoading, error,
     createLobby, joinLobby, leaveLobby, resetRace, refetchLobbies,
   } = useRachaLobby({ onSpendMoney, onAddMoney });
+
+  // ── criar racha ───────────────────────────────────────────────
+  if (showCreate) {
+    return (
+      <CreateLobbyView
+        carsInGarage={carsInGarage}
+        gameState={gameState}
+        onConfirm={(car, bet, maxPlayers) => {
+          setShowCreate(false);
+          void createLobby(car, bet, maxPlayers);
+        }}
+        onBack={() => setShowCreate(false)}
+      />
+    );
+  }
+
+  // ── entrar em lobby ───────────────────────────────────────────
+  if (joinLobbyTarget) {
+    return (
+      <JoinLobbyView
+        lobby={joinLobbyTarget}
+        carsInGarage={carsInGarage}
+        gameState={gameState}
+        onConfirm={(car) => {
+          const target = joinLobbyTarget;
+          setJoinLobbyTarget(null);
+          void joinLobby(target, car);
+        }}
+        onBack={() => setJoinLobbyTarget(null)}
+      />
+    );
+  }
 
   // ── idle ──────────────────────────────────────────────────────
   if (state === 'idle') {
@@ -73,8 +108,8 @@ export function RachaScreen({ gameState, onSpendMoney, onAddMoney }: RachaScreen
         isLoading={isLoading}
         error={error}
         raceHistory={raceHistory}
-        onCreateLobby={createLobby}
-        onJoinLobby={joinLobby}
+        onShowCreate={() => setShowCreate(true)}
+        onJoinTarget={(lobby) => setJoinLobbyTarget(lobby)}
         onRefresh={refetchLobbies}
       />
     );
@@ -129,19 +164,16 @@ interface LobbyListViewProps {
   isLoading:     boolean;
   error:         string | null;
   raceHistory:   RaceRecord[];
-  onCreateLobby: (car: OwnedCar, bet: number, maxPlayers: number) => Promise<void>;
-  onJoinLobby:   (lobby: OpenLobby, car: OwnedCar) => Promise<void>;
+  onShowCreate:  () => void;
+  onJoinTarget:  (lobby: OpenLobby) => void;
   onRefresh:     () => void;
 }
 
 function LobbyListView({
   openLobbies, carsInGarage, gameState, myUserId, myName,
   isLoading, error, raceHistory,
-  onCreateLobby, onJoinLobby, onRefresh,
+  onShowCreate, onJoinTarget, onRefresh,
 }: LobbyListViewProps) {
-  const [showCreate, setShowCreate] = useState(false);
-  const [joinLobbyTarget, setJoinLobbyTarget] = useState<OpenLobby | null>(null);
-
   return (
     <div className="space-y-4">
       {/* Header */}
@@ -160,7 +192,7 @@ function LobbyListView({
             <RefreshCw size={13} className={isLoading ? 'animate-spin' : ''} />
           </Button>
           {carsInGarage.length > 0 && (
-            <Button size="sm" className="gap-1.5 text-[12px]" onClick={() => setShowCreate(true)}>
+            <Button size="sm" className="gap-1.5 text-[12px]" onClick={onShowCreate}>
               <Plus size={14} />
               Criar Racha
             </Button>
@@ -204,7 +236,7 @@ function LobbyListView({
                   key={lobby.id}
                   lobby={lobby}
                   canJoin={gameState.money >= lobby.bet && carsInGarage.length > 0}
-                  onJoin={() => setJoinLobbyTarget(lobby)}
+                  onJoin={() => onJoinTarget(lobby)}
                 />
               ))
           )}
@@ -225,34 +257,6 @@ function LobbyListView({
       {/* Histórico */}
       {raceHistory.length > 0 && (
         <RaceHistorySection history={raceHistory.slice(0, 8)} />
-      )}
-
-      {/* Modal: criar racha */}
-      {showCreate && (
-        <CreateLobbyModal
-          carsInGarage={carsInGarage}
-          gameState={gameState}
-          onConfirm={(car, bet, maxPlayers) => {
-            setShowCreate(false);
-            void onCreateLobby(car, bet, maxPlayers);
-          }}
-          onClose={() => setShowCreate(false)}
-        />
-      )}
-
-      {/* Modal: entrar em lobby */}
-      {joinLobbyTarget && (
-        <JoinLobbyModal
-          lobby={joinLobbyTarget}
-          carsInGarage={carsInGarage}
-          gameState={gameState}
-          onConfirm={(car) => {
-            const target = joinLobbyTarget;
-            setJoinLobbyTarget(null);
-            void onJoinLobby(target, car);
-          }}
-          onClose={() => setJoinLobbyTarget(null)}
-        />
       )}
     </div>
   );
@@ -325,14 +329,14 @@ function LobbyCard({
   );
 }
 
-// ── Tela cheia: criar racha ───────────────────────────────────────
-function CreateLobbyModal({
-  carsInGarage, gameState, onConfirm, onClose,
+// ── View: criar racha (conteúdo normal da aba, sem fixed overlay) ──
+function CreateLobbyView({
+  carsInGarage, gameState, onConfirm, onBack,
 }: {
   carsInGarage: OwnedCar[];
   gameState:    GameState;
   onConfirm:    (car: OwnedCar, bet: number, maxPlayers: number) => void;
-  onClose:      () => void;
+  onBack:       () => void;
 }) {
   const [selectedCar, setSelectedCar] = useState<OwnedCar>(carsInGarage[0]!);
   const [bet,         setBet]         = useState(1_000);
@@ -343,183 +347,169 @@ function CreateLobbyModal({
   const canCreate = selectedCar && bet > 0 && bet <= gameState.money;
 
   return (
-    <div className="fixed inset-0 z-[60] flex flex-col bg-background" style={{ height: '100dvh' }}>
-      {/* Header fixo — respeita safe-area-top */}
-      <div
-        className="shrink-0 flex items-center gap-3 px-4 border-b border-border bg-background"
-        style={{ paddingTop: 'calc(var(--safe-top) + 0.75rem)', paddingBottom: '0.75rem' }}
-      >
+    <div className="space-y-5">
+      {/* Mini-header da view */}
+      <div className="flex items-center gap-3">
         <button
-          onClick={onClose}
+          onClick={onBack}
           className="w-9 h-9 rounded-full bg-muted flex items-center justify-center active:scale-95 shrink-0"
         >
           <ArrowLeft size={18} className="text-foreground" />
         </button>
-        <h2 className="font-bold text-[17px] text-foreground flex-1">🏁 Criar Racha</h2>
+        <div className="flex-1">
+          <h2 className="font-bold text-[17px] text-foreground">🏁 Criar Racha</h2>
+        </div>
         <span className="text-[12px] text-muted-foreground tabular-nums">
-          {gameState.money > 0 ? fmt(gameState.money) : ''}
+          {fmt(gameState.money)}
         </span>
       </div>
 
-      {/* Conteúdo scrollável — min-h-0 é essencial p/ flex+overflow funcionar no iOS */}
-      <div className="flex-1 min-h-0 overflow-y-auto overscroll-contain px-4 py-4 space-y-5"
-           style={{ WebkitOverflowScrolling: 'touch' } as CSSProperties}>
-
-        {/* Carro */}
-        <div>
-          <div className="text-[11px] uppercase tracking-wider text-muted-foreground font-semibold mb-2">
-            Escolha o Carro
-          </div>
-          <div className="space-y-2">
-            {carsInGarage.map(car => {
-              const perf = getFullPerformance(car);
-              const sel  = selectedCar?.instanceId === car.instanceId;
-              return (
-                <button
-                  key={car.instanceId}
-                  onClick={() => setSelectedCar(car)}
-                  className={`w-full flex items-center gap-3 p-3.5 rounded-[14px] text-left transition-all active:scale-[0.98] ${
-                    sel
-                      ? 'bg-primary/10 border border-primary/40'
-                      : 'ios-surface border border-transparent'
-                  }`}
-                >
-                  <span className="text-3xl">{car.icon}</span>
-                  <div className="flex-1 min-w-0">
-                    <p className="text-[13px] font-semibold text-foreground truncate">{car.fullName}</p>
-                    <p className="text-[11px] text-muted-foreground">{car.year}</p>
-                  </div>
-                  <span className={`px-2 py-1 rounded-full text-[11px] font-black border ${igpClass(perf.igp)}`}>
-                    IGP {perf.igp}
-                  </span>
-                </button>
-              );
-            })}
-          </div>
+      {/* Carro */}
+      <div>
+        <div className="text-[11px] uppercase tracking-wider text-muted-foreground font-semibold mb-2">
+          Escolha o Carro
         </div>
-
-        {/* Máx. jogadores */}
-        <div>
-          <div className="text-[11px] uppercase tracking-wider text-muted-foreground font-semibold mb-2">
-            Máx. Jogadores
-          </div>
-          <div className="flex gap-2">
-            {[2, 3, 4].map(n => (
+        <div className="space-y-2">
+          {carsInGarage.map(car => {
+            const perf = getFullPerformance(car);
+            const sel  = selectedCar?.instanceId === car.instanceId;
+            return (
               <button
-                key={n}
-                onClick={() => setMaxPlayers(n)}
-                className={`flex-1 py-3 rounded-[12px] text-[15px] font-bold transition-all active:scale-95 ${
-                  maxPlayers === n ? 'bg-primary text-primary-foreground' : 'ios-surface text-foreground'
+                key={car.instanceId}
+                onClick={() => setSelectedCar(car)}
+                className={`w-full flex items-center gap-3 p-3.5 rounded-[14px] text-left transition-all active:scale-[0.98] ${
+                  sel
+                    ? 'bg-primary/10 border border-primary/40'
+                    : 'ios-surface border border-transparent'
                 }`}
               >
-                {n}
+                <span className="text-3xl">{car.icon}</span>
+                <div className="flex-1 min-w-0">
+                  <p className="text-[13px] font-semibold text-foreground truncate">{car.fullName}</p>
+                  <p className="text-[11px] text-muted-foreground">{car.year}</p>
+                </div>
+                <span className={`px-2 py-1 rounded-full text-[11px] font-black border ${igpClass(perf.igp)}`}>
+                  IGP {perf.igp}
+                </span>
               </button>
-            ))}
-          </div>
+            );
+          })}
         </div>
+      </div>
 
-        {/* Aposta */}
-        <div>
-          <div className="text-[11px] uppercase tracking-wider text-muted-foreground font-semibold mb-2">Aposta</div>
-          <div className="flex flex-wrap gap-2 mb-3">
-            {BET_PRESETS.map(p => (
-              <button
-                key={p}
-                onClick={() => { setBet(p); setCustomBet(false); setBetInput(''); }}
-                className={`px-3 py-2 rounded-[10px] text-[12px] font-bold transition-all active:scale-95 ${
-                  !customBet && bet === p ? 'bg-primary text-primary-foreground' : 'ios-surface text-foreground'
-                }`}
-              >
-                {fmt(p)}
-              </button>
-            ))}
+      {/* Máx. jogadores */}
+      <div>
+        <div className="text-[11px] uppercase tracking-wider text-muted-foreground font-semibold mb-2">
+          Máx. Jogadores
+        </div>
+        <div className="flex gap-2">
+          {[2, 3, 4].map(n => (
             <button
-              onClick={() => setCustomBet(v => !v)}
-              className={`px-3 py-2 rounded-[10px] text-[12px] font-bold transition-all active:scale-95 ${
-                customBet ? 'bg-primary text-primary-foreground' : 'ios-surface text-foreground'
+              key={n}
+              onClick={() => setMaxPlayers(n)}
+              className={`flex-1 py-3 rounded-[12px] text-[15px] font-bold transition-all active:scale-95 ${
+                maxPlayers === n ? 'bg-primary text-primary-foreground' : 'ios-surface text-foreground'
               }`}
             >
-              Outro
+              {n}
             </button>
-          </div>
-          {customBet && (
-            <input
-              type="number"
-              inputMode="numeric"
-              value={betInput}
-              onChange={e => {
-                setBetInput(e.target.value);
-                const v = parseFloat(e.target.value);
-                if (!isNaN(v) && v > 0) setBet(Math.round(v));
-              }}
-              placeholder="Valor personalizado"
-              className="w-full ios-surface rounded-[12px] px-4 py-3 text-[14px] text-foreground border border-border focus:outline-none focus:ring-2 focus:ring-primary mb-3"
-            />
-          )}
-          <div className="ios-surface rounded-[14px] p-4 space-y-2.5">
-            <div className="flex justify-between text-[13px]">
-              <span className="text-muted-foreground">Pot total</span>
-              <span className="font-bold text-foreground">{fmt(bet * maxPlayers)}</span>
-            </div>
-            <div className="flex justify-between text-[13px]">
-              <span className="text-muted-foreground">🥇 1º lugar recebe</span>
-              <span className="font-bold text-emerald-400">{fmt(Math.round(bet * maxPlayers * 0.9 * 0.7))}</span>
-            </div>
-            <div className="flex justify-between text-[13px]">
-              <span className="text-muted-foreground">🥈 2º lugar recebe</span>
-              <span className="font-bold text-gray-300">{fmt(Math.round(bet * maxPlayers * 0.9 * 0.2))}</span>
-            </div>
-            <div className="border-t border-border/40 pt-2 flex justify-between text-[11px] text-muted-foreground">
-              <span>Taxa do sistema</span>
-              <span>10%</span>
-            </div>
-          </div>
-          {bet > gameState.money && (
-            <p className="text-[13px] text-red-400 mt-2 font-semibold">⚠️ Saldo insuficiente</p>
-          )}
+          ))}
         </div>
       </div>
 
-      {/* Botão fixo no rodapé — respeita safe-area-bottom e nav bar */}
-      <div
-        className="shrink-0 px-4 pt-3 border-t border-border bg-background"
-        style={{ paddingBottom: 'calc(var(--safe-bottom) + 0.75rem)' }}
-      >
-        <Button
-          className="w-full h-12 text-[15px] font-bold gap-2"
-          disabled={!canCreate}
-          onClick={() => onConfirm(selectedCar!, bet, maxPlayers)}
-        >
-          <Zap size={16} />
-          Criar Racha · {fmt(bet)}
-        </Button>
+      {/* Aposta */}
+      <div>
+        <div className="text-[11px] uppercase tracking-wider text-muted-foreground font-semibold mb-2">Aposta</div>
+        <div className="flex flex-wrap gap-2 mb-3">
+          {BET_PRESETS.map(p => (
+            <button
+              key={p}
+              onClick={() => { setBet(p); setCustomBet(false); setBetInput(''); }}
+              className={`px-3 py-2 rounded-[10px] text-[12px] font-bold transition-all active:scale-95 ${
+                !customBet && bet === p ? 'bg-primary text-primary-foreground' : 'ios-surface text-foreground'
+              }`}
+            >
+              {fmt(p)}
+            </button>
+          ))}
+          <button
+            onClick={() => setCustomBet(v => !v)}
+            className={`px-3 py-2 rounded-[10px] text-[12px] font-bold transition-all active:scale-95 ${
+              customBet ? 'bg-primary text-primary-foreground' : 'ios-surface text-foreground'
+            }`}
+          >
+            Outro
+          </button>
+        </div>
+        {customBet && (
+          <input
+            type="number"
+            inputMode="numeric"
+            value={betInput}
+            onChange={e => {
+              setBetInput(e.target.value);
+              const v = parseFloat(e.target.value);
+              if (!isNaN(v) && v > 0) setBet(Math.round(v));
+            }}
+            placeholder="Valor personalizado"
+            className="w-full ios-surface rounded-[12px] px-4 py-3 text-[14px] text-foreground border border-border focus:outline-none focus:ring-2 focus:ring-primary mb-3"
+          />
+        )}
+        <div className="ios-surface rounded-[14px] p-4 space-y-2.5">
+          <div className="flex justify-between text-[13px]">
+            <span className="text-muted-foreground">Pot total</span>
+            <span className="font-bold text-foreground">{fmt(bet * maxPlayers)}</span>
+          </div>
+          <div className="flex justify-between text-[13px]">
+            <span className="text-muted-foreground">🥇 1º lugar recebe</span>
+            <span className="font-bold text-emerald-400">{fmt(Math.round(bet * maxPlayers * 0.9 * 0.7))}</span>
+          </div>
+          <div className="flex justify-between text-[13px]">
+            <span className="text-muted-foreground">🥈 2º lugar recebe</span>
+            <span className="font-bold text-gray-300">{fmt(Math.round(bet * maxPlayers * 0.9 * 0.2))}</span>
+          </div>
+          <div className="border-t border-border/40 pt-2 flex justify-between text-[11px] text-muted-foreground">
+            <span>Taxa do sistema</span>
+            <span>10%</span>
+          </div>
+        </div>
+        {bet > gameState.money && (
+          <p className="text-[13px] text-red-400 mt-2 font-semibold">⚠️ Saldo insuficiente</p>
+        )}
       </div>
+
+      {/* Botão de confirmação — dentro do fluxo normal, pb-tabbar do GameLayout garante espaço */}
+      <Button
+        className="w-full h-12 text-[15px] font-bold gap-2"
+        disabled={!canCreate}
+        onClick={() => onConfirm(selectedCar!, bet, maxPlayers)}
+      >
+        <Zap size={16} />
+        Criar Racha · {fmt(bet)}
+      </Button>
     </div>
   );
 }
 
-// ── Tela cheia: entrar em lobby ───────────────────────────────────
-function JoinLobbyModal({
-  lobby, carsInGarage, gameState, onConfirm, onClose,
+// ── View: entrar em lobby (conteúdo normal da aba, sem fixed overlay) ──
+function JoinLobbyView({
+  lobby, carsInGarage, gameState, onConfirm, onBack,
 }: {
   lobby:        OpenLobby;
   carsInGarage: OwnedCar[];
   gameState:    GameState;
   onConfirm:    (car: OwnedCar) => void;
-  onClose:      () => void;
+  onBack:       () => void;
 }) {
   const [selectedCar, setSelectedCar] = useState<OwnedCar>(carsInGarage[0]!);
   const canJoin = gameState.money >= lobby.bet;
 
   return (
-    <div className="fixed inset-0 z-[60] flex flex-col bg-background" style={{ height: '100dvh' }}>
-      {/* Header fixo */}
-      <div
-        className="shrink-0 flex items-center gap-3 px-4 border-b border-border bg-background"
-        style={{ paddingTop: 'calc(var(--safe-top) + 0.75rem)', paddingBottom: '0.75rem' }}
-      >
+    <div className="space-y-5">
+      {/* Mini-header da view */}
+      <div className="flex items-center gap-3">
         <button
-          onClick={onClose}
+          onClick={onBack}
           className="w-9 h-9 rounded-full bg-muted flex items-center justify-center active:scale-95 shrink-0"
         >
           <ArrowLeft size={18} className="text-foreground" />
@@ -527,103 +517,93 @@ function JoinLobbyModal({
         <h2 className="font-bold text-[17px] text-foreground flex-1">⚡ Entrar no Racha</h2>
       </div>
 
-      {/* Conteúdo scrollável — min-h-0 é essencial p/ flex+overflow funcionar no iOS */}
-      <div className="flex-1 min-h-0 overflow-y-auto overscroll-contain px-4 py-4 space-y-5"
-           style={{ WebkitOverflowScrolling: 'touch' } as CSSProperties}>
-
-        {/* Resumo do lobby */}
-        <div className="ios-surface rounded-[16px] p-4 space-y-3">
-          <div className="flex justify-between text-[13px]">
-            <span className="text-muted-foreground">Host</span>
-            <span className="font-semibold text-foreground">{lobby.hostName}</span>
-          </div>
-          <div className="flex justify-between text-[13px]">
-            <span className="text-muted-foreground">Vagas</span>
-            <span className="font-semibold text-foreground">{lobby.players.length}/{lobby.maxPlayers}</span>
-          </div>
-          <div className="flex justify-between text-[13px]">
-            <span className="text-muted-foreground">Aposta</span>
-            <span className="font-bold text-emerald-400">{fmt(lobby.bet)}</span>
-          </div>
-          <div className="flex justify-between text-[13px]">
-            <span className="text-muted-foreground">🥇 1º lugar recebe</span>
-            <span className="font-bold text-yellow-400">{fmt(Math.round(lobby.bet * lobby.maxPlayers * 0.9 * 0.7))}</span>
-          </div>
+      {/* Resumo do lobby */}
+      <div className="ios-surface rounded-[16px] p-4 space-y-3">
+        <div className="flex justify-between text-[13px]">
+          <span className="text-muted-foreground">Host</span>
+          <span className="font-semibold text-foreground">{lobby.hostName}</span>
         </div>
+        <div className="flex justify-between text-[13px]">
+          <span className="text-muted-foreground">Vagas</span>
+          <span className="font-semibold text-foreground">{lobby.players.length}/{lobby.maxPlayers}</span>
+        </div>
+        <div className="flex justify-between text-[13px]">
+          <span className="text-muted-foreground">Aposta</span>
+          <span className="font-bold text-emerald-400">{fmt(lobby.bet)}</span>
+        </div>
+        <div className="flex justify-between text-[13px]">
+          <span className="text-muted-foreground">🥇 1º lugar recebe</span>
+          <span className="font-bold text-yellow-400">{fmt(Math.round(lobby.bet * lobby.maxPlayers * 0.9 * 0.7))}</span>
+        </div>
+      </div>
 
-        {/* Jogadores no lobby */}
-        {lobby.players.length > 0 && (
-          <div>
-            <div className="text-[11px] uppercase tracking-wider text-muted-foreground font-semibold mb-2">
-              No lobby
-            </div>
-            <div className="space-y-2">
-              {lobby.players.map(p => (
-                <div key={p.userId} className="ios-surface flex items-center gap-3 rounded-[12px] px-3 py-2.5">
-                  <span className="text-2xl">{p.carIcon}</span>
-                  <div className="flex-1 min-w-0">
-                    <p className="text-[13px] font-semibold text-foreground truncate">{p.name}</p>
-                    <p className="text-[11px] text-muted-foreground truncate">{p.carName}</p>
-                  </div>
-                  <span className={`px-2 py-0.5 rounded-full text-[11px] font-bold border ${igpClass(p.igp)}`}>
-                    IGP {p.igp}
-                  </span>
-                </div>
-              ))}
-            </div>
-          </div>
-        )}
-
-        {/* Escolha de carro */}
+      {/* Jogadores no lobby */}
+      {lobby.players.length > 0 && (
         <div>
-          <div className="text-[11px] uppercase tracking-wider text-muted-foreground font-semibold mb-2">Seu Carro</div>
+          <div className="text-[11px] uppercase tracking-wider text-muted-foreground font-semibold mb-2">
+            No lobby
+          </div>
           <div className="space-y-2">
-            {carsInGarage.map(car => {
-              const perf = getFullPerformance(car);
-              const sel  = selectedCar?.instanceId === car.instanceId;
-              return (
-                <button
-                  key={car.instanceId}
-                  onClick={() => setSelectedCar(car)}
-                  className={`w-full flex items-center gap-3 p-3.5 rounded-[14px] text-left transition-all active:scale-[0.98] ${
-                    sel
-                      ? 'bg-primary/10 border border-primary/40'
-                      : 'ios-surface border border-transparent'
-                  }`}
-                >
-                  <span className="text-3xl">{car.icon}</span>
-                  <div className="flex-1 min-w-0">
-                    <p className="text-[13px] font-semibold text-foreground truncate">{car.fullName}</p>
-                    <p className="text-[11px] text-muted-foreground">{car.year}</p>
-                  </div>
-                  <span className={`px-2 py-1 rounded-full text-[11px] font-black border ${igpClass(perf.igp)}`}>
-                    IGP {perf.igp}
-                  </span>
-                </button>
-              );
-            })}
+            {lobby.players.map(p => (
+              <div key={p.userId} className="ios-surface flex items-center gap-3 rounded-[12px] px-3 py-2.5">
+                <span className="text-2xl">{p.carIcon}</span>
+                <div className="flex-1 min-w-0">
+                  <p className="text-[13px] font-semibold text-foreground truncate">{p.name}</p>
+                  <p className="text-[11px] text-muted-foreground truncate">{p.carName}</p>
+                </div>
+                <span className={`px-2 py-0.5 rounded-full text-[11px] font-bold border ${igpClass(p.igp)}`}>
+                  IGP {p.igp}
+                </span>
+              </div>
+            ))}
           </div>
         </div>
+      )}
 
-        {!canJoin && (
-          <p className="text-[13px] text-red-400 font-semibold">⚠️ Saldo insuficiente para esta aposta</p>
-        )}
+      {/* Escolha de carro */}
+      <div>
+        <div className="text-[11px] uppercase tracking-wider text-muted-foreground font-semibold mb-2">Seu Carro</div>
+        <div className="space-y-2">
+          {carsInGarage.map(car => {
+            const perf = getFullPerformance(car);
+            const sel  = selectedCar?.instanceId === car.instanceId;
+            return (
+              <button
+                key={car.instanceId}
+                onClick={() => setSelectedCar(car)}
+                className={`w-full flex items-center gap-3 p-3.5 rounded-[14px] text-left transition-all active:scale-[0.98] ${
+                  sel
+                    ? 'bg-primary/10 border border-primary/40'
+                    : 'ios-surface border border-transparent'
+                }`}
+              >
+                <span className="text-3xl">{car.icon}</span>
+                <div className="flex-1 min-w-0">
+                  <p className="text-[13px] font-semibold text-foreground truncate">{car.fullName}</p>
+                  <p className="text-[11px] text-muted-foreground">{car.year}</p>
+                </div>
+                <span className={`px-2 py-1 rounded-full text-[11px] font-black border ${igpClass(perf.igp)}`}>
+                  IGP {perf.igp}
+                </span>
+              </button>
+            );
+          })}
+        </div>
       </div>
 
-      {/* Botão fixo no rodapé */}
-      <div
-        className="shrink-0 px-4 pt-3 border-t border-border bg-background"
-        style={{ paddingBottom: 'calc(var(--safe-bottom) + 0.75rem)' }}
+      {!canJoin && (
+        <p className="text-[13px] text-red-400 font-semibold">⚠️ Saldo insuficiente para esta aposta</p>
+      )}
+
+      {/* Botão de confirmação */}
+      <Button
+        className="w-full h-12 text-[15px] font-bold gap-2"
+        disabled={!canJoin || !selectedCar}
+        onClick={() => onConfirm(selectedCar!)}
       >
-        <Button
-          className="w-full h-12 text-[15px] font-bold gap-2"
-          disabled={!canJoin || !selectedCar}
-          onClick={() => onConfirm(selectedCar!)}
-        >
-          <Zap size={16} />
-          Confirmar · {fmt(lobby.bet)}
-        </Button>
-      </div>
+        <Zap size={16} />
+        Confirmar · {fmt(lobby.bet)}
+      </Button>
     </div>
   );
 }
