@@ -168,6 +168,10 @@ async function saveSupabase(userId: string, displayName: string, state: GameStat
       .reduce((sum, s) => sum + s.car!.fipePrice * conditionValueFactor(s.car!.condition), 0);
     const totalPatrimony = state.money + carValue;
 
+    const racesWon = (state.garage ?? [])
+      .filter(s => s.car?.raceHistory)
+      .reduce((sum, s) => sum + (s.car!.raceHistory!.filter(r => r.won).length), 0);
+
     void (supabase as any)
       .from('player_profiles')
       .upsert(
@@ -176,6 +180,7 @@ async function saveSupabase(userId: string, displayName: string, state: GameStat
           display_name:    displayName,
           total_patrimony: Math.round(totalPatrimony),
           level:           state.reputation?.level ?? 1,
+          races_won:       racesWon,
           updated_at:      new Date().toISOString(),
         },
         { onConflict: 'user_id' }

@@ -8,7 +8,8 @@ import type { GameState } from '@/types/game';
 import { conditionValueFactor } from '@/data/cars';
 
 interface RankingScreenProps {
-  gameState: GameState;
+  gameState:  GameState;
+  gameLoaded: boolean;
 }
 
 interface PlayerRanking {
@@ -60,7 +61,7 @@ function calcRacesWon(gs: GameState): number {
 
 const POLL_INTERVAL_MS = 30_000; // 30 s
 
-const RankingScreen = ({ gameState }: RankingScreenProps) => {
+const RankingScreen = ({ gameState, gameLoaded }: RankingScreenProps) => {
   const [rankings, setRankings]         = useState<PlayerRanking[]>([]);
   const [myUserId, setMyUserId]         = useState<string | null>(null);
   const [loading, setLoading]           = useState(true);
@@ -69,7 +70,10 @@ const RankingScreen = ({ gameState }: RankingScreenProps) => {
   const [secsAgo, setSecsAgo]           = useState(0);
 
   // ── buscar e salvar score do usuário atual ─────────────────────
-  const pushMyScore = useCallback(async (gs: GameState) => {
+  const pushMyScore = useCallback(async (gs: GameState, loaded: boolean) => {
+    // Nunca sobrescrever com estado inicial — aguarda o jogo carregar do Supabase
+    if (!loaded) return;
+
     const { data: { user } } = await supabase.auth.getUser();
     if (!user) return;
     setMyUserId(user.id);
@@ -107,6 +111,7 @@ const RankingScreen = ({ gameState }: RankingScreenProps) => {
     const { data: viewData, error: viewError } = await (supabase as any)
       .from('v_ranking')
       .select('user_id, display_name, total_patrimony, level, races_won')
+      .order('total_patrimony', { ascending: false })
       .limit(50);
 
     if (!viewError) {
@@ -140,7 +145,7 @@ const RankingScreen = ({ gameState }: RankingScreenProps) => {
   // ── atualização manual ─────────────────────────────────────────
   const handleRefresh = async () => {
     setRefreshing(true);
-    await pushMyScore(gameState);
+    await pushMyScore(gameState, gameLoaded);
     await fetchRankings();
     setRefreshing(false);
   };
@@ -152,7 +157,7 @@ const RankingScreen = ({ gameState }: RankingScreenProps) => {
     let mounted = true;
 
     const init = async () => {
-      await pushMyScore(gameState);
+      await pushMyScore(gameState, gameLoaded);
       if (!mounted) return;
       await fetchRankings();
       if (!mounted) return;
@@ -182,14 +187,15 @@ const RankingScreen = ({ gameState }: RankingScreenProps) => {
     };
   }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
-  // ── push score sempre que patrimônio mudar ─────────────────────
+  // ── push score quando patrimônio mudar E jogo estiver carregado ──
   const patrimony = calcPatrimony(gameState);
   const lastPatrimonyRef = useRef<number | null>(null);
   useEffect(() => {
+    if (!gameLoaded) return; // aguarda carga antes de qualquer push
     if (lastPatrimonyRef.current === patrimony) return;
     lastPatrimonyRef.current = patrimony;
-    void pushMyScore(gameState);
-  }, [patrimony]); // eslint-disable-line react-hooks/exhaustive-deps
+    void pushMyScore(gameState, true);
+  }, [patrimony, gameLoaded]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // ── contador "X seg atrás" ─────────────────────────────────────
   useEffect(() => {

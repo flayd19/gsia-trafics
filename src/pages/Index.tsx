@@ -249,7 +249,7 @@ const Index = () => {
         );
 
       case 'ranking':
-        return <RankingScreen gameState={gameState as any} />;
+        return <RankingScreen gameState={gameState as any} gameLoaded={gameLoaded} />;
 
       case 'settings':
         return (
