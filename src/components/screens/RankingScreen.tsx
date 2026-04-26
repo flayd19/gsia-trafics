@@ -65,26 +65,55 @@ const RankingScreen = ({ gameState }: RankingScreenProps) => {
     const { data: { user } } = await supabase.auth.getUser();
     if (!user) return;
     setMyUserId(user.id);
+
+    const displayName =
+      (user.user_metadata?.display_name as string | undefined) ??
+      (user.user_metadata?.full_name as string | undefined) ??
+      user.email?.split('@')[0] ??
+      'Jogador';
+
     const patrimony = calcPatrimony(gs);
+
     await (supabase as any)
       .from('player_profiles')
       .upsert(
-        { user_id: user.id, total_patrimony: patrimony, level: gs.reputation?.level ?? 1, updated_at: new Date().toISOString() },
+        {
+          user_id:         user.id,
+          display_name:    displayName,
+          total_patrimony: patrimony,
+          level:           gs.reputation?.level ?? 1,
+          updated_at:      new Date().toISOString(),
+        },
         { onConflict: 'user_id' }
       );
   }, []);
 
   // ── buscar top 50 do banco ─────────────────────────────────────
   const fetchRankings = useCallback(async () => {
-    const { data, error } = await (supabase as any)
-      .from('player_profiles')
+    // Tenta primeiro pela view v_ranking (garante display_name sempre preenchido)
+    // com fallback para a tabela direta caso a view ainda não exista
+    let data: any[] | null = null;
+
+    const { data: viewData, error: viewError } = await (supabase as any)
+      .from('v_ranking')
       .select('user_id, display_name, total_patrimony, level')
-      .order('total_patrimony', { ascending: false })
       .limit(50);
 
-    if (error) return;
+    if (!viewError) {
+      data = viewData;
+    } else {
+      // fallback: tabela direta
+      const { data: tableData, error: tableError } = await (supabase as any)
+        .from('player_profiles')
+        .select('user_id, display_name, total_patrimony, level')
+        .order('total_patrimony', { ascending: false })
+        .limit(50);
+      if (!tableError) data = tableData;
+    }
 
-    const list: PlayerRanking[] = (data ?? []).map((p: any, i: number) => ({
+    if (!data) return;
+
+    const list: PlayerRanking[] = data.map((p: any, i: number) => ({
       user_id:         p.user_id,
       display_name:    getSafeName(p.display_name),
       total_patrimony: p.total_patrimony ?? 0,

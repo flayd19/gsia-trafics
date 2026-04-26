@@ -147,7 +147,7 @@ function loadLocal(): GameState | null {
 
 // ── Supabase helpers: tabela direta, sem RPC ──────────────────────
 // Usa supabase.from() em vez de .rpc() para não depender dos tipos gerados
-async function saveSupabase(userId: string, state: GameState): Promise<boolean> {
+async function saveSupabase(userId: string, displayName: string, state: GameState): Promise<boolean> {
   try {
     const { error } = await (supabase as any)
       .from('game_progress')
@@ -173,6 +173,7 @@ async function saveSupabase(userId: string, state: GameState): Promise<boolean> 
       .upsert(
         {
           user_id:         userId,
+          display_name:    displayName,
           total_patrimony: Math.round(totalPatrimony),
           level:           state.reputation?.level ?? 1,
           updated_at:      new Date().toISOString(),
@@ -232,7 +233,12 @@ export function useCarGameLogic() {
     if (!user) return true; // sem usuário: local já basta
 
     setSaveStatus('saving');
-    const ok = await saveSupabase(user.id, state);
+    const displayName =
+      (user.user_metadata?.display_name as string | undefined) ??
+      (user.user_metadata?.full_name as string | undefined) ??
+      user.email?.split('@')[0] ??
+      'Jogador';
+    const ok = await saveSupabase(user.id, displayName, state);
     setSaveStatus(ok ? 'saved' : 'error');
     setTimeout(() => setSaveStatus('idle'), ok ? 2000 : 3000);
     return ok;

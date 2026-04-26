@@ -326,6 +326,56 @@ export function applyTuneUpgrades(base: PerformanceStats, upgrades: TuneUpgrade[
         applyGain('stability',    0.8);
         break;
       }
+      case 'intercooler':
+        // Só eficiente com turbo — multiplica ganho se hasTurbo
+        applyGain('power',  s._hasTurbo ? 1.3 : 0.5);
+        applyGain('torque', s._hasTurbo ? 1.1 : 0.4);
+        break;
+      case 'exhaust':
+        applyGain('power',     1.0);
+        applyGain('gearShift', 1.1);
+        break;
+      case 'injection':
+        applyGain('power',  1.2);
+        applyGain('torque', 1.0);
+        break;
+      case 'clutch':
+        applyGain('gearShift',    1.2);
+        applyGain('acceleration', 0.9);
+        break;
+      case 'sway_bar':
+        applyGain('stability', 1.4);
+        break;
+      case 'differential':
+        applyGain('grip',      1.1);
+        applyGain('stability', 1.0);
+        break;
+      case 'geometry':
+        applyGain('grip', 1.6);
+        break;
+      case 'wing':
+        applyGain('aerodynamics', 1.0);
+        applyGain('stability',    1.2);
+        break;
+      case 'diffuser':
+        applyGain('aerodynamics', 1.1);
+        applyGain('stability',    1.0);
+        break;
+      case 'light_rims':
+        applyGain('grip',         1.0);
+        applyGain('acceleration', 0.9);
+        // leve redução de peso também
+        s = { ...s, weight: clamp(s.weight - Math.round(gainBase * 0.5)) };
+        break;
+      case 'carbon_parts': {
+        // Grande redução de peso, similar a weight_reduction mas mais agressiva
+        const cur = s.weight;
+        const reduction = Math.round(gainBase * 1.6 * softCapMultiplier(100 - cur));
+        s = { ...s, weight: clamp(cur - reduction) };
+        applyGain('acceleration', 0.6);
+        applyGain('topSpeed',     0.5);
+        break;
+      }
     }
   }
 

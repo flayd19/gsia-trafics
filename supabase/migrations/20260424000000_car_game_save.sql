@@ -45,9 +45,18 @@ BEGIN
   END IF;
 
   -- Atualiza total_patrimony no player_profiles para ranking
+  -- Usa total_patrimony do JSON (money + carros) quando disponível; fallback: money
   UPDATE public.player_profiles
   SET
-    total_patrimony = COALESCE((p_data->>'money')::decimal, 0),
+    total_patrimony = COALESCE(
+      NULLIF((p_data->>'total_patrimony')::decimal, 0),
+      (p_data->>'money')::decimal,
+      0
+    ),
+    display_name = COALESCE(
+      NULLIF(trim(p_data->>'display_name'), ''),
+      display_name  -- mantém o existente se não vier no payload
+    ),
     level = COALESCE((p_data->'reputation'->>'level')::integer, 1),
     updated_at = now()
   WHERE user_id = auth.uid();
