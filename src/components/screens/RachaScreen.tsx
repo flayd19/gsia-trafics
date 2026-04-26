@@ -1,13 +1,18 @@
 // =====================================================================
-// RachaScreen — PvP Lobby Aberto (2-4 jogadores)
+// RachaScreen — Sistema de Racha Assíncrono
+// Lobby aberto, resultado calculado pelo servidor, coleta offline.
 // =====================================================================
 import { useState } from 'react';
-import { Zap, Plus, Users, Trophy, Clock, RefreshCw, X, ArrowLeft } from 'lucide-react';
+import { Zap, Plus, Users, Clock, RefreshCw, ArrowLeft } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import type { GameState, OwnedCar } from '@/types/game';
 import type { TuneUpgrade, RaceRecord } from '@/types/performance';
 import { getFullPerformance } from '@/lib/performanceEngine';
-import { useRachaLobby, type OpenLobby, type RacePlayerAnim } from '@/hooks/useRachaLobby';
+import {
+  useRachaLobby,
+  type OpenLobby,
+  type RacePlayerAnim,
+} from '@/hooks/useRachaLobby';
 
 // ── Props ────────────────────────────────────────────────────────
 interface RachaScreenProps {
@@ -19,7 +24,9 @@ interface RachaScreenProps {
 
 // ── Helpers ──────────────────────────────────────────────────────
 const fmt = (v: number) =>
-  new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL', maximumFractionDigits: 0 }).format(v);
+  new Intl.NumberFormat('pt-BR', {
+    style: 'currency', currency: 'BRL', maximumFractionDigits: 0,
+  }).format(v);
 
 const BET_PRESETS = [500, 1_000, 5_000, 10_000, 25_000];
 
@@ -40,28 +47,33 @@ function positionColor(pos: number) {
   return 'text-muted-foreground';
 }
 
-function barColor(pos: number) {
-  if (pos === 1) return 'linear-gradient(90deg, #fbbf24, #f59e0b)';
-  if (pos === 2) return 'linear-gradient(90deg, #9ca3af, #6b7280)';
-  if (pos === 3) return 'linear-gradient(90deg, #d97706, #b45309)';
-  return 'linear-gradient(90deg, #6366f1, #4f46e5)';
-}
-
 // ── Componente principal ─────────────────────────────────────────
 export function RachaScreen({ gameState, onSpendMoney, onAddMoney }: RachaScreenProps) {
   const carsInGarage = gameState.garage
     .filter(s => s.unlocked && s.car)
     .map(s => s.car!);
 
-  // Estados de navegação interna — renderizados como views normais (sem overlay fixed)
+  // Navegação interna — renderizados como views normais (sem overlay fixed)
   const [showCreate,      setShowCreate]      = useState(false);
   const [joinLobbyTarget, setJoinLobbyTarget] = useState<OpenLobby | null>(null);
 
   const {
-    state, openLobbies, currentLobby, countdown,
-    racePlayers, raceHistory, myUserId, myName,
-    isLoading, error,
-    createLobby, joinLobby, leaveLobby, resetRace, refetchLobbies,
+    state,
+    openLobbies,
+    pendingResults,
+    currentResultPlayers,
+    raceHistory,
+    myUserId,
+    myName,
+    isLoading,
+    error,
+    successMessage,
+    createLobby,
+    joinLobby,
+    leaveLobby,
+    collectResult,
+    dismissResult,
+    refetchLobbies,
   } = useRachaLobby({ onSpendMoney, onAddMoney });
 
   // ── criar racha ───────────────────────────────────────────────
@@ -96,84 +108,76 @@ export function RachaScreen({ gameState, onSpendMoney, onAddMoney }: RachaScreen
     );
   }
 
-  // ── idle ──────────────────────────────────────────────────────
-  if (state === 'idle') {
-    return (
-      <LobbyListView
-        openLobbies={openLobbies}
-        carsInGarage={carsInGarage}
-        gameState={gameState}
-        myUserId={myUserId}
-        myName={myName}
-        isLoading={isLoading}
-        error={error}
-        raceHistory={raceHistory}
-        onShowCreate={() => setShowCreate(true)}
-        onJoinTarget={(lobby) => setJoinLobbyTarget(lobby)}
-        onRefresh={refetchLobbies}
-      />
-    );
-  }
-
-  // ── in_lobby ──────────────────────────────────────────────────
-  if (state === 'in_lobby' && currentLobby) {
-    return (
-      <WaitingRoomView
-        lobby={currentLobby}
-        myUserId={myUserId}
-        onLeave={leaveLobby}
-      />
-    );
-  }
-
-  // ── countdown ─────────────────────────────────────────────────
-  if (state === 'countdown' && currentLobby) {
-    return <CountdownView lobby={currentLobby} countdown={countdown} />;
-  }
-
-  // ── racing ────────────────────────────────────────────────────
-  if (state === 'racing') {
-    return <RaceView players={racePlayers} />;
-  }
-
-  // ── result ────────────────────────────────────────────────────
-  if (state === 'result') {
+  // ── resultado (coleta imediata ou pendente) ───────────────────
+  if (state === 'result' && currentResultPlayers) {
     return (
       <ResultView
-        players={racePlayers}
+        players={currentResultPlayers}
         myUserId={myUserId}
-        onBack={resetRace}
+        onBack={dismissResult}
       />
     );
   }
 
-  return null;
+  // ── idle — lista principal ────────────────────────────────────
+  return (
+    <LobbyListView
+      openLobbies={openLobbies}
+      pendingResults={pendingResults}
+      carsInGarage={carsInGarage}
+      gameState={gameState}
+      myUserId={myUserId}
+      myName={myName}
+      isLoading={isLoading}
+      error={error}
+      successMessage={successMessage}
+      raceHistory={raceHistory}
+      onShowCreate={() => setShowCreate(true)}
+      onJoinTarget={(lobby) => setJoinLobbyTarget(lobby)}
+      onRefresh={refetchLobbies}
+      onCollect={collectResult}
+      onLeave={leaveLobby}
+    />
+  );
 }
 
 // ══════════════════════════════════════════════════════════════════
 // Sub-views
 // ══════════════════════════════════════════════════════════════════
 
-// ── Lista de lobbies ─────────────────────────────────────────────
+// ── Lista principal ───────────────────────────────────────────────
 interface LobbyListViewProps {
-  openLobbies:   OpenLobby[];
-  carsInGarage:  OwnedCar[];
-  gameState:     GameState;
-  myUserId:      string | null;
-  myName:        string;
-  isLoading:     boolean;
-  error:         string | null;
-  raceHistory:   RaceRecord[];
-  onShowCreate:  () => void;
-  onJoinTarget:  (lobby: OpenLobby) => void;
-  onRefresh:     () => void;
+  openLobbies:    OpenLobby[];
+  pendingResults: OpenLobby[];
+  carsInGarage:   OwnedCar[];
+  gameState:      GameState;
+  myUserId:       string | null;
+  myName:         string;
+  isLoading:      boolean;
+  error:          string | null;
+  successMessage: string | null;
+  raceHistory:    RaceRecord[];
+  onShowCreate:   () => void;
+  onJoinTarget:   (lobby: OpenLobby) => void;
+  onRefresh:      () => void;
+  onCollect:      (lobby: OpenLobby) => void;
+  onLeave:        (lobbyId: string, bet: number) => void;
 }
 
 function LobbyListView({
-  openLobbies, carsInGarage, gameState, myUserId, myName,
-  isLoading, error, raceHistory,
-  onShowCreate, onJoinTarget, onRefresh,
+  openLobbies, pendingResults, carsInGarage, gameState,
+  myUserId, isLoading, error, successMessage, raceHistory,
+  onShowCreate, onJoinTarget, onRefresh, onCollect, onLeave,
 }: LobbyListViewProps) {
+  // Lobbies onde já entrei (aguardando corrida)
+  const myActiveLobbies = openLobbies.filter(
+    l => l.players.some(p => p.userId === myUserId),
+  );
+  // Lobbies que posso entrar (não sou participante)
+  const joinableLobbies = openLobbies.filter(
+    l => !l.players.some(p => p.userId === myUserId),
+  );
+
   return (
     <div className="space-y-4">
       {/* Header */}
@@ -188,7 +192,13 @@ function LobbyListView({
           </p>
         </div>
         <div className="flex gap-2">
-          <Button variant="ghost" size="sm" onClick={onRefresh} disabled={isLoading} className="gap-1.5 text-[12px]">
+          <Button
+            variant="ghost"
+            size="sm"
+            onClick={onRefresh}
+            disabled={isLoading}
+            className="gap-1.5 text-[12px]"
+          >
             <RefreshCw size={13} className={isLoading ? 'animate-spin' : ''} />
           </Button>
           {carsInGarage.length > 0 && (
@@ -200,6 +210,14 @@ function LobbyListView({
         </div>
       </div>
 
+      {/* Mensagem de sucesso */}
+      {successMessage && (
+        <div className="px-4 py-2.5 rounded-[12px] bg-emerald-500/10 border border-emerald-500/25 text-emerald-400 text-[12px] font-medium">
+          {successMessage}
+        </div>
+      )}
+
+      {/* Mensagem de erro */}
       {error && (
         <div className="px-4 py-2.5 rounded-[12px] bg-red-500/10 border border-red-500/25 text-red-400 text-[12px]">
           {error}
@@ -215,46 +233,74 @@ function LobbyListView({
         </div>
       )}
 
-      {/* Lobbies abertos */}
       {carsInGarage.length > 0 && (
-        <div className="space-y-2">
-          <div className="text-[11px] uppercase tracking-wider text-muted-foreground font-semibold px-1">
-            Lobbies Abertos
-          </div>
-
-          {openLobbies.filter(l => l.status === 'waiting').length === 0 ? (
-            <div className="ios-surface rounded-[16px] p-6 text-center space-y-2">
-              <div className="text-3xl">🕹️</div>
-              <div className="text-[13px] text-muted-foreground">Nenhum lobby aberto</div>
-              <div className="text-[11px] text-muted-foreground">Crie um racha para começar!</div>
+        <>
+          {/* ── Resultados pendentes ─────────────────────────── */}
+          {pendingResults.length > 0 && (
+            <div className="space-y-2">
+              <div className="text-[11px] uppercase tracking-wider text-emerald-400 font-semibold px-1 flex items-center gap-1.5">
+                🏆 Resultados Disponíveis
+                <span className="w-4 h-4 rounded-full bg-emerald-400 text-black text-[9px] font-black flex items-center justify-center">
+                  {pendingResults.length}
+                </span>
+              </div>
+              {pendingResults.map(lobby => (
+                <PendingResultCard
+                  key={lobby.id}
+                  lobby={lobby}
+                  myUserId={myUserId}
+                  onCollect={() => onCollect(lobby)}
+                />
+              ))}
             </div>
-          ) : (
-            openLobbies
-              .filter(l => l.status === 'waiting' && l.hostId !== myUserId)
-              .map(lobby => (
+          )}
+
+          {/* ── Meus rachas ativos ────────────────────────────── */}
+          {myActiveLobbies.length > 0 && (
+            <div className="space-y-2">
+              <div className="text-[11px] uppercase tracking-wider text-primary/80 font-semibold px-1">
+                Meus Rachas
+              </div>
+              {myActiveLobbies.map(lobby => (
                 <LobbyCard
                   key={lobby.id}
                   lobby={lobby}
-                  canJoin={gameState.money >= lobby.bet && carsInGarage.length > 0}
+                  canJoin={false}
+                  isOwn={true}
+                  onJoin={() => {}}
+                  onLeave={() => onLeave(lobby.id, lobby.bet)}
+                />
+              ))}
+            </div>
+          )}
+
+          {/* ── Lobbies abertos ──────────────────────────────── */}
+          <div className="space-y-2">
+            <div className="text-[11px] uppercase tracking-wider text-muted-foreground font-semibold px-1">
+              Lobbies Abertos
+            </div>
+
+            {joinableLobbies.length === 0 ? (
+              <div className="ios-surface rounded-[16px] p-6 text-center space-y-2">
+                <div className="text-3xl">🕹️</div>
+                <div className="text-[13px] text-muted-foreground">Nenhum lobby aberto</div>
+                <div className="text-[11px] text-muted-foreground">Crie um racha para começar!</div>
+              </div>
+            ) : (
+              joinableLobbies.map(lobby => (
+                <LobbyCard
+                  key={lobby.id}
+                  lobby={lobby}
+                  canJoin={gameState.money >= lobby.bet}
                   onJoin={() => onJoinTarget(lobby)}
                 />
               ))
-          )}
-
-          {/* Meus lobbies (criados por mim) */}
-          {openLobbies.filter(l => l.hostId === myUserId).map(lobby => (
-            <LobbyCard
-              key={lobby.id}
-              lobby={lobby}
-              canJoin={false}
-              isOwn={true}
-              onJoin={() => {}}
-            />
-          ))}
-        </div>
+            )}
+          </div>
+        </>
       )}
 
-      {/* Histórico */}
+      {/* ── Histórico ─────────────────────────────────────────── */}
       {raceHistory.length > 0 && (
         <RaceHistorySection history={raceHistory.slice(0, 8)} />
       )}
@@ -262,17 +308,47 @@ function LobbyListView({
   );
 }
 
+// ── Card de resultado pendente ────────────────────────────────────
+function PendingResultCard({
+  lobby, myUserId, onCollect,
+}: {
+  lobby:     OpenLobby;
+  myUserId:  string | null;
+  onCollect: () => void;
+}) {
+  const myPlayer = lobby.players.find(p => p.userId === myUserId);
+
+  return (
+    <div className="ios-surface rounded-[14px] p-3.5 border border-emerald-500/30 bg-emerald-500/5">
+      <div className="flex items-center gap-3">
+        <span className="text-3xl shrink-0">🏆</span>
+        <div className="flex-1 min-w-0 space-y-0.5">
+          <p className="text-[13px] font-bold text-emerald-400">Resultado disponível!</p>
+          <p className="text-[11px] text-muted-foreground">
+            {lobby.players.length} jogadores ·{' '}
+            {myPlayer && <span>{myPlayer.carIcon} {myPlayer.carName} · </span>}
+            Aposta {fmt(lobby.bet)}
+          </p>
+        </div>
+        <Button size="sm" onClick={onCollect} className="text-[12px] px-4 shrink-0">
+          Ver resultado
+        </Button>
+      </div>
+    </div>
+  );
+}
+
 // ── Card de lobby na lista ────────────────────────────────────────
 function LobbyCard({
-  lobby, canJoin, isOwn = false, onJoin,
+  lobby, canJoin, isOwn = false, onJoin, onLeave,
 }: {
-  lobby: OpenLobby;
-  canJoin: boolean;
-  isOwn?: boolean;
-  onJoin: () => void;
+  lobby:    OpenLobby;
+  canJoin:  boolean;
+  isOwn?:   boolean;
+  onJoin:   () => void;
+  onLeave?: () => void;
 }) {
   const currentPlayers = lobby.players.length;
-  const spotsFilled    = `${currentPlayers}/${lobby.maxPlayers}`;
 
   return (
     <div className={`ios-surface rounded-[14px] p-3.5 flex items-center gap-3 ${
@@ -300,9 +376,8 @@ function LobbyCard({
           <span className="text-emerald-400 font-semibold">{fmt(lobby.bet)}</span>
           <span className="flex items-center gap-1 text-muted-foreground">
             <Users size={10} />
-            {spotsFilled}
+            {currentPlayers}/{lobby.maxPlayers}
           </span>
-          {/* Vagas visuais */}
           <div className="flex gap-0.5">
             {Array.from({ length: lobby.maxPlayers }, (_, i) => (
               <div
@@ -325,11 +400,23 @@ function LobbyCard({
           Entrar
         </Button>
       )}
+
+      {/* Botão sair (meus lobbies) */}
+      {isOwn && onLeave && (
+        <Button
+          size="sm"
+          variant="outline"
+          onClick={onLeave}
+          className="text-[11px] px-2.5 shrink-0 text-red-400 border-red-500/30 hover:bg-red-500/10"
+        >
+          Sair
+        </Button>
+      )}
     </div>
   );
 }
 
-// ── View: criar racha (conteúdo normal da aba, sem fixed overlay) ──
+// ── View: criar racha ─────────────────────────────────────────────
 function CreateLobbyView({
   carsInGarage, gameState, onConfirm, onBack,
 }: {
@@ -348,7 +435,7 @@ function CreateLobbyView({
 
   return (
     <div className="space-y-5">
-      {/* Mini-header da view */}
+      {/* Mini-header */}
       <div className="flex items-center gap-3">
         <button
           onClick={onBack}
@@ -358,6 +445,9 @@ function CreateLobbyView({
         </button>
         <div className="flex-1">
           <h2 className="font-bold text-[17px] text-foreground">🏁 Criar Racha</h2>
+          <p className="text-[11px] text-muted-foreground">
+            Lobby fica aberto até lotar — resultado automático
+          </p>
         </div>
         <span className="text-[12px] text-muted-foreground tabular-nums">
           {fmt(gameState.money)}
@@ -419,7 +509,9 @@ function CreateLobbyView({
 
       {/* Aposta */}
       <div>
-        <div className="text-[11px] uppercase tracking-wider text-muted-foreground font-semibold mb-2">Aposta</div>
+        <div className="text-[11px] uppercase tracking-wider text-muted-foreground font-semibold mb-2">
+          Aposta
+        </div>
         <div className="flex flex-wrap gap-2 mb-3">
           {BET_PRESETS.map(p => (
             <button
@@ -478,7 +570,6 @@ function CreateLobbyView({
         )}
       </div>
 
-      {/* Botão de confirmação — dentro do fluxo normal, pb-tabbar do GameLayout garante espaço */}
       <Button
         className="w-full h-12 text-[15px] font-bold gap-2"
         disabled={!canCreate}
@@ -491,7 +582,7 @@ function CreateLobbyView({
   );
 }
 
-// ── View: entrar em lobby (conteúdo normal da aba, sem fixed overlay) ──
+// ── View: entrar em lobby ─────────────────────────────────────────
 function JoinLobbyView({
   lobby, carsInGarage, gameState, onConfirm, onBack,
 }: {
@@ -506,7 +597,7 @@ function JoinLobbyView({
 
   return (
     <div className="space-y-5">
-      {/* Mini-header da view */}
+      {/* Mini-header */}
       <div className="flex items-center gap-3">
         <button
           onClick={onBack}
@@ -535,6 +626,9 @@ function JoinLobbyView({
           <span className="text-muted-foreground">🥇 1º lugar recebe</span>
           <span className="font-bold text-yellow-400">{fmt(Math.round(lobby.bet * lobby.maxPlayers * 0.9 * 0.7))}</span>
         </div>
+        <div className="border-t border-border/40 pt-2 text-[11px] text-muted-foreground">
+          Resultado calculado automaticamente quando lotar
+        </div>
       </div>
 
       {/* Jogadores no lobby */}
@@ -562,7 +656,9 @@ function JoinLobbyView({
 
       {/* Escolha de carro */}
       <div>
-        <div className="text-[11px] uppercase tracking-wider text-muted-foreground font-semibold mb-2">Seu Carro</div>
+        <div className="text-[11px] uppercase tracking-wider text-muted-foreground font-semibold mb-2">
+          Seu Carro
+        </div>
         <div className="space-y-2">
           {carsInGarage.map(car => {
             const perf = getFullPerformance(car);
@@ -595,7 +691,6 @@ function JoinLobbyView({
         <p className="text-[13px] text-red-400 font-semibold">⚠️ Saldo insuficiente para esta aposta</p>
       )}
 
-      {/* Botão de confirmação */}
       <Button
         className="w-full h-12 text-[15px] font-bold gap-2"
         disabled={!canJoin || !selectedCar}
@@ -608,179 +703,7 @@ function JoinLobbyView({
   );
 }
 
-// ── Sala de espera ────────────────────────────────────────────────
-function WaitingRoomView({
-  lobby, myUserId, onLeave,
-}: {
-  lobby:    OpenLobby;
-  myUserId: string | null;
-  onLeave:  () => void;
-}) {
-  const currentPlayers = lobby.players.length;
-  const waitingFor     = lobby.maxPlayers - currentPlayers;
-
-  return (
-    <div className="space-y-5">
-      {/* Header */}
-      <div className="flex items-center gap-3">
-        <button onClick={onLeave} className="text-muted-foreground hover:text-foreground">
-          <ArrowLeft size={18} />
-        </button>
-        <div>
-          <h2 className="font-bold text-[16px] text-foreground">Sala de Espera</h2>
-          <p className="text-[11px] text-muted-foreground">Aguardando jogadores...</p>
-        </div>
-      </div>
-
-      {/* Status */}
-      <div className="ios-surface rounded-[16px] p-4 text-center space-y-2">
-        <div className="text-[48px]">
-          {waitingFor > 0 ? '⏳' : '🏁'}
-        </div>
-        <div className="font-bold text-[16px] text-foreground">
-          {waitingFor > 0
-            ? `Aguardando ${waitingFor} jogador${waitingFor > 1 ? 'es' : ''}...`
-            : 'Lobby completo! Iniciando...'}
-        </div>
-        <div className="flex items-center justify-center gap-2">
-          <span className="text-[12px] text-muted-foreground">Aposta: </span>
-          <span className="text-[13px] font-bold text-emerald-400">{fmt(lobby.bet)}</span>
-          <span className="text-muted-foreground">·</span>
-          <span className="text-[12px] text-muted-foreground">{currentPlayers}/{lobby.maxPlayers} jogadores</span>
-        </div>
-        {/* Vagas visuais */}
-        <div className="flex justify-center gap-2 mt-1">
-          {Array.from({ length: lobby.maxPlayers }, (_, i) => (
-            <div
-              key={i}
-              className={`w-4 h-4 rounded-full transition-colors duration-300 ${
-                i < currentPlayers ? 'bg-primary scale-110' : 'bg-muted'
-              }`}
-            />
-          ))}
-        </div>
-      </div>
-
-      {/* Lista de jogadores */}
-      <div className="space-y-2">
-        <div className="text-[11px] uppercase tracking-wider text-muted-foreground font-semibold px-1">
-          Participantes ({currentPlayers}/{lobby.maxPlayers})
-        </div>
-        {lobby.players.map((p, i) => (
-          <div key={p.userId} className={`ios-surface rounded-[12px] p-3 flex items-center gap-3 ${
-            p.userId === myUserId ? 'border border-primary/30 bg-primary/3' : ''
-          }`}>
-            <span className="text-xl">{p.carIcon}</span>
-            <div className="flex-1 min-w-0">
-              <div className="text-[13px] font-semibold text-foreground flex items-center gap-1.5">
-                {p.name}
-                {p.userId === myUserId && (
-                  <span className="text-[10px] text-primary font-normal">(você)</span>
-                )}
-                {i === 0 && <span className="text-[10px] text-amber-400">👑 Host</span>}
-              </div>
-              <div className="text-[11px] text-muted-foreground truncate">{p.carName}</div>
-            </div>
-            <span className={`px-2 py-0.5 rounded-full text-[11px] font-black border ${igpClass(p.igp)}`}>
-              IGP {p.igp}
-            </span>
-          </div>
-        ))}
-        {/* Slots vazios */}
-        {Array.from({ length: lobby.maxPlayers - currentPlayers }, (_, i) => (
-          <div key={`empty-${i}`} className="ios-surface rounded-[12px] p-3 flex items-center gap-3 opacity-40 border border-dashed border-border">
-            <div className="w-9 h-9 rounded-full bg-muted flex items-center justify-center text-muted-foreground">?</div>
-            <div className="text-[12px] text-muted-foreground">Aguardando jogador...</div>
-          </div>
-        ))}
-      </div>
-
-      <Button variant="outline" size="sm" onClick={onLeave} className="gap-2 w-full text-[12px]">
-        <X size={13} />
-        Sair do Lobby (recebe aposta de volta)
-      </Button>
-    </div>
-  );
-}
-
-// ── Countdown ─────────────────────────────────────────────────────
-function CountdownView({ lobby, countdown }: { lobby: OpenLobby; countdown: number }) {
-  return (
-    <div className="flex flex-col items-center justify-center min-h-[70vh] space-y-6">
-      {/* Jogadores */}
-      <div className="w-full ios-surface rounded-[16px] p-4 space-y-2">
-        {lobby.players.map(p => (
-          <div key={p.userId} className="flex items-center gap-2 text-[12px]">
-            <span className="text-lg">{p.carIcon}</span>
-            <span className="font-semibold text-foreground flex-1 truncate">{p.name}</span>
-            <span className={`px-1.5 py-0.5 rounded-full text-[10px] font-black border ${igpClass(p.igp)}`}>
-              IGP {p.igp}
-            </span>
-          </div>
-        ))}
-      </div>
-      {/* Número */}
-      <div className={`text-[96px] font-black tabular-nums leading-none transition-all duration-300 ${
-        countdown > 0 ? 'text-primary scale-110' : 'text-emerald-400 scale-125'
-      }`}>
-        {countdown > 0 ? countdown : 'GO!'}
-      </div>
-      <div className="text-[15px] text-muted-foreground animate-pulse">Prepare-se...</div>
-    </div>
-  );
-}
-
-// ── Corrida animada ───────────────────────────────────────────────
-function RaceView({ players }: { players: RacePlayerAnim[] }) {
-  // Calcula posição atual de cada barra em tempo real
-  const sorted = [...players].sort((a, b) => b.barProgress - a.barProgress);
-  const posMap  = new Map(sorted.map((p, i) => [p.userId, i + 1]));
-
-  return (
-    <div className="space-y-4">
-      <div className="text-center space-y-1">
-        <div className="font-bold text-[17px] text-foreground animate-pulse">🏁 Corrida em andamento...</div>
-      </div>
-
-      <div className="space-y-3">
-        {players.map(p => {
-          const livePos = posMap.get(p.userId) ?? 1;
-          return (
-            <div key={p.userId} className={`space-y-1.5 ${p.isMe ? 'ring-1 ring-primary/40 rounded-[14px] p-2' : ''}`}>
-              <div className="flex items-center gap-2">
-                <span className={`text-[13px] font-bold w-6 shrink-0 ${positionColor(livePos)}`}>
-                  {livePos}º
-                </span>
-                <span className="text-lg">{p.carIcon}</span>
-                <div className="flex-1 min-w-0">
-                  <span className="text-[12px] font-semibold text-foreground truncate block">
-                    {p.name}
-                    {p.isMe && <span className="ml-1 text-[10px] text-primary font-normal">(você)</span>}
-                  </span>
-                  <span className="text-[10px] text-muted-foreground truncate block">{p.carName}</span>
-                </div>
-                <span className="text-[11px] font-bold tabular-nums text-muted-foreground shrink-0">
-                  {Math.round(p.barProgress)}%
-                </span>
-              </div>
-              <div className="w-full h-5 bg-muted rounded-full overflow-hidden relative">
-                <div
-                  className="h-full rounded-full transition-none"
-                  style={{
-                    width:      `${p.barProgress}%`,
-                    background: barColor(livePos),
-                  }}
-                />
-              </div>
-            </div>
-          );
-        })}
-      </div>
-    </div>
-  );
-}
-
-// ── Resultado ─────────────────────────────────────────────────────
+// ── Resultado (estático, baseado em dados do servidor) ────────────
 function ResultView({
   players, myUserId, onBack,
 }: {
@@ -789,11 +712,11 @@ function ResultView({
   onBack:   () => void;
 }) {
   const sorted = [...players].sort((a, b) => a.position - b.position);
-  const me     = sorted.find(p => p.isMe);
+  const me     = sorted.find(p => p.isMe || p.userId === myUserId);
 
   return (
     <div className="space-y-4">
-      {/* Resultado do jogador */}
+      {/* Meu resultado */}
       {me && (
         <div className={`ios-surface rounded-[20px] p-5 text-center border-2 ${
           me.position === 1
@@ -814,7 +737,7 @@ function ResultView({
           <div className="mt-2 text-[14px] font-semibold text-foreground">
             {me.payout > 0
               ? <span className="text-emerald-400">+{fmt(me.payout)}</span>
-              : <span className="text-red-400">Nenhum prêmio</span>
+              : <span className="text-muted-foreground">Nenhum prêmio</span>
             }
           </div>
           <div className="text-[11px] text-muted-foreground mt-1">
@@ -823,7 +746,7 @@ function ResultView({
         </div>
       )}
 
-      {/* Pódio completo */}
+      {/* Classificação completa */}
       <div className="ios-surface rounded-[16px] p-4 space-y-3">
         <div className="text-[11px] uppercase tracking-wider text-muted-foreground font-semibold">
           Classificação Final
@@ -831,8 +754,10 @@ function ResultView({
         {sorted.map(p => (
           <div
             key={p.userId}
-            className={`flex items-center gap-3 p-2.5 rounded-[12px] transition-colors ${
-              p.isMe ? 'bg-primary/5 border border-primary/20' : 'bg-muted/20'
+            className={`flex items-center gap-3 p-2.5 rounded-[12px] ${
+              p.isMe || p.userId === myUserId
+                ? 'bg-primary/5 border border-primary/20'
+                : 'bg-muted/20'
             }`}
           >
             <span className="text-[18px] w-8 text-center shrink-0">
@@ -842,7 +767,9 @@ function ResultView({
             <div className="flex-1 min-w-0">
               <div className="text-[12px] font-semibold text-foreground truncate">
                 {p.name}
-                {p.isMe && <span className="ml-1.5 text-[10px] text-primary font-normal">(você)</span>}
+                {(p.isMe || p.userId === myUserId) && (
+                  <span className="ml-1.5 text-[10px] text-primary font-normal">(você)</span>
+                )}
               </div>
               <div className="text-[10px] text-muted-foreground truncate">
                 {p.carName} · IGP {p.igp}

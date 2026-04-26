@@ -1,5 +1,7 @@
 // =====================================================================
-// useRachaLobby — Sistema PvP de lobby aberto (2-4 jogadores)
+// useRachaLobby — Sistema de Racha Assíncrono
+// Lobby fica aberto no servidor. Quando lota, o servidor calcula o
+// resultado. Jogadores coletam o prêmio quando abrirem o app.
 // =====================================================================
 import { useState, useRef, useCallback, useEffect } from 'react';
 import { supabase } from '@/integrations/supabase/client';
@@ -8,12 +10,7 @@ import type { RaceRecord, RaceParticipant } from '@/types/performance';
 import { getFullPerformance } from '@/lib/performanceEngine';
 
 // ── Tipos públicos ────────────────────────────────────────────────
-export type RachaState =
-  | 'idle'
-  | 'in_lobby'
-  | 'countdown'
-  | 'racing'
-  | 'result';
+export type RachaState = 'idle' | 'result';
 
 export interface LobbyPlayer {
   userId:  string;
@@ -30,8 +27,10 @@ export interface OpenLobby {
   maxPlayers: number;
   bet:        number;
   players:    LobbyPlayer[];
-  status:     'waiting' | 'racing' | 'finished' | 'cancelled';
+  results:    unknown;
+  status:     'waiting' | 'finished' | 'cancelled';
   createdAt:  string;
+  finishedAt: string | null;
 }
 
 export interface RacePlayerAnim extends LobbyPlayer {
@@ -43,94 +42,27 @@ export interface RacePlayerAnim extends LobbyPlayer {
   isMe:        boolean;
 }
 
-// ── RNG determinístico (seed = lobbyId) ─────────────────────────
-function makeRng(seed: string): () => number {
-  let h = 5381;
-  for (let i = 0; i < seed.length; i++) {
-    h = (Math.imul(31, h) + seed.charCodeAt(i)) | 0;
-  }
-  return () => {
-    h ^= h << 13;
-    h ^= h >> 17;
-    h ^= h << 5;
-    return (h >>> 0) / 0xFFFFFFFF;
-  };
+// ── Helpers de localStorage ───────────────────────────────────────
+const collectedKey = (uid: string) => `racha_collected_${uid}`;
+
+function getCollectedSet(uid: string): Set<string> {
+  try {
+    const raw = localStorage.getItem(collectedKey(uid));
+    return new Set<string>(raw ? (JSON.parse(raw) as string[]) : []);
+  } catch { return new Set(); }
 }
 
-// ── Payouts: 1º→70% 2º→20% 3º→10% 4º→0% do pot líquido ─────────
-function calcPayouts(bet: number, numPlayers: number): number[] {
-  const net  = bet * numPlayers * 0.9;
-  const pcts = [0.70, 0.20, 0.10, 0.00];
-  return Array.from({ length: numPlayers }, (_, i) =>
-    Math.round(net * (pcts[i] ?? 0))
-  );
+function markCollected(uid: string, lobbyId: string): void {
+  const s = getCollectedSet(uid);
+  s.add(lobbyId);
+  try { localStorage.setItem(collectedKey(uid), JSON.stringify([...s])); } catch {}
 }
 
-// ── Resultado determinístico (seed = lobbyId) ─────────────────
-function computeRaceResult(
-  players: LobbyPlayer[],
-  lobbyId: string,
-  bet:     number,
-): { sorted: (LobbyPlayer & { score: number; finalPct: number; position: number; payout: number })[] } {
-  const rng = makeRng(lobbyId);
-  const withScores = players.map(p => ({
-    ...p,
-    score: p.igp * (0.92 + rng() * 0.16),
-  }));
-  const sorted   = [...withScores].sort((a, b) => b.score - a.score);
-  const maxScore = sorted[0]?.score ?? 1;
-  const payouts  = calcPayouts(bet, sorted.length);
-
-  return {
-    sorted: sorted.map((p, i) => ({
-      ...p,
-      finalPct: Math.round((p.score / maxScore) * 100),
-      position: i + 1,
-      payout:   payouts[i] ?? 0,
-    })),
-  };
+function isCollected(uid: string, lobbyId: string): boolean {
+  return getCollectedSet(uid).has(lobbyId);
 }
 
-// ── Duração determinística da animação (mesma p/ todos) ─────────
-function raceDuration(lobbyId: string): number {
-  const rng = makeRng(lobbyId + '_dur');
-  return 3_000 + rng() * 2_000;
-}
-
-// ── Animação de barra ────────────────────────────────────────────
-function phaseSpeed(igp: number, phase: 1 | 2 | 3, seed: number): number {
-  const base  = igp / 100;
-  const noise = (Math.sin(seed * 47.3 + phase * 13.7) * 0.5 + 0.5) * 0.15;
-  return 0.6 + base * 0.4 + noise;
-}
-
-function barAt(t: number, finalPct: number, igp: number, seed: number): number {
-  const easeOut   = (x: number) => 1 - (1 - x) * (1 - x);
-  const easeInOut = (x: number) =>
-    x < 0.5 ? 2 * x * x : 1 - Math.pow(-2 * x + 2, 2) / 2;
-
-  let natural: number;
-  if (t <= 0.35) {
-    natural = easeOut(t / 0.35) * phaseSpeed(igp, 1, seed) * 0.35;
-  } else if (t <= 0.70) {
-    const p1 = easeOut(1) * phaseSpeed(igp, 1, seed) * 0.35;
-    natural  = p1 + easeInOut((t - 0.35) / 0.35) * phaseSpeed(igp, 2, seed) * 0.35;
-  } else {
-    const p1 = phaseSpeed(igp, 1, seed) * 0.35;
-    const p2 = phaseSpeed(igp, 2, seed) * 0.35;
-    natural  = p1 + p2 + easeOut((t - 0.70) / 0.30) * phaseSpeed(igp, 3, seed) * 0.30;
-  }
-
-  const nAmp  = (1 - t * t) * 0.06;
-  const noise = Math.sin(seed * 37.5 + t * 53.1) * nAmp;
-  natural = Math.max(0, Math.min(1, natural + noise));
-
-  const conv    = t * t;
-  const blended = natural * (1 - conv) + t * conv;
-  return Math.max(0, Math.min(100, blended * finalPct));
-}
-
-// ── Mapa de lobby DB row ─────────────────────────────────────────
+// ── Map DB row → OpenLobby ────────────────────────────────────────
 function rowToLobby(row: Record<string, unknown>): OpenLobby {
   return {
     id:         row['id'] as string,
@@ -139,46 +71,75 @@ function rowToLobby(row: Record<string, unknown>): OpenLobby {
     maxPlayers: row['max_players'] as number,
     bet:        Number(row['bet']),
     players:    (row['players'] as LobbyPlayer[]) ?? [],
+    results:    row['results'] ?? null,
     status:     row['status'] as OpenLobby['status'],
     createdAt:  row['created_at'] as string,
+    finishedAt: (row['finished_at'] as string | null) ?? null,
   };
 }
 
-// ── Hook ─────────────────────────────────────────────────────────
+// ── Map lobby.results.rankings → RacePlayerAnim[] ─────────────────
+type RankEntry = {
+  userId: string; name: string; carName: string; carIcon: string;
+  igp: number; score: number; position: number; payout: number;
+};
+
+function lobbyResultsToPlayers(lobby: OpenLobby, myUserId: string | null): RacePlayerAnim[] {
+  const rankings =
+    ((lobby.results as Record<string, unknown>)?.['rankings'] as RankEntry[]) ?? [];
+  const maxScore = Math.max(...rankings.map(r => r.score), 1);
+
+  return rankings.map(r => ({
+    userId:      r.userId,
+    name:        r.name,
+    carName:     r.carName,
+    carIcon:     r.carIcon,
+    igp:         r.igp,
+    score:       r.score,
+    finalPct:    Math.round((r.score / maxScore) * 100),
+    barProgress: Math.round((r.score / maxScore) * 100),
+    position:    r.position,
+    payout:      r.payout,
+    isMe:        r.userId === myUserId,
+  }));
+}
+
+// ── Hook ──────────────────────────────────────────────────────────
 interface UseRachaLobbyOptions {
   onSpendMoney: (amount: number) => boolean;
   onAddMoney:   (amount: number) => void;
 }
 
 export function useRachaLobby({ onSpendMoney, onAddMoney }: UseRachaLobbyOptions) {
-  const [state,        setState]        = useState<RachaState>('idle');
-  const [openLobbies,  setOpenLobbies]  = useState<OpenLobby[]>([]);
-  const [currentLobby, setCurrentLobby] = useState<OpenLobby | null>(null);
-  const [countdown,    setCountdown]    = useState(3);
-  const [racePlayers,  setRacePlayers]  = useState<RacePlayerAnim[]>([]);
-  const [raceHistory,  setRaceHistory]  = useState<RaceRecord[]>([]);
-  const [myUserId,     setMyUserId]     = useState<string | null>(null);
-  const [myName,       setMyName]       = useState('Jogador');
-  const [isLoading,    setIsLoading]    = useState(false);
-  const [error,        setError]        = useState<string | null>(null);
+  const [state,                setState]                = useState<RachaState>('idle');
+  const [openLobbies,          setOpenLobbies]          = useState<OpenLobby[]>([]);
+  const [pendingResults,       setPendingResults]       = useState<OpenLobby[]>([]);
+  const [currentResultPlayers, setCurrentResultPlayers] = useState<RacePlayerAnim[] | null>(null);
+  const [raceHistory,          setRaceHistory]          = useState<RaceRecord[]>([]);
+  const [myUserId,             setMyUserId]             = useState<string | null>(null);
+  const [myName,               setMyName]               = useState('Jogador');
+  const [isLoading,            setIsLoading]            = useState(false);
+  const [error,                setError]                = useState<string | null>(null);
+  const [successMessage,       setSuccessMessage]       = useState<string | null>(null);
 
-  // ── Refs sempre atuais (quebram stale closures) ────────────────
   const myUserIdRef     = useRef<string | null>(null);
   const myNameRef       = useRef<string>('Jogador');
   const onAddMoneyRef   = useRef(onAddMoney);
   const onSpendMoneyRef = useRef(onSpendMoney);
-  const startRaceRef    = useRef<((lobby: OpenLobby) => Promise<void>) | null>(null);
-  const lobbyChannelRef = useRef<unknown>(null);
   const listChannelRef  = useRef<unknown>(null);
-  const animFrameRef    = useRef<number | null>(null);
-  const currentBetRef   = useRef<number>(0);
-  const raceRunningRef  = useRef(false); // guard contra double-start
+  const successTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
-  // Mantém refs sincronizados
   useEffect(() => { onAddMoneyRef.current   = onAddMoney;   }, [onAddMoney]);
   useEffect(() => { onSpendMoneyRef.current = onSpendMoney; }, [onSpendMoney]);
 
-  // ── Carrega usuário ────────────────────────────────────────────
+  // ── Mensagem de sucesso (desaparece em 4s) ────────────────────
+  const showSuccess = useCallback((msg: string) => {
+    setSuccessMessage(msg);
+    if (successTimerRef.current) clearTimeout(successTimerRef.current);
+    successTimerRef.current = setTimeout(() => setSuccessMessage(null), 4_000);
+  }, []);
+
+  // ── Carrega usuário ───────────────────────────────────────────
   useEffect(() => {
     void (async () => {
       const { data: { user } } = await supabase.auth.getUser();
@@ -186,12 +147,14 @@ export function useRachaLobby({ onSpendMoney, onAddMoney }: UseRachaLobbyOptions
       myUserIdRef.current = user.id;
       setMyUserId(user.id);
 
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
       const { data } = await (supabase as any)
         .from('player_profiles')
         .select('display_name')
         .eq('user_id', user.id)
         .maybeSingle();
-      const name = data?.display_name || user.email?.split('@')[0] || 'Jogador';
+      const name = (data as { display_name?: string } | null)?.display_name ||
+        user.email?.split('@')[0] || 'Jogador';
       myNameRef.current = name;
       setMyName(name);
     })();
@@ -199,100 +162,109 @@ export function useRachaLobby({ onSpendMoney, onAddMoney }: UseRachaLobbyOptions
 
   // ── Busca lobbies abertos ─────────────────────────────────────
   const fetchLobbies = useCallback(async () => {
-    const { data, error: err } = await (supabase as any)
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const { data } = await (supabase as any)
       .from('race_lobbies')
       .select('*')
       .eq('status', 'waiting')
       .order('created_at', { ascending: false })
       .limit(20);
-    if (err || !data) return;
-    setOpenLobbies((data as Record<string, unknown>[]).map(rowToLobby));
+    if (data) setOpenLobbies((data as Record<string, unknown>[]).map(rowToLobby));
   }, []);
 
-  // ── Subscription: lista global ─────────────────────────────────
+  // ── Verifica resultados pendentes ─────────────────────────────
+  // Também faz auto-reembolso de lobbies cancelados.
+  const checkPendingResults = useCallback(async () => {
+    const uid = myUserIdRef.current;
+    if (!uid) return;
+
+    const since = new Date(Date.now() - 7 * 24 * 3600 * 1_000).toISOString();
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const { data } = await (supabase as any)
+      .from('race_lobbies')
+      .select('*')
+      .in('status', ['finished', 'cancelled'])
+      .gte('created_at', since)
+      .order('finished_at', { ascending: false })
+      .limit(100);
+
+    if (!data) return;
+
+    const lobbies = (data as Record<string, unknown>[]).map(rowToLobby);
+
+    // Auto-reembolso: lobbies cancelados onde participei e não coletei
+    const cancelled = lobbies.filter(
+      l =>
+        l.status === 'cancelled' &&
+        l.players.some(p => p.userId === uid) &&
+        !isCollected(uid, l.id),
+    );
+    for (const l of cancelled) {
+      markCollected(uid, l.id);
+      onAddMoneyRef.current(l.bet);
+    }
+
+    // Lobbies finalizados onde participei e não coletei
+    const pending = lobbies.filter(
+      l =>
+        l.status === 'finished' &&
+        l.players.some(p => p.userId === uid) &&
+        !isCollected(uid, l.id),
+    );
+    setPendingResults(pending);
+  }, []);
+
+  // ── Subscription global da lista ──────────────────────────────
   useEffect(() => {
     void fetchLobbies();
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const ch = (supabase as any)
       .channel('race-lobbies-list')
-      .on('postgres_changes',
+      .on(
+        'postgres_changes',
         { event: '*', schema: 'public', table: 'race_lobbies' },
-        () => void fetchLobbies(),
+        () => { void fetchLobbies(); void checkPendingResults(); },
       )
       .subscribe();
     listChannelRef.current = ch;
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
     return () => void (supabase as any).removeChannel(ch);
-  }, [fetchLobbies]);
+  }, [fetchLobbies, checkPendingResults]);
 
-  // ── Iniciar corrida ───────────────────────────────────────────
-  // IMPORTANTE: usa myUserIdRef.current (não myUserId do closure)
-  // para evitar stale closure quando chamado via subscription.
-  const startRace = useCallback(async (lobby: OpenLobby) => {
-    // Guard: evita iniciar a corrida duas vezes (subscription + chamada direta)
-    if (raceRunningRef.current) return;
-    raceRunningRef.current = true;
+  // Verifica resultados quando usuário carrega
+  useEffect(() => {
+    if (myUserId) void checkPendingResults();
+  }, [myUserId, checkPendingResults]);
 
-    setState('countdown');
+  // ── Coletar resultado de um lobby finalizado ──────────────────
+  const collectResult = useCallback((lobby: OpenLobby) => {
+    const uid = myUserIdRef.current;
+    if (!uid) return;
 
-    await new Promise<void>(resolve => {
-      let c = 3;
-      setCountdown(c);
-      const id = setInterval(() => {
-        c--;
-        if (c <= 0) { clearInterval(id); setCountdown(0); resolve(); }
-        else setCountdown(c);
-      }, 1_000);
-    });
+    const players  = lobbyResultsToPlayers(lobby, uid);
+    const myEntry  = players.find(p => p.isMe);
 
-    setState('racing');
-
-    // Resultado determinístico — mesmo seed para todos os jogadores
-    const { sorted } = computeRaceResult(lobby.players, lobby.id, lobby.bet);
-    const duration   = raceDuration(lobby.id); // duração igual para todos
-    const uid        = myUserIdRef.current; // sempre atual
-
-    const players: RacePlayerAnim[] = sorted.map((p, i) => ({
-      ...p,
-      barProgress: 0,
-      isMe: p.userId === uid,
-    }));
-
-    setRacePlayers(players.map(p => ({ ...p, barProgress: 0 })));
-
-    const startMs = Date.now();
-    await new Promise<void>(resolve => {
-      const tick = () => {
-        const t = Math.min(1, (Date.now() - startMs) / duration);
-        setRacePlayers(prev =>
-          prev.map((p, i) => ({ ...p, barProgress: barAt(t, p.finalPct, p.igp, i + 1) }))
-        );
-        if (t < 1) {
-          animFrameRef.current = requestAnimationFrame(tick);
-        } else {
-          setRacePlayers(prev => prev.map(p => ({ ...p, barProgress: p.finalPct })));
-          resolve();
-        }
-      };
-      animFrameRef.current = requestAnimationFrame(tick);
-    });
-
-    // Aplica prêmio ao jogador local
-    const myResult = players.find(p => p.userId === uid);
-    if (myResult && myResult.payout > 0) {
-      onAddMoneyRef.current(myResult.payout);
+    // Aplica prêmio
+    if (myEntry && myEntry.payout > 0) {
+      onAddMoneyRef.current(myEntry.payout);
     }
 
-    // Salva histórico local
-    const myPos = myResult?.position ?? 0;
+    // Marca como coletado
+    markCollected(uid, lobby.id);
+    setPendingResults(prev => prev.filter(l => l.id !== lobby.id));
+
+    // Histórico local
+    const myPos = myEntry?.position ?? 0;
     const record: RaceRecord = {
-      id:           `race_${Date.now()}_${Math.random().toString(36).slice(2, 6)}`,
-      opponentName: `${sorted.length} jogadores`,
+      id:           `race_${lobby.id}`,
+      opponentName: `${lobby.players.length} jogadores`,
       opponentCar:  '',
-      myIgp:        myResult?.igp ?? 0,
-      opponentIgp:  sorted[0]?.igp ?? 0,
+      myIgp:        myEntry?.igp ?? 0,
+      opponentIgp:  players[0]?.igp ?? 0,
       bet:          lobby.bet,
       won:          myPos === 1,
-      payout:       myResult?.payout ?? 0,
-      createdAt:    new Date().toISOString(),
+      payout:       myEntry?.payout ?? 0,
+      createdAt:    lobby.finishedAt ?? lobby.createdAt,
       participants: players.map(p => ({
         userId:   p.userId,
         name:     p.name,
@@ -303,59 +275,21 @@ export function useRachaLobby({ onSpendMoney, onAddMoney }: UseRachaLobbyOptions
         payout:   p.payout,
       } satisfies RaceParticipant)),
       myPosition:   myPos,
-      totalPlayers: sorted.length,
+      totalPlayers: lobby.players.length,
     };
     setRaceHistory(prev => [record, ...prev].slice(0, 50));
 
-    // Persiste resultado no banco (idempotente — ambos podem chamar)
-    try {
-      await (supabase as any).rpc('finish_race_lobby', {
-        p_lobby_id: lobby.id,
-        p_results:  { rankings: players },
-      });
-    } catch {
-      // ignora falha de persistência
-    }
-
-    raceRunningRef.current = false;
+    // Mostra tela de resultado
+    setCurrentResultPlayers(players);
     setState('result');
-  }, []); // sem deps — usa refs para tudo que pode ficar stale
+  }, []);
 
-  // Mantém startRaceRef sempre atualizado
-  startRaceRef.current = startRace;
-
-  // ── Subscription: lobby atual ─────────────────────────────────
-  // Usa startRaceRef.current para evitar stale closure
-  const subscribeLobby = useCallback((lobbyId: string) => {
-    if (lobbyChannelRef.current) {
-      void (supabase as any).removeChannel(lobbyChannelRef.current);
-    }
-
-    const ch = (supabase as any)
-      .channel(`lobby-${lobbyId}`)
-      .on(
-        'postgres_changes',
-        { event: 'UPDATE', schema: 'public', table: 'race_lobbies', filter: `id=eq.${lobbyId}` },
-        (payload: { new: Record<string, unknown> }) => {
-          const updated = rowToLobby(payload.new);
-          setCurrentLobby(updated);
-
-          if (updated.status === 'racing') {
-            // Usa ref para sempre ter o startRace mais recente
-            void startRaceRef.current?.(updated);
-          }
-          if (updated.status === 'cancelled') {
-            onAddMoneyRef.current(currentBetRef.current);
-            currentBetRef.current = 0;
-            setState('idle');
-            setCurrentLobby(null);
-          }
-        },
-      )
-      .subscribe();
-
-    lobbyChannelRef.current = ch;
-  }, []); // seguro: usa refs, sem deps
+  // ── Fechar resultado ──────────────────────────────────────────
+  const dismissResult = useCallback(() => {
+    setCurrentResultPlayers(null);
+    setState('idle');
+    void checkPendingResults();
+  }, [checkPendingResults]);
 
   // ── Criar lobby ───────────────────────────────────────────────
   const createLobby = useCallback(async (
@@ -370,8 +304,6 @@ export function useRachaLobby({ onSpendMoney, onAddMoney }: UseRachaLobbyOptions
 
     setIsLoading(true);
     setError(null);
-    currentBetRef.current = bet;
-    raceRunningRef.current = false;
 
     try {
       const perf     = getFullPerformance(car);
@@ -383,26 +315,29 @@ export function useRachaLobby({ onSpendMoney, onAddMoney }: UseRachaLobbyOptions
         igp:     perf.igp,
       };
 
-      const { data, error: err } = await (supabase as any)
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      const { error: err } = await (supabase as any)
         .from('race_lobbies')
-        .insert({ host_id: uid, host_name: name, max_players: maxPlayers, bet, players: [mePlayer], status: 'waiting' })
-        .select()
-        .single();
+        .insert({
+          host_id:     uid,
+          host_name:   name,
+          max_players: maxPlayers,
+          bet,
+          players:     [mePlayer],
+          status:      'waiting',
+        });
 
-      if (err || !data) throw new Error(err?.message ?? 'Erro ao criar lobby');
+      if (err) throw new Error((err as { message?: string }).message ?? 'Erro ao criar lobby');
 
-      const lobby = rowToLobby(data as Record<string, unknown>);
-      setCurrentLobby(lobby);
-      subscribeLobby(lobby.id);
-      setState('in_lobby');
+      showSuccess('🏁 Racha criado! Aguardando oponentes...');
+      void fetchLobbies();
     } catch (e) {
-      onAddMoneyRef.current(bet);
-      currentBetRef.current = 0;
+      onAddMoneyRef.current(bet); // reembolsa
       setError(e instanceof Error ? e.message : 'Erro ao criar lobby');
     } finally {
       setIsLoading(false);
     }
-  }, [subscribeLobby]);
+  }, [fetchLobbies, showSuccess]);
 
   // ── Entrar em lobby ───────────────────────────────────────────
   const joinLobby = useCallback(async (lobby: OpenLobby, car: OwnedCar) => {
@@ -413,8 +348,6 @@ export function useRachaLobby({ onSpendMoney, onAddMoney }: UseRachaLobbyOptions
 
     setIsLoading(true);
     setError(null);
-    currentBetRef.current = lobby.bet;
-    raceRunningRef.current = false;
 
     try {
       const perf     = getFullPerformance(car);
@@ -426,24 +359,24 @@ export function useRachaLobby({ onSpendMoney, onAddMoney }: UseRachaLobbyOptions
         igp:     perf.igp,
       };
 
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
       const { data, error: err } = await (supabase as any)
         .rpc('join_race_lobby', { p_lobby_id: lobby.id, p_player: mePlayer });
 
-      if (err) throw new Error(err.message ?? 'Lobby indisponível');
+      if (err) throw new Error((err as { message?: string }).message ?? 'Lobby indisponível');
 
       const updated = rowToLobby(data as Record<string, unknown>);
-      setCurrentLobby(updated);
-      subscribeLobby(updated.id);
 
-      if (updated.status === 'racing') {
-        // Lobby preencheu — inicia corrida imediatamente (subscription pode não disparar para este cliente)
-        void startRaceRef.current?.(updated);
+      if (updated.status === 'finished') {
+        // Lobby preencheu agora — coleta imediatamente
+        collectResult(updated);
       } else {
-        setState('in_lobby');
+        // Ainda aguardando outros jogadores
+        showSuccess('⚡ Você entrou no racha! Aguardando outros jogadores...');
+        void fetchLobbies();
       }
     } catch (e) {
-      onAddMoneyRef.current(lobby.bet);
-      currentBetRef.current = 0;
+      onAddMoneyRef.current(lobby.bet); // reembolsa
       const msg = e instanceof Error ? e.message : 'Erro ao entrar';
       setError(
         msg.includes('lobby_full')            ? 'Lobby cheio.'
@@ -454,63 +387,42 @@ export function useRachaLobby({ onSpendMoney, onAddMoney }: UseRachaLobbyOptions
     } finally {
       setIsLoading(false);
     }
-  }, [subscribeLobby]);
+  }, [collectResult, fetchLobbies, showSuccess]);
 
-  // ── Sair do lobby ─────────────────────────────────────────────
-  const leaveLobby = useCallback(async () => {
-    if (!currentLobby) return;
-    await (supabase as any).rpc('leave_race_lobby', { p_lobby_id: currentLobby.id });
-    onAddMoneyRef.current(currentBetRef.current);
-    currentBetRef.current = 0;
-    raceRunningRef.current = false;
-    setState('idle');
-    setCurrentLobby(null);
-    if (lobbyChannelRef.current) {
-      void (supabase as any).removeChannel(lobbyChannelRef.current);
-      lobbyChannelRef.current = null;
-    }
-  }, [currentLobby]);
+  // ── Sair do lobby (host cancela; outros só saem) ──────────────
+  const leaveLobby = useCallback(async (lobbyId: string, bet: number) => {
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    await (supabase as any).rpc('leave_race_lobby', { p_lobby_id: lobbyId });
+    onAddMoneyRef.current(bet); // devolve aposta
+    void fetchLobbies();
+  }, [fetchLobbies]);
 
-  // ── Reset ─────────────────────────────────────────────────────
-  const resetRace = useCallback(() => {
-    if (animFrameRef.current) cancelAnimationFrame(animFrameRef.current);
-    if (lobbyChannelRef.current) {
-      void (supabase as any).removeChannel(lobbyChannelRef.current);
-      lobbyChannelRef.current = null;
-    }
-    currentBetRef.current  = 0;
-    raceRunningRef.current = false;
-    setState('idle');
-    setCurrentLobby(null);
-    setRacePlayers([]);
-    setCountdown(3);
-    setError(null);
-  }, []);
-
-  // ── Cleanup ────────────────────────────────────────────────────
+  // ── Cleanup ───────────────────────────────────────────────────
   useEffect(() => {
     return () => {
-      if (animFrameRef.current) cancelAnimationFrame(animFrameRef.current);
-      if (lobbyChannelRef.current) void (supabase as any).removeChannel(lobbyChannelRef.current);
-      if (listChannelRef.current)  void (supabase as any).removeChannel(listChannelRef.current);
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      if (listChannelRef.current) void (supabase as any).removeChannel(listChannelRef.current);
+      if (successTimerRef.current) clearTimeout(successTimerRef.current);
     };
   }, []);
 
   return {
     state,
     openLobbies,
-    currentLobby,
-    countdown,
-    racePlayers,
+    pendingResults,
+    currentResultPlayers,
     raceHistory,
     myUserId,
     myName,
     isLoading,
     error,
+    successMessage,
     createLobby,
     joinLobby,
     leaveLobby,
-    resetRace,
+    collectResult,
+    dismissResult,
     refetchLobbies: fetchLobbies,
+    checkPendingResults,
   };
 }
