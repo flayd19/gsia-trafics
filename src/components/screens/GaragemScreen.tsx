@@ -28,32 +28,46 @@ function CarCard({ car, slotId, onRepair }: { car: OwnedCar; slotId: number; onR
 
   return (
     <div className="ios-surface rounded-[16px] overflow-hidden space-y-0">
-      {/* Imagem do carro */}
-      {imgUrl && (
-        <div className="relative w-full bg-muted overflow-hidden" style={{ height: 140 }}>
-          <img
-            src={imgUrl}
-            alt={`${car.brand} ${car.model}`}
-            className="w-full h-full object-cover"
-            onError={(e) => {
-              (e.currentTarget.parentElement as HTMLElement).style.display = 'none';
-            }}
-          />
-          <div className={`absolute top-2 right-2 px-2 py-0.5 rounded-full text-[10px] font-bold text-white shadow ${
-            car.condition >= 75 ? 'bg-emerald-500'
-            : car.condition >= 50 ? 'bg-amber-500'
-            : car.condition >= 30 ? 'bg-orange-500'
-            : 'bg-red-500'
-          }`}>
-            {label} {car.condition}%
+      {/* Imagem do carro — sempre visível, fallback para emoji */}
+      <div className="relative w-full overflow-hidden" style={{ height: 140 }}>
+        {imgUrl ? (
+          <>
+            <img
+              src={imgUrl}
+              alt={`${car.brand} ${car.model}`}
+              className="w-full h-full object-cover"
+              onError={(e) => {
+                e.currentTarget.style.display = 'none';
+                const fb = e.currentTarget.nextElementSibling as HTMLElement | null;
+                if (fb) fb.style.display = 'flex';
+              }}
+            />
+            <div
+              className="w-full h-full bg-gradient-to-br from-muted to-muted/50 items-center justify-center"
+              style={{ display: 'none' }}
+            >
+              <span className="text-6xl">{car.icon}</span>
+            </div>
+          </>
+        ) : (
+          <div className="w-full h-full bg-gradient-to-br from-muted to-muted/50 flex items-center justify-center">
+            <span className="text-6xl">{car.icon}</span>
           </div>
+        )}
+        <div className={`absolute top-2 right-2 px-2 py-0.5 rounded-full text-[10px] font-bold text-white shadow ${
+          car.condition >= 75 ? 'bg-emerald-500'
+          : car.condition >= 50 ? 'bg-amber-500'
+          : car.condition >= 30 ? 'bg-orange-500'
+          : 'bg-red-500'
+        }`}>
+          {label} {car.condition}%
         </div>
-      )}
+      </div>
       <div className="p-4 space-y-3">
       {/* Header */}
       <div className="flex items-start justify-between gap-2">
         <div className="flex items-center gap-2">
-          {!imgUrl && <span className="text-3xl">{car.icon}</span>}
+          <span className="text-3xl">{car.icon}</span>
           <div>
             <div className="font-bold text-foreground text-[15px] leading-tight">
               {car.brand} {car.model}

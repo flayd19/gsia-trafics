@@ -2,6 +2,7 @@
 // useCarGameLogic — lógica central do jogo de compra e venda de carros
 // =====================================================================
 import { useState, useEffect, useCallback, useRef } from 'react';
+import { flushSync } from 'react-dom';
 import type { GameState, OwnedCar, CarAttributes, AttributeKey, DiagnosisResult } from '@/types/game';
 import { ensureGameState } from '@/types/game';
 import type { TuneUpgrade } from '@/types/performance';
@@ -842,93 +843,111 @@ export function useCarGameLogic() {
   }, [saveGame]);
 
   // ── Resposta do jogador à contraproposta do comprador ─────────────
+  // Usa flushSync + setGameState(prev=>) para garantir que o estado lido
+  // é sempre o mais recente (prev), eliminando bugs de stateRef stale.
   const resolveCounterOffer = useCallback((
     buyerId: string,
     accept: boolean,
   ): { success: boolean; message: string; accepted?: boolean; finalPrice?: number } => {
-    const state = stateRef.current;
-    const buyer = state.carBuyers.find(b => b.id === buyerId);
-    if (!buyer || buyer.state !== 'countering' || buyer.counterOffer === undefined)
-      return { success: false, message: 'Nenhuma contraproposta pendente.' };
+    // Resultado capturado de dentro do updater (executa de forma síncrona via flushSync)
+    let result: { success: boolean; message: string; accepted?: boolean; finalPrice?: number } = {
+      success: false,
+      message: 'Nenhuma contraproposta pendente.',
+    };
 
-    const slotIdx   = buyer.slotIndex ?? -1;
-    const lockEpoch = currentCycleEpoch();
-
-    if (!accept) {
-      // Jogador recusou → comprador vai embora, slot bloqueado
+    flushSync(() => {
       setGameState(prev => {
+        const buyer = prev.carBuyers.find(b => b.id === buyerId);
+        if (!buyer || buyer.state !== 'countering' || buyer.counterOffer === undefined) {
+          result = { success: false, message: 'Nenhuma contraproposta pendente.' };
+          return prev;
+        }
+
+        const slotIdx   = buyer.slotIndex ?? -1;
+        const lockEpoch = currentCycleEpoch();
+
+        if (!accept) {
+          const locks = [...(prev.buyerSlotLocks ?? [])];
+          if (slotIdx >= 0) locks[slotIdx] = lockEpoch;
+          result = { success: true, accepted: false, message: `${buyer.name} foi embora.` };
+          return {
+            ...prev,
+            carBuyers:      prev.carBuyers.map(b => b.id === buyerId ? { ...b, state: 'rejected' as const } : b),
+            buyerSlotLocks: locks,
+          };
+        }
+
+        if (!buyer.targetCarInstanceId) {
+          result = { success: false, message: 'Dados da contraproposta incompletos.' };
+          return prev;
+        }
+
+        const slot = prev.garage.find(s => s.car?.instanceId === buyer.targetCarInstanceId);
+        if (!slot?.car) {
+          result = { success: false, message: 'Carro não encontrado na garagem.' };
+          return {
+            ...prev,
+            carBuyers: prev.carBuyers.map(b => b.id === buyerId ? { ...b, state: 'rejected' as const } : b),
+          };
+        }
+
+        const car          = slot.car;
+        const counterPrice = buyer.counterOffer!;
+
+        let finalPrice = counterPrice;
+        let tradeInCar: OwnedCar | undefined;
+        if (buyer.playerIncludedTradeIn && buyer.tradeInCar && buyer.tradeInValue) {
+          const rawValuation     = buyer.playerTradeInValuation ?? buyer.tradeInValue;
+          const carMarketValue   = car.fipePrice * conditionValueFactor(car.condition);
+          const safeTradeInValue = Math.min(rawValuation, carMarketValue * 0.95);
+          finalPrice  = Math.max(0, counterPrice - safeTradeInValue);
+          tradeInCar  = { ...buyer.tradeInCar, completedRepairs: buyer.tradeInCar.completedRepairs ?? [] };
+        }
+
+        const profit     = counterPrice - car.purchasePrice;
+        const saleRecord = {
+          id: generateId(), carInstanceId: car.instanceId, fullName: car.fullName,
+          purchasePrice: car.purchasePrice, salePrice: counterPrice,
+          fipePrice: car.fipePrice, condition: car.condition,
+          profit, soldAt: Date.now(), gameDay: prev.gameTime.day,
+        };
+
+        let garage = prev.garage.map(s =>
+          s.car?.instanceId === car.instanceId ? { ...s, car: undefined } : s
+        );
+        if (tradeInCar) {
+          const emptySlot = garage.find(s => s.unlocked && !s.car);
+          if (emptySlot) garage = garage.map(s => s.id === emptySlot.id ? { ...s, car: tradeInCar } : s);
+        }
+
         const locks = [...(prev.buyerSlotLocks ?? [])];
         if (slotIdx >= 0) locks[slotIdx] = lockEpoch;
+
+        result = {
+          success:    true,
+          accepted:   true,
+          message:    `Contraproposta aceita! Lucro: ${formatMoney(profit)}`,
+          finalPrice,
+        };
+
         return {
           ...prev,
-          carBuyers:      prev.carBuyers.map(b => b.id === buyerId ? { ...b, state: 'rejected' as const } : b),
+          money:          prev.money + finalPrice,
+          garage,
+          activeRepairs:  prev.activeRepairs.filter(r => r.carInstanceId !== car.instanceId),
+          carBuyers:      prev.carBuyers.map(b => b.id === buyerId ? { ...b, state: 'accepted' as const, finalPrice: counterPrice } : b),
+          carSales:       [...prev.carSales, saleRecord],
+          totalRevenue:   (prev.totalRevenue ?? 0) + counterPrice,
+          salesHistory:   [...(prev.salesHistory ?? []), saleRecord],
+          totalProfit:    (prev.totalProfit ?? 0) + profit,
+          reputation:     addXp(prev.reputation, 3).reputation,
           buyerSlotLocks: locks,
         };
       });
-      return { success: true, accepted: false, message: `${buyer.name} foi embora.` };
-    }
-
-    // Jogador aceitou → conclui venda pelo valor da contraproposta
-    if (!buyer.targetCarInstanceId)
-      return { success: false, message: 'Dados da contraproposta incompletos.' };
-
-    const slot = state.garage.find(s => s.car?.instanceId === buyer.targetCarInstanceId);
-    if (!slot?.car) {
-      setGameState(prev => ({
-        ...prev,
-        carBuyers: prev.carBuyers.map(b => b.id === buyerId ? { ...b, state: 'rejected' as const } : b),
-      }));
-      return { success: false, message: 'Carro não encontrado.' };
-    }
-
-    const car          = slot.car;
-    const counterPrice = buyer.counterOffer;
-
-    let finalPrice = counterPrice;
-    let tradeInCar: OwnedCar | undefined;
-    if (buyer.playerIncludedTradeIn && buyer.tradeInCar && buyer.tradeInValue) {
-      const rawValuation    = buyer.playerTradeInValuation ?? buyer.tradeInValue;
-      const carMarketValue  = car.fipePrice * conditionValueFactor(car.condition);
-      const safeTradeInValue = Math.min(rawValuation, carMarketValue * 0.95);
-      finalPrice = Math.max(0, counterPrice - safeTradeInValue);
-      tradeInCar = { ...buyer.tradeInCar, completedRepairs: buyer.tradeInCar.completedRepairs ?? [] };
-    }
-
-    const profit     = counterPrice - car.purchasePrice;
-    const saleRecord = {
-      id: generateId(), carInstanceId: car.instanceId, fullName: car.fullName,
-      purchasePrice: car.purchasePrice, salePrice: counterPrice,
-      fipePrice: car.fipePrice, condition: car.condition,
-      profit, soldAt: Date.now(), gameDay: state.gameTime.day,
-    };
-
-    setGameState(prev => {
-      let garage = prev.garage.map(s =>
-        s.car?.instanceId === car.instanceId ? { ...s, car: undefined } : s
-      );
-      if (tradeInCar) {
-        const emptySlot = garage.find(s => s.unlocked && !s.car);
-        if (emptySlot) garage = garage.map(s => s.id === emptySlot.id ? { ...s, car: tradeInCar } : s);
-      }
-      const locks = [...(prev.buyerSlotLocks ?? [])];
-      if (slotIdx >= 0) locks[slotIdx] = lockEpoch;
-      return {
-        ...prev,
-        money:           prev.money + finalPrice,
-        garage,
-        activeRepairs:   prev.activeRepairs.filter(r => r.carInstanceId !== car.instanceId),
-        carBuyers:       prev.carBuyers.map(b => b.id === buyerId ? { ...b, state: 'accepted' as const, finalPrice: counterPrice } : b),
-        carSales:        [...prev.carSales, saleRecord],
-        totalRevenue:    (prev.totalRevenue ?? 0) + counterPrice,
-        salesHistory:    [...(prev.salesHistory ?? []), saleRecord],
-        totalProfit:     (prev.totalProfit ?? 0) + profit,
-        reputation:      addXp(prev.reputation, 3).reputation,
-        buyerSlotLocks:  locks,
-      };
     });
 
     setTimeout(() => void saveGame(), 400);
-    return { success: true, accepted: true, message: `Contraproposta aceita! Lucro: ${formatMoney(profit)}`, finalPrice };
+    return result;
   }, [saveGame]);
 
   const dismissBuyer = useCallback((buyerId: string) => {
