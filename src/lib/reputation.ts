@@ -32,20 +32,30 @@ export const INITIAL_REPUTATION: Reputation = {
 
 /**
  * XP necessário para subir de `level-1` pra `level`.
- * Ex.: xpRequiredForLevel(2) = 10, (3) = 20, (4) = 40...
+ *
+ * Fórmula: 2.5 × 2^(level-2) — ainda dobra a cada nível, mas reduzida em
+ * 75% em relação à versão anterior (era 10 × 2^(level-2)) para tornar
+ * a progressão mais ágil:
+ *   • Lv 2 = 3   (era 10)
+ *   • Lv 3 = 5   (era 20)
+ *   • Lv 4 = 10  (era 40)
+ *   • Lv 5 = 20  (era 80)
+ *   • Lv 6 = 40  (era 160)
+ *   • Lv 10 = 640 (era 2.560)
+ *
  * Pra level <= 1 retorna 0 (não existe "subir pro level 1").
  * Pra level > MAX_LEVEL retorna Infinity.
  */
 export function xpRequiredForLevel(level: number): number {
   if (level <= 1) return 0;
   if (level > MAX_LEVEL) return Infinity;
-  // 10 * 2^(level-2) — dobrando a cada nível (metade do valor anterior)
-  const raw = 10 * Math.pow(2, level - 2);
+  const raw = 2.5 * Math.pow(2, level - 2);
   // Proteção contra overflow em níveis absurdos (>50)
   if (!Number.isFinite(raw) || raw > Number.MAX_SAFE_INTEGER) {
     return Number.MAX_SAFE_INTEGER;
   }
-  return Math.round(raw);
+  // Mínimo de 1 XP — garante progresso mesmo com arredondamento.
+  return Math.max(1, Math.round(raw));
 }
 
 /**

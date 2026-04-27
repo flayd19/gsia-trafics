@@ -992,9 +992,12 @@ interface RacingViewProps {
 }
 
 function RacingView({ players, myUserId, onFinish }: RacingViewProps) {
-  // Duração da animação visual: 14-18s para 2-4 jogadores. Suficientemente
-  // longa para o jogador acompanhar a disputa sem entediar.
-  const DURATION_MS = 12_000 + players.length * 1_500;
+  // Duração da animação visual: 30-40s para 2-4 jogadores.
+  // Calibrada para se aproximar da percepção real da corrida — uma corrida
+  // de 6 km a 150 km/h média demora ~144s reais; comprimir isso em 15s era
+  // muito brusco. Agora a animação respira mais e o jogador acompanha as
+  // ultrapassagens com calma.
+  const DURATION_MS = 25_000 + players.length * 2_500;
 
   const [lapProgs, setLapProgs] = useState<Record<string, number>>(() =>
     Object.fromEntries(players.map(p => [p.userId, 0]))
