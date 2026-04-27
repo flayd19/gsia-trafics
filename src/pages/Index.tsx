@@ -312,37 +312,28 @@ const Index = () => {
         );
 
       case 'ranking':
-        return <RankingScreen gameState={gameState as any} gameLoaded={gameLoaded} />;
+        return <RankingScreen gameState={gameState} />;
 
       case 'settings':
         return (
           <SettingsScreen
-            gameState={gameState as any}
-            operationalCosts={{ warehouseCost: 0, driverCosts: 0, totalWeekly: 0 }}
-            onSaveGame={handleSaveGame}
-            onResetGame={handleResetGame}
+            gameState={gameState}
+            onSave={handleSaveGame}
+            onReset={handleResetGame}
           />
         );
 
       default:
-        return <div className="text-center py-10 text-muted-foreground">Tela não encontrada</div>;
+        return <HomeScreen gameState={gameState} onNavigate={handleTabChange} />;
     }
   };
 
-  if (!gameLoaded) {
+  if (loading || !gameLoaded) {
     return (
-      <div className="min-h-screen bg-background flex items-center justify-center">
-        <div className="text-center space-y-6 animate-scale-in">
-          <div className="text-6xl mb-4 animate-bounce-gentle">🚗</div>
-          <h2 className="text-3xl font-game-title font-bold text-primary glow-primary">
-            GSIA CARROS
-          </h2>
-          <p className="text-lg font-game-ui text-muted-foreground">
-            {isSyncing ? 'Carregando seu progresso…' : 'Preparando sua concessionária…'}
-          </p>
-          <div className="w-48 h-2 bg-muted rounded-full mx-auto overflow-hidden">
-            <div className="h-full bg-gradient-to-r from-primary to-secondary animate-glow-pulse rounded-full" />
-          </div>
+      <div className="min-h-screen flex items-center justify-center bg-background">
+        <div className="text-center space-y-3">
+          <div className="text-4xl animate-bounce">🏎️</div>
+          <div className="text-muted-foreground text-sm">Carregando jogo...</div>
         </div>
       </div>
     );
@@ -350,20 +341,13 @@ const Index = () => {
 
   return (
     <GameLayout
-      money={gameState.money}
-      garageCount={garageCarCount}
-      gameTime={gameTime}
-      onTabChange={handleTabChange}
+      gameState={gameState}
       currentTab={currentTab}
-      isSyncing={isSyncing || saveStatus === 'saving'}
-      user={user}
-      reputation={gameState.reputation}
-      onLogout={async () => {
-        await saveGame();
-        const { supabase: sb } = await import('@/integrations/supabase/client');
-        await sb.auth.signOut();
-        navigate('/auth');
-      }}
+      isSyncing={isSyncing}
+      saveStatus={saveStatus}
+      gameTime={gameTime}
+      playerName={playerName}
+      onTabChange={handleTabChange}
     >
       {renderCurrentScreen()}
     </GameLayout>
