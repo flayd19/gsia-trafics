@@ -318,8 +318,8 @@ const Index = () => {
         return (
           <SettingsScreen
             gameState={gameState}
-            onSave={handleSaveGame}
-            onReset={handleResetGame}
+            onSaveGame={handleSaveGame}
+            onResetGame={handleResetGame}
           />
         );
 
@@ -341,12 +341,16 @@ const Index = () => {
 
   return (
     <GameLayout
-      gameState={gameState}
+      money={gameState.money}
+      garageCount={garageCarCount}
+      reputation={reputation}
       currentTab={currentTab}
       isSyncing={isSyncing}
-      saveStatus={saveStatus}
       gameTime={gameTime}
-      playerName={playerName}
+      user={user ?? undefined}
+      onLogout={async () => {
+        await supabase.auth.signOut();
+      }}
       onTabChange={handleTabChange}
     >
       {renderCurrentScreen()}

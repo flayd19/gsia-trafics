@@ -142,3 +142,76 @@ export function meetsLevelRequirement(
   if (!required || required <= 1) return true;
   return (currentLevel ?? 1) >= required;
 }
+
+/**
+ * Estima o XP total que um jogador deveria ter, a partir de evidências
+ * persistidas no save (vendas, compras, rachas vencidos, reparos visíveis).
+ * Usado pela migração automática quando a reputação atual está claramente
+ * inconsistente com o histórico.
+ *
+ * Regras (devem permanecer alinhadas com `addXp` callsites):
+ *   • +3 XP por venda registrada (salesHistory ou carSales)
+ *   • +1 XP por compra registrada (totalCarsBought)
+ *   • +10 XP por racha assíncrono vencido (asyncRacesWon)
+ *   • +2 XP por reparo concluído visível (garage[].car.completedRepairs)
+ */
+export function estimateTotalXpFromHistory(state: {
+  salesHistory?: ReadonlyArray<unknown>;
+  carSales?: ReadonlyArray<unknown>;
+  totalCarsBought?: number;
+  asyncRacesWon?: number;
+  garage?: ReadonlyArray<{ car?: { completedRepairs?: ReadonlyArray<unknown> } | undefined }>;
+}): number {
+  const sales = Math.max(state.salesHistory?.length ?? 0, state.carSales?.length ?? 0);
+  const buys = Math.max(0, state.totalCarsBought ?? 0);
+  const races = Math.max(0, state.asyncRacesWon ?? 0);
+  const repairs = (state.garage ?? []).reduce(
+    (sum, slot) => sum + (slot.car?.completedRepairs?.length ?? 0),
+    0,
+  );
+  return sales * 3 + buys * 1 + races * 10 + repairs * 2;
+}
+
+/** Calcula o `level` e o `xp` residual a partir de um `totalXp` acumulado. */
+export function levelFromTotalXp(totalXp: number): { level: number; xp: number } {
+  let remaining = Math.max(0, totalXp);
+  let level = 1;
+  while (level < MAX_LEVEL) {
+    const need = xpRequiredForLevel(level + 1);
+    if (remaining < need) break;
+    remaining -= need;
+    level += 1;
+  }
+  return { level, xp: level >= MAX_LEVEL ? 0 : remaining };
+}
+
+/**
+ * Reconstrói a reputação do jogador combinando:
+ *   1. O `totalXp` salvo (se existir e for confiável)
+ *   2. O XP estimado a partir de evidências do save
+ *
+ * Pega o **maior** dos dois — assim nunca rebaixamos um jogador que tinha
+ * progresso legítimo, e recuperamos jogadores cujo `totalXp` foi zerado
+ * por bugs anteriores.
+ */
+export function reconstructReputation(state: {
+  reputation?: Reputation;
+  salesHistory?: ReadonlyArray<unknown>;
+  carSales?: ReadonlyArray<unknown>;
+  totalCarsBought?: number;
+  asyncRacesWon?: number;
+  garage?: ReadonlyArray<{ car?: { completedRepairs?: ReadonlyArray<unknown> } | undefined }>;
+}): Reputation {
+  const current = ensureReputation(state.reputation);
+  const estimated = estimateTotalXpFromHistory(state);
+  const trustedTotalXp = Math.max(current.totalXp, estimated);
+  const { level, xp } = levelFromTotalXp(trustedTotalXp);
+  // Se o nível atual armazenado for maior que o reconstruído, prefere o atual
+  // (jogador pode ter ganhado XP por canais não rastreados aqui).
+  const finalLevel = Math.max(current.level, level);
+  return {
+    level: Math.min(MAX_LEVEL, finalLevel),
+    xp: finalLevel === level ? xp : current.xp,
+    totalXp: trustedTotalXp,
+  };
+}

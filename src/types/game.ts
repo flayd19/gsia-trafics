@@ -324,6 +324,12 @@ export interface GameState {
 
   /** Vitórias em rachas assíncronos (não contadas em car.raceHistory) */
   asyncRacesWon: number;
+
+  /**
+   * Versão da última migração automática de reputação aplicada a este save.
+   * Usado para evitar reexecutar reconstrução em saves já normalizados.
+   */
+  _reputationMigrationVersion?: number;
 }
 
 // ── Helpers de tipo ───────────────────────────────────────────────
@@ -360,5 +366,6 @@ export function ensureGameState(raw: Partial<GameState>): GameState {
     lastRentCharge: raw.lastRentCharge ?? 1,
     completedOrders: raw.completedOrders ?? 0,
     asyncRacesWon:   raw.asyncRacesWon   ?? 0,
+    _reputationMigrationVersion: raw._reputationMigrationVersion,
   };
 }

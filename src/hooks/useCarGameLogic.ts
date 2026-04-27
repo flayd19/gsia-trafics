@@ -25,7 +25,7 @@ import {
   maxBuyerSlots,
   generateCycleBuyers,
 } from '@/data/carBuyers';
-import { ensureReputation, addXp } from '@/lib/reputation';
+import { ensureReputation, addXp, reconstructReputation, estimateTotalXpFromHistory } from '@/lib/reputation';
 import { supabase } from '@/integrations/supabase/client';
 
 // ── Config ────────────────────────────────────────────────────────
@@ -126,9 +126,57 @@ function serializeForSave(state: GameState): object {
   };
 }
 
+// Versão atual do schema de migração de reputação. Incrementar quando
+// quisermos forçar uma nova reconstrução para todos os jogadores.
+const REPUTATION_MIGRATION_VERSION = 1;
+
+/**
+ * Migração automática: detecta saves cujo `level`/`totalXp` foi corrompido
+ * (ex.: por mudança de fórmula ou bug anterior) e reconstrói o nível
+ * a partir do histórico do próprio save (vendas, compras, rachas).
+ *
+ * Roda no máximo uma vez por jogador por versão da migração — após rodar,
+ * grava `_reputationMigrationVersion` no save.
+ */
+function migrateReputationIfNeeded(saved: GameState): GameState {
+  // Já migrado nesta versão? Pula — evita trabalho redundante a cada load.
+  if (saved._reputationMigrationVersion === REPUTATION_MIGRATION_VERSION) {
+    return saved;
+  }
+
+  const current = ensureReputation(saved.reputation);
+  const estimatedXp = estimateTotalXpFromHistory(saved);
+
+  // Caso 1: jogador tem evidência de progresso (vendas, compras, rachas) mas
+  // está em Lv 1 — sintoma do bug da fórmula de níveis.
+  // Caso 2: totalXp armazenado é menor que o estimado pelo histórico.
+  // Em ambos os casos, reconstruímos a partir do histórico do save.
+  const seemsBugged =
+    estimatedXp > 0 &&
+    (current.totalXp < estimatedXp || current.level < 2);
+
+  if (seemsBugged) {
+    const reconstructed = reconstructReputation(saved);
+    return {
+      ...saved,
+      reputation: reconstructed,
+      _reputationMigrationVersion: REPUTATION_MIGRATION_VERSION,
+    };
+  }
+
+  // Save íntegro — só marca a flag para não reavaliar futuramente.
+  return {
+    ...saved,
+    _reputationMigrationVersion: REPUTATION_MIGRATION_VERSION,
+  };
+}
+
 // ── Aplica save carregado: regenera marketplace + compradores se necessário ──
 function applyLoadedSave(raw: unknown): GameState {
-  const saved = ensureGameState(raw as Partial<GameState>);
+  let saved = ensureGameState(raw as Partial<GameState>);
+
+  // Migração automática de reputação (corrige saves bugados de versões antigas)
+  saved = migrateReputationIfNeeded(saved);
 
   // Regenera marketplace se vazio
   if (!saved.marketplaceCars || saved.marketplaceCars.length === 0) {
@@ -1149,6 +1197,7 @@ export function useCarGameLogic() {
     }));
     setTimeout(() => void saveGame(), 400);
   }, [saveGame]);
+
 
   // ── Derived values ────────────────────────────────────────────
   const garageCarCount = gameState.garage.filter(s => s.car).length;
