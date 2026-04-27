@@ -30,6 +30,8 @@ import {
 import { toast } from '@/hooks/use-toast';
 import type { GameState, OwnedCar, PlayerMarketListing, PlayerMarketListingStatus } from '@/types/game';
 import { usePlayerMarket } from '@/hooks/usePlayerMarket';
+import { getFullPerformance } from '@/lib/performanceEngine';
+import type { PerformanceStats } from '@/types/performance';
 
 interface PlayerMarketScreenProps {
   gameState: GameState;
@@ -79,6 +81,144 @@ function conditionLabel(c: number) {
   if (c >= 60) return 'Bom';
   if (c >= 40) return 'Regular';
   return 'Ruim';
+}
+
+// ── Dialog de desempenho do carro ─────────────────────────────────
+function igpClass(igp: number): string {
+  if (igp >= 80) return 'text-emerald-400 bg-emerald-500/10 border-emerald-500/40';
+  if (igp >= 60) return 'text-amber-400 bg-amber-500/10 border-amber-500/40';
+  if (igp >= 40) return 'text-orange-400 bg-orange-500/10 border-orange-500/40';
+  return 'text-red-400 bg-red-500/10 border-red-500/40';
+}
+
+function statBarColor(value: number): string {
+  if (value >= 80) return 'bg-emerald-500';
+  if (value >= 60) return 'bg-amber-500';
+  if (value >= 40) return 'bg-orange-500';
+  return 'bg-red-500';
+}
+
+function StatBar({ label, value, hint }: { label: string; value: number; hint?: string }) {
+  const safe = Math.max(0, Math.min(100, Math.round(value)));
+  return (
+    <div className="space-y-1">
+      <div className="flex items-center justify-between text-[12px]">
+        <span className="text-foreground font-medium">{label}</span>
+        <span className="font-mono font-bold text-foreground tabular-nums">{safe}</span>
+      </div>
+      <div className="h-1.5 rounded-full bg-muted overflow-hidden">
+        <div className={`h-full ${statBarColor(safe)}`} style={{ width: `${safe}%` }} />
+      </div>
+      {hint && <div className="text-[10px] text-muted-foreground">{hint}</div>}
+    </div>
+  );
+}
+
+function CarPerformanceDialog({ car }: { car: OwnedCar }) {
+  const stats: PerformanceStats = getFullPerformance(car);
+  return (
+    <Dialog>
+      <DialogTrigger asChild>
+        <Button variant="outline" size="sm" className="text-[12px] gap-1.5">
+          🏎️ Ver desempenho
+        </Button>
+      </DialogTrigger>
+      <DialogContent className="max-w-md max-h-[85vh] overflow-y-auto">
+        <DialogHeader>
+          <DialogTitle className="flex items-center gap-2">
+            <span className="text-2xl">{car.icon}</span>
+            <span>{car.fullName}</span>
+          </DialogTitle>
+          <DialogDescription className="text-[12px]">
+            {car.year} · Condição {car.condition}% · {stats.traction}
+            {stats._hasTurbo && ' · Turbo'}
+          </DialogDescription>
+        </DialogHeader>
+
+        {/* IGP — destaque principal */}
+        <div className={`rounded-[14px] border p-4 text-center ${igpClass(stats.igp)}`}>
+          <div className="text-[10px] uppercase tracking-wider opacity-80 font-semibold mb-1">
+            Índice Geral de Performance
+          </div>
+          <div className="text-5xl font-black font-game-title tabular-nums leading-none">
+            {stats.igp}
+          </div>
+          <div className="text-[10px] opacity-70 mt-1">de 100</div>
+        </div>
+
+        {/* Dados brutos do carro */}
+        <div className="grid grid-cols-3 gap-2">
+          <div className="ios-surface rounded-[10px] p-2 text-center !shadow-none bg-muted/40">
+            <div className="text-[9px] uppercase text-muted-foreground tracking-wider">Potência</div>
+            <div className="text-[14px] font-bold text-foreground tabular-nums">
+              {stats._hp} <span className="text-[10px] font-normal text-muted-foreground">cv</span>
+            </div>
+          </div>
+          <div className="ios-surface rounded-[10px] p-2 text-center !shadow-none bg-muted/40">
+            <div className="text-[9px] uppercase text-muted-foreground tracking-wider">0–100</div>
+            <div className="text-[14px] font-bold text-foreground tabular-nums">
+              {stats._0to100}<span className="text-[10px] font-normal text-muted-foreground">s</span>
+            </div>
+          </div>
+          <div className="ios-surface rounded-[10px] p-2 text-center !shadow-none bg-muted/40">
+            <div className="text-[9px] uppercase text-muted-foreground tracking-wider">Vel. Máx</div>
+            <div className="text-[14px] font-bold text-foreground tabular-nums">
+              {stats._topSpeedKmh}<span className="text-[10px] font-normal text-muted-foreground"> km/h</span>
+            </div>
+          </div>
+          <div className="ios-surface rounded-[10px] p-2 text-center !shadow-none bg-muted/40">
+            <div className="text-[9px] uppercase text-muted-foreground tracking-wider">Torque</div>
+            <div className="text-[14px] font-bold text-foreground tabular-nums">
+              {stats._torqueNm} <span className="text-[10px] font-normal text-muted-foreground">Nm</span>
+            </div>
+          </div>
+          <div className="ios-surface rounded-[10px] p-2 text-center !shadow-none bg-muted/40">
+            <div className="text-[9px] uppercase text-muted-foreground tracking-wider">Peso</div>
+            <div className="text-[14px] font-bold text-foreground tabular-nums">
+              {stats._weightKg} <span className="text-[10px] font-normal text-muted-foreground">kg</span>
+            </div>
+          </div>
+          <div className="ios-surface rounded-[10px] p-2 text-center !shadow-none bg-muted/40">
+            <div className="text-[9px] uppercase text-muted-foreground tracking-wider">Motor</div>
+            <div className="text-[10px] font-bold text-foreground leading-tight pt-0.5">
+              {stats._engineType}
+            </div>
+          </div>
+        </div>
+
+        {/* Stats normalizados 0-100 */}
+        <div className="space-y-2.5">
+          <div className="text-[11px] uppercase tracking-wider text-muted-foreground font-semibold">
+            Atributos (0–100)
+          </div>
+          <StatBar label="Velocidade Máxima" value={stats.topSpeed} />
+          <StatBar label="Aceleração"        value={stats.acceleration} />
+          <StatBar label="Potência"          value={stats.power} />
+          <StatBar label="Torque"            value={stats.torque} />
+          <StatBar label="Aerodinâmica"      value={stats.aerodynamics} />
+          <StatBar label="Estabilidade"      value={stats.stability} />
+          <StatBar label="Aderência (Grip)"  value={stats.grip} />
+          <StatBar label="Câmbio"            value={stats.gearShift} />
+        </div>
+
+        {/* Tunes aplicados */}
+        {car.tuneUpgrades && car.tuneUpgrades.length > 0 && (
+          <div className="space-y-2 pt-2 border-t border-border/40">
+            <div className="text-[11px] uppercase tracking-wider text-muted-foreground font-semibold">
+              Modificações ({car.tuneUpgrades.length})
+            </div>
+            <div className="flex flex-wrap gap-1.5">
+              {car.tuneUpgrades.map((u, i) => (
+                <Badge key={`${u.type}-${i}`} variant="outline" className="text-[10px]">
+                  {u.type} <span className="opacity-70 ml-1">Lv {u.level}</span>
+                </Badge>
+              ))}
+            </div>
+          </div>
+        )}
+      </DialogContent>
+    </Dialog>
+  );
 }
 
 // ── Card de anúncio ───────────────────────────────────────────────
@@ -161,6 +301,13 @@ function ListingCard({
         <p className="text-[12px] text-muted-foreground italic leading-relaxed border-l-2 border-primary/30 pl-2">
           "{listing.description}"
         </p>
+      )}
+
+      {/* Botão de ver desempenho — só se há car_data */}
+      {listing.car_data && (
+        <div className="flex justify-end">
+          <CarPerformanceDialog car={listing.car_data} />
+        </div>
       )}
 
       {/* Preço + ação */}

@@ -50,26 +50,35 @@ function positionColor(pos: number) {
 }
 
 /**
- * Tempo estimado em segundos para 1000m baseado no score.
- * score 0  → ~35s (popular lento)
- * score 40 → ~25s (popular bom)
- * score 70 → ~16s (esportivo)
- * score 90 → ~12s (supercar)
+ * Tempo estimado da CORRIDA INTEIRA (LAPS × LAP_METERS) em segundos,
+ * derivado a partir do score quando o motor não fornece tempo direto.
+ * Calibrado para 3 voltas × 2000m (6 km totais):
+ *   score 0   → ~180s (carro popular muito ruim, ~120 km/h média)
+ *   score 50  → ~120s (carro mediano, ~180 km/h média)
+ *   score 100 → ~85s  (supercar, ~255 km/h média)
  */
 function calcRaceTimeSec(score: number): number {
   const s = Math.max(0, Math.min(score, 100));
-  return Math.max(11, 35 - s * 0.24);
+  return Math.max(85, 180 - s * 0.95);
 }
 
-/** Velocidade máxima estimada (km/h) */
-function calcTopSpeed(timeSec: number): number {
-  const avgKmh = (1000 / timeSec) * 3.6;
-  return Math.round(avgKmh * 1.42);
+/**
+ * Velocidade média em km/h para uma dada distância e tempo.
+ * BUG FIX: antes a função assumia distância fixa de 1000m, mas o caller
+ * passava o tempo total da corrida (3 voltas), produzindo velocidades 3x
+ * menores que o esperado (ex.: 60 km/h ao invés de 180 km/h).
+ */
+function calcAvgSpeedKmh(distanceMeters: number, timeSec: number): number {
+  if (timeSec <= 0) return 0;
+  return Math.round((distanceMeters / timeSec) * 3.6);
 }
 
-/** Velocidade média (km/h) */
-function calcAvgSpeed(timeSec: number): number {
-  return Math.round((1000 / timeSec) * 3.6);
+/**
+ * Velocidade máxima estimada (km/h). Aproximadamente 1.42× a média —
+ * carros atingem o pico em retas e desaceleram em curvas.
+ */
+function calcTopSpeedKmh(distanceMeters: number, timeSec: number): number {
+  return Math.round(calcAvgSpeedKmh(distanceMeters, timeSec) * 1.42);
 }
 
 /** Easing suave para a animação da barra */
@@ -84,9 +93,10 @@ function fmtTimer(sec: number): string {
   return `${String(s).padStart(2, '0')}.${d}s`;
 }
 
-// ── Constantes do circuito (3 voltas × 1000 m) ───────────────────
+// ── Constantes do circuito (3 voltas × 2000 m = 6 km totais) ─────
 const LAPS       = 3;
-const LAP_METERS = 1_000;
+const LAP_METERS = 2_000;
+const TOTAL_RACE_METERS = LAPS * LAP_METERS;
 
 /** Cores por índice de piloto */
 const PLAYER_COLORS = ['#facc15', '#94a3b8', '#f97316', '#60a5fa'] as const;
@@ -508,6 +518,7 @@ function LobbyListView({
                       lobby={lobby}
                       canJoin={false}
                       isOwn={true}
+                      myUserId={myUserId}
                       onJoin={() => {}}
                       onLeave={() => onLeave(lobby.id, lobby.bet)}
                     />
@@ -532,6 +543,7 @@ function LobbyListView({
                       key={lobby.id}
                       lobby={lobby}
                       canJoin={gameState.money >= lobby.bet}
+                      myUserId={myUserId}
                       onJoin={() => onJoinTarget(lobby)}
                     />
                   ))
@@ -546,6 +558,106 @@ function LobbyListView({
       {tab === 'historico' && (
         <RaceHistoryTab history={raceHistory} />
       )}
+    </div>
+  );
+}
+
+// ── Aba Histórico de corridas ─────────────────────────────────────
+function RaceHistoryTab({ history }: { history: RaceRecord[] }) {
+  if (history.length === 0) {
+    return (
+      <div className="ios-surface rounded-[16px] p-6 text-center space-y-2">
+        <div className="text-4xl">📜</div>
+        <div className="text-[14px] font-semibold text-foreground">Nenhuma corrida ainda</div>
+        <div className="text-[11px] text-muted-foreground">
+          Participe de um racha para ver o histórico aqui.
+        </div>
+      </div>
+    );
+  }
+
+  // Estatísticas agregadas
+  const total       = history.length;
+  const wins        = history.filter(h => h.won).length;
+  const winRate     = Math.round((wins / total) * 100);
+  const totalEarned = history.reduce((s, h) => s + (h.won ? h.payout : 0), 0);
+  const totalBet    = history.reduce((s, h) => s + h.bet, 0);
+  const netProfit   = totalEarned - totalBet;
+
+  return (
+    <div className="space-y-3">
+      {/* Estatísticas */}
+      <div className="grid grid-cols-3 gap-2">
+        <div className="ios-surface rounded-[12px] p-2.5 text-center">
+          <div className="text-[10px] uppercase tracking-wider text-muted-foreground font-semibold">Vitórias</div>
+          <div className="text-[16px] font-bold text-emerald-400 tabular-nums">
+            {wins}/{total}
+          </div>
+          <div className="text-[10px] text-muted-foreground">{winRate}%</div>
+        </div>
+        <div className="ios-surface rounded-[12px] p-2.5 text-center">
+          <div className="text-[10px] uppercase tracking-wider text-muted-foreground font-semibold">Apostado</div>
+          <div className="text-[14px] font-bold text-foreground tabular-nums">{fmt(totalBet)}</div>
+        </div>
+        <div className="ios-surface rounded-[12px] p-2.5 text-center">
+          <div className="text-[10px] uppercase tracking-wider text-muted-foreground font-semibold">Lucro</div>
+          <div className={`text-[14px] font-bold tabular-nums ${netProfit >= 0 ? 'text-emerald-400' : 'text-red-400'}`}>
+            {netProfit >= 0 ? '+' : ''}{fmt(netProfit)}
+          </div>
+        </div>
+      </div>
+
+      {/* Lista de corridas */}
+      <div className="space-y-1.5">
+        {history.map(record => {
+          const positionLabel = record.myPosition
+            ? positionMedal(record.myPosition)
+            : (record.won ? '🥇' : '—');
+          const totalPlayers  = record.totalPlayers ?? 2;
+          const date = new Date(record.createdAt);
+          const dateLabel = date.toLocaleString('pt-BR', {
+            day:   '2-digit',
+            month: '2-digit',
+            hour:  '2-digit',
+            minute:'2-digit',
+          });
+          return (
+            <div
+              key={record.id}
+              className={`px-3 py-2.5 rounded-[12px] ios-surface ${
+                record.won ? 'border border-emerald-500/20 bg-emerald-500/5' : ''
+              }`}
+            >
+              <div className="flex items-center gap-2.5">
+                <span className="text-2xl w-9 text-center">{positionLabel}</span>
+                <div className="flex-1 min-w-0">
+                  <div className="flex items-center gap-1.5 flex-wrap">
+                    <span className="text-[12px] font-semibold text-foreground">
+                      {record.won ? 'Vitória' : record.myPosition ? `${record.myPosition}º Lugar` : 'Derrota'}
+                    </span>
+                    <span className="text-[10px] text-muted-foreground">
+                      · {totalPlayers} pilotos
+                    </span>
+                  </div>
+                  <div className="text-[10px] text-muted-foreground">
+                    {dateLabel} · IGP {record.myIgp}
+                  </div>
+                </div>
+                <div className="text-right">
+                  <div className="text-[10px] text-muted-foreground">aposta {fmt(record.bet)}</div>
+                  <div
+                    className={`text-[12px] font-bold tabular-nums ${
+                      record.won ? 'text-emerald-400' : 'text-muted-foreground'
+                    }`}
+                  >
+                    {record.won ? `+${fmt(record.payout)}` : `-${fmt(record.bet)}`}
+                  </div>
+                </div>
+              </div>
+            </div>
+          );
+        })}
+      </div>
     </div>
   );
 }
@@ -584,11 +696,12 @@ function PendingResultCard({
 
 // ── Card de lobby ─────────────────────────────────────────────────
 function LobbyCard({
-  lobby, canJoin, isOwn = false, onJoin, onLeave,
+  lobby, canJoin, isOwn = false, myUserId, onJoin, onLeave,
 }: {
   lobby:    OpenLobby;
   canJoin:  boolean;
   isOwn?:   boolean;
+  myUserId: string | null;
   onJoin:   () => void;
   onLeave?: () => void;
 }) {
@@ -657,20 +770,24 @@ function LobbyCard({
       {/* Pilotos no lobby */}
       {lobby.players.length > 0 && (
         <div className="flex flex-wrap gap-1.5 pt-0.5 border-t border-border/20">
-          {lobby.players.map((p, i) => (
-            <div
-              key={p.userId}
-              className={`flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] ${
-                i === 0
-                  ? 'bg-primary/10 text-primary border border-primary/20'
-                  : 'bg-muted/50 text-muted-foreground'
-              }`}
-            >
-              <span>{p.carIcon}</span>
-              <span className="truncate max-w-[70px]">{p.carName}</span>
-              <span className="font-bold opacity-70">IGP {p.igp}</span>
-            </div>
-          ))}
+          {lobby.players.map((p, i) => {
+            const isMe = p.userId === myUserId;
+            return (
+              <div
+                key={p.userId}
+                className={`flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] ${
+                  i === 0
+                    ? 'bg-primary/10 text-primary border border-primary/20'
+                    : 'bg-muted/50 text-muted-foreground'
+                }`}
+              >
+                <span>{p.carIcon}</span>
+                <span className="truncate max-w-[70px]">{p.carName}</span>
+                {/* IGP é exibido apenas para o próprio jogador (privacidade competitiva). */}
+                {isMe && <span className="font-bold opacity-70">IGP {p.igp}</span>}
+              </div>
+            );
+          })}
           {spotsLeft > 0 && (
             <div className="flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] bg-muted/30 text-muted-foreground border border-dashed border-border/40">
               +{spotsLeft} vaga{spotsLeft > 1 ? 's' : ''}
@@ -875,7 +992,9 @@ interface RacingViewProps {
 }
 
 function RacingView({ players, myUserId, onFinish }: RacingViewProps) {
-  const DURATION_MS = 5000 + players.length * 500;
+  // Duração da animação visual: 14-18s para 2-4 jogadores. Suficientemente
+  // longa para o jogador acompanhar a disputa sem entediar.
+  const DURATION_MS = 12_000 + players.length * 1_500;
 
   const [lapProgs, setLapProgs] = useState<Record<string, number>>(() =>
     Object.fromEntries(players.map(p => [p.userId, 0]))
@@ -1004,7 +1123,8 @@ function RacingView({ players, myUserId, onFinish }: RacingViewProps) {
                   <div className="text-[11px] font-bold" style={{ color }}>
                     V{Math.min(Math.floor(laps) + 1, LAPS)}/{LAPS}
                   </div>
-                  <div className="text-[10px] text-muted-foreground">IGP {p.igp}</div>
+                  {/* IGP só visível para o próprio jogador (privacidade competitiva) */}
+                  {isMe && <div className="text-[10px] text-muted-foreground">IGP {p.igp}</div>}
                 </div>
               </div>
             );
@@ -1123,8 +1243,10 @@ function ResultView({ players, myUserId, onBack }: ResultViewProps) {
           const color      = PLAYER_COLORS[players.indexOf(p)] ?? '#94a3b8';
           const timeSec    = getTimeSec(p);
           const gap        = p.position === 1 ? 0 : timeSec - leaderTime;
-          const topSpeed   = calcTopSpeed(timeSec);
-          const avgSpeed   = calcAvgSpeed(timeSec);
+          // Velocidade calculada sobre a corrida INTEIRA (LAPS × LAP_METERS).
+          // Top speed é estimado como ~1.42× a média (picos em reta).
+          const topSpeed   = calcTopSpeedKmh(TOTAL_RACE_METERS, timeSec);
+          const avgSpeed   = calcAvgSpeedKmh(TOTAL_RACE_METERS, timeSec);
           const lapTime    = getBestLap(p);
           return (
             <div key={p.userId}
@@ -1142,7 +1264,8 @@ function ResultView({ players, myUserId, onBack }: ResultViewProps) {
                       {p.name}
                     </span>
                     {isMe && <span className="text-[9px] text-primary font-bold bg-primary/10 px-1 rounded">você</span>}
-                    <span className="text-[10px] text-muted-foreground">· IGP {p.igp}</span>
+                    {/* IGP exibido apenas para o próprio jogador (privacidade competitiva) */}
+                    {isMe && <span className="text-[10px] text-muted-foreground">· IGP {p.igp}</span>}
                   </div>
                   <div className="text-[10px] text-muted-foreground truncate">{p.carName}</div>
                 </div>
@@ -1272,10 +1395,12 @@ function ResultView({ players, myUserId, onBack }: ResultViewProps) {
           {(() => {
             const myTime    = getTimeSec(me);
             const winTime   = getTimeSec(winner);
-            const myTopV    = calcTopSpeed(myTime);
-            const winTopV   = calcTopSpeed(winTime);
-            const myAvgV    = calcAvgSpeed(myTime);
-            const winAvgV   = calcAvgSpeed(winTime);
+            const myTopV    = calcTopSpeedKmh(TOTAL_RACE_METERS, myTime);
+            const winTopV   = calcTopSpeedKmh(TOTAL_RACE_METERS, winTime);
+            const myAvgV    = calcAvgSpeedKmh(TOTAL_RACE_METERS, myTime);
+            const winAvgV   = calcAvgSpeedKmh(TOTAL_RACE_METERS, winTime);
+            // IGP do vencedor é omitido por privacidade competitiva — só mostra
+            // o seu para você não ter como deduzir o setup do adversário.
             const rows: Array<{ label: string; you: string; winner: string; better: boolean }> = [
               {
                 label: 'Tempo',
@@ -1294,12 +1419,6 @@ function ResultView({ players, myUserId, onBack }: ResultViewProps) {
                 you: `${myAvgV} km/h`,
                 winner: `${winAvgV} km/h`,
                 better: myAvgV > winAvgV,
-              },
-              {
-                label: 'IGP do carro',
-                you: `${me.igp}`,
-                winner: `${winner.igp}`,
-                better: me.igp > winner.igp,
               },
             ];
             return rows.map(r => (
@@ -1382,8 +1501,8 @@ function ResultView({ players, myUserId, onBack }: ResultViewProps) {
               return [
                 { label: 'Posição',      value: `${me.position}º de ${players.length}` },
                 { label: 'Tempo total',  value: fmtTimer(myTime) },
-                { label: 'Vel. Máx',     value: `${calcTopSpeed(myTime)} km/h` },
-                { label: 'Vel. Média',   value: `${calcAvgSpeed(myTime)} km/h` },
+                { label: 'Vel. Máx',     value: `${calcTopSpeedKmh(TOTAL_RACE_METERS, myTime)} km/h` },
+                { label: 'Vel. Média',   value: `${calcAvgSpeedKmh(TOTAL_RACE_METERS, myTime)} km/h` },
                 { label: 'Melhor volta', value: fmtTimer(myBest) },
                 { label: 'IGP do carro', value: `${me.igp}` },
               ];

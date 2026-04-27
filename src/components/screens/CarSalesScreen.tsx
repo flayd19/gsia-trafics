@@ -717,6 +717,7 @@ export function CarSalesScreen({
   gameState,
   onSendOffer,
   onResolveDecision,
+  onResolveCounterOffer,
   onDismissBuyer,
 }: CarSalesScreenProps) {
   const level        = gameState.reputation.level;
