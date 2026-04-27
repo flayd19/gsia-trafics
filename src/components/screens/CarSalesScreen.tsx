@@ -234,7 +234,7 @@ function BuyerCard({
     includeTradeIn: boolean,
     playerTradeInValuation?: number,
   ) => void;
-  onResolveDecision: () => { accepted: boolean; message: string; finalPrice?: number; counterOffer?: number } | void;
+  onResolveDecision: () => { success: boolean; accepted: boolean; message: string; finalPrice?: number; counterOffer?: number };
   onResolveCounterOffer: (accept: boolean) => void;
   onDismiss: () => void;
 }) {
@@ -281,9 +281,10 @@ function BuyerCard({
 
   const handleTimeUp = () => {
     const result = onResolveDecision();
-    if (!result) return;
-    // Se há contraproposta, o buyer.state muda para 'countering' e o componente
-    // re-renderiza para a UI de contra — NÃO definir decided para evitar conflito.
+    // Se não teve sucesso (ex: buyer já não está em 'thinking'), ignora
+    if (!result.success) return;
+    // Se há contraproposta, buyer.state muda para 'countering' via gameState —
+    // o componente re-renderiza e exibe a UI de contra. Não definir decided.
     if (result.counterOffer !== undefined) return;
     setDecided(result);
   };
@@ -794,10 +795,7 @@ export function CarSalesScreen({
                 onSendOffer={(carId, price, includeTradeIn, playerTradeInValuation) =>
                   onSendOffer(buyer.id, carId, price, includeTradeIn, playerTradeInValuation)
                 }
-                onResolveDecision={() => {
-                  const result = onResolveDecision(buyer.id);
-                  if (result.success && 'accepted' in result) return result;
-                }}
+                onResolveDecision={() => onResolveDecision(buyer.id)}
                 onResolveCounterOffer={(accept) => onResolveCounterOffer(buyer.id, accept)}
                 onDismiss={() => onDismissBuyer(buyer.id)}
               />

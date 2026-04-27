@@ -99,7 +99,7 @@ function serializeForSave(state: GameState): object {
     ...state,
     marketplaceCars: [],  // regenerado no load
     carBuyers: state.carBuyers.filter(
-      b => b.state === 'waiting' || b.state === 'thinking'
+      b => b.state === 'waiting' || b.state === 'thinking' || b.state === 'countering'
     ),
   };
 }

@@ -23,6 +23,7 @@ interface FornecedoresCarrosScreenProps {
   errorMsg?: string | null;
   minsLeft: number | null;
   onBuyCar: (car: GlobalCar) => Promise<{ success: boolean; message: string }>;
+  onBuyAtPrice?: (car: GlobalCar, price: number) => Promise<{ success: boolean; message: string }>;
   onRefreshMarketplace: () => void | Promise<void>;
 }
 
@@ -41,21 +42,27 @@ const CATEGORY_LABELS: Record<CarCategory, string> = {
 };
 
 // ── Card de detalhe (abre ao clicar num card do grid) ─────────────
+type OfferResult = { accepted: boolean; discount: number };
+
 function CarDetailSheet({
   car,
   canAfford,
   hasGarageSpace,
   onBuy,
+  onBuyAtPrice,
   onClose,
 }: {
   car: GlobalCar;
   canAfford: boolean;
   hasGarageSpace: boolean;
   onBuy: () => void;
+  onBuyAtPrice?: (car: GlobalCar, price: number) => Promise<{ success: boolean; message: string }>;
   onClose: () => void;
 }) {
-  const [toast, setToast] = useState<{ msg: string; ok: boolean } | null>(null);
-  const [busy, setBusy]   = useState(false);
+  const [toast, setToast]             = useState<{ msg: string; ok: boolean } | null>(null);
+  const [busy, setBusy]               = useState(false);
+  const [offerResult, setOfferResult] = useState<OfferResult | null>(null);
+  const [offerPending, setOfferPending] = useState(false);
 
   const label       = conditionLabel(car.condition);
   const colorClass  = conditionColor(car.condition);
@@ -69,6 +76,26 @@ function CarDetailSheet({
     setBusy(true);
     onBuy();
     setBusy(false);
+  };
+
+  const handleOffer = async (pct: number) => {
+    if (!onBuyAtPrice || busy || offerPending) return;
+    setOfferResult(null);
+    setOfferPending(true);
+    // Breve suspense para dar a sensação de o vendedor "pensar"
+    await new Promise(r => setTimeout(r, 700));
+    const accepted = Math.random() < 0.5; // totalmente aleatório
+    if (accepted) {
+      const discPrice = Math.round(car.askingPrice * (1 - pct / 100));
+      setOfferResult({ accepted: true, discount: pct });
+      setBusy(true);
+      setOfferPending(false);
+      await onBuyAtPrice(car, discPrice);
+      setBusy(false);
+    } else {
+      setOfferResult({ accepted: false, discount: pct });
+      setOfferPending(false);
+    }
   };
 
   return (
@@ -250,6 +277,48 @@ function CarDetailSheet({
           );
         })()}
 
+        {/* ── Seção de Proposta ─────────────────────────────── */}
+        {!isSold && onBuyAtPrice && hasGarageSpace && canAfford && (
+          <div className="ios-surface rounded-[14px] p-3.5 space-y-2.5">
+            <div className="text-[12px] font-semibold text-foreground">🤝 Fazer Proposta</div>
+            <div className="text-[11px] text-muted-foreground leading-snug">
+              Tente negociar um desconto. O vendedor decide na hora — pode aceitar ou não.
+            </div>
+            <div className="grid grid-cols-3 gap-2">
+              {([3, 5, 7] as const).map(pct => {
+                const discPrice = Math.round(car.askingPrice * (1 - pct / 100));
+                return (
+                  <button
+                    key={pct}
+                    disabled={busy || offerPending}
+                    onClick={() => { void handleOffer(pct); }}
+                    className="flex flex-col items-center py-2.5 rounded-[10px] bg-primary/10 border border-primary/20 active:scale-95 transition-transform disabled:opacity-40"
+                  >
+                    <span className="text-[12px] font-bold text-primary">-{pct}%</span>
+                    <span className="text-[10px] text-muted-foreground tabular-nums mt-0.5">{fmt(discPrice)}</span>
+                  </button>
+                );
+              })}
+            </div>
+            {offerPending && (
+              <div className="px-3 py-2 rounded-[10px] bg-muted text-[12px] text-muted-foreground text-center animate-pulse">
+                Aguardando resposta do vendedor…
+              </div>
+            )}
+            {offerResult && !offerPending && (
+              <div className={`px-3 py-2 rounded-[10px] text-[12px] font-semibold ${
+                offerResult.accepted
+                  ? 'bg-emerald-500/15 text-emerald-600'
+                  : 'bg-red-500/15 text-red-600'
+              }`}>
+                {offerResult.accepted
+                  ? `✅ Proposta aceita! Comprando por ${fmt(Math.round(car.askingPrice * (1 - offerResult.discount / 100)))}…`
+                  : '❌ Vendedor recusou. Tente outro desconto ou compre pelo preço cheio.'}
+              </div>
+            )}
+          </div>
+        )}
+
         {!isSold && !hasGarageSpace && (
           <div className="bg-orange-500/10 border border-orange-500/30 rounded-[12px] px-3 py-2.5 flex items-center gap-2">
             <span className="text-orange-500">⚠️</span>
@@ -382,6 +451,7 @@ export function FornecedoresCarrosScreen({
   errorMsg,
   minsLeft,
   onBuyCar,
+  onBuyAtPrice,
   onRefreshMarketplace,
 }: FornecedoresCarrosScreenProps) {
   const [search, setSearch]         = useState('');
@@ -560,6 +630,7 @@ export function FornecedoresCarrosScreen({
           canAfford={gameState.money >= selectedCar.askingPrice}
           hasGarageSpace={hasGarageSpace}
           onBuy={() => handleBuy(selectedCar)}
+          onBuyAtPrice={onBuyAtPrice}
           onClose={() => setSelectedCar(null)}
         />,
         document.body

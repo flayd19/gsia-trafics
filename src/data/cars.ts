@@ -41,22 +41,21 @@ export function conditionColor(condition: number): string {
 }
 
 /**
- * Fator aplicado ao preço FIPE para calcular quanto o NPC paga ao comprar
- * um carro do jogador.  Valores reduzidos para dificultar lucro fácil.
+ * Fator aplicado ao preço FIPE para calcular o valor de mercado de um carro.
  *
- *   condition ≥ 85  →  1.05  (105 % da FIPE — excelente estado)
- *   condition 60–84 →  0.92  ( 92 % da FIPE — bom / regular)
- *   condition < 60  →  0.60–0.78 da FIPE  (quanto pior, mais próximo de 0.60)
+ *   condition ≥ 85  →  1.10  (110 % da FIPE — excelente estado)
+ *   condition 60–84 →  0.97  ( 97 % da FIPE — bom / regular)
+ *   condition < 60  →  0.65–0.83 da FIPE  (quanto pior, mais próximo de 0.65)
  *
  * Esta é a ÚNICA fórmula de valor de mercado do sistema.
  * Usada em: marketplace, compradores, negociações e exibição de preço.
  */
 export function conditionValueFactor(condition: number): number {
-  if (condition >= 85) return 1.05;
-  if (condition >= 60) return 0.92;
-  // Abaixo de 60: gravidade proporcional — condition 59 → 0.78, condition 0 → 0.60
+  if (condition >= 85) return 1.10;
+  if (condition >= 60) return 0.97;
+  // Abaixo de 60: gravidade proporcional — condition 59 → 0.83, condition 0 → 0.65
   const ratio = condition / 59; // mapeia [0, 59] → [0, 1]
-  return 0.60 + ratio * 0.18;
+  return 0.65 + ratio * 0.18;
 }
 
 /** Piso mínimo de listagem na aba de compra — 88 % da FIPE. */
@@ -65,17 +64,16 @@ export const MIN_SALE_PRICE_RATIO = 0.88;
 /**
  * Preço de listagem no marketplace de compra.
  *
- * Elevado para reduzir margem de lucro fácil na revenda.
- * A condição define uma janela deslizante de ≈ 7 % dentro do intervalo:
- *   condition   0 → faixa [0.90, 0.97]  (−10 % a  −3 % da FIPE)
- *   condition  50 → faixa [0.96, 1.03]  ( −4 % a  +3 % da FIPE)
- *   condition 100 → faixa [1.02, 1.09]  ( +2 % a  +9 % da FIPE)
+ * A condição define uma janela deslizante de ≈ 8 % dentro do intervalo:
+ *   condition   0 → faixa [0.82, 0.90]  (−18 % a −10 % da FIPE)
+ *   condition  50 → faixa [0.90, 0.98]  (−10 % a  −2 % da FIPE)
+ *   condition 100 → faixa [0.98, 1.06]  ( −2 % a  +6 % da FIPE)
  *
  * Piso absoluto: MIN_SALE_PRICE_RATIO (88 % da FIPE).
  */
 export function calcMarketAskingPrice(fipePrice: number, condition: number): number {
-  const low  = 0.90 + (condition / 100) * 0.12; // 0.90 → 1.02
-  const high = 0.97 + (condition / 100) * 0.12; // 0.97 → 1.09
+  const low  = 0.82 + (condition / 100) * 0.16; // 0.82 → 0.98
+  const high = 0.90 + (condition / 100) * 0.16; // 0.90 → 1.06
   const ratio = low + Math.random() * (high - low);
   return Math.max(
     Math.round(fipePrice * ratio),

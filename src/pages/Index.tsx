@@ -94,6 +94,22 @@ const Index = () => {
     return result;
   };
 
+  // ── Buy at negotiated price (offer accepted) ─────────────────────
+  const handleBuyAtPrice = async (car: GlobalCar, price: number) => {
+    const result = await buyGlobal(car.id, playerName);
+    if (result.success) {
+      const addResult = addCarFromGlobal(car, price);
+      // Devolve a diferença de desconto (buyGlobal cobra asking price internamente via Supabase,
+      // mas o preço local é ajustado aqui)
+      const diff = car.askingPrice - price;
+      if (diff > 0) addMoney(diff);
+      addResult.success ? toast.success(`Comprado com ${Math.round((diff / car.askingPrice) * 100)}% de desconto! 🎉`) : toast.error(addResult.message);
+    } else {
+      toast.error(result.message);
+    }
+    return result;
+  };
+
   // ── Other handlers ───────────────────────────────────────────────
   const handleUnlockSlot = (slotId: number) => {
     const result = unlockGarageSlot(slotId);
@@ -265,6 +281,7 @@ const Index = () => {
             errorMsg={marketplaceError}
             minsLeft={minsLeft}
             onBuyCar={handleBuyCar}
+            onBuyAtPrice={handleBuyAtPrice}
             onRefreshMarketplace={loadMarketplace}
             onSpendMoney={spendMoney}
             onAddMoney={addMoney}
