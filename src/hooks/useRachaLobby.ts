@@ -33,13 +33,41 @@ export interface OpenLobby {
   finishedAt: string | null;
 }
 
+/** Jogador montado para animação de corrida. */
 export interface RacePlayerAnim extends LobbyPlayer {
-  score:       number;
-  finalPct:    number;
-  barProgress: number;
-  position:    number;
-  payout:      number;
-  isMe:        boolean;
+  score:    number;
+  finalPct: number;   // % da barra (0-100), calculado sobre o maior score da corrida
+  position: number;
+  payout:   number;
+  isMe:     boolean;
+}
+
+// ── Tipo interno do servidor ──────────────────────────────────────
+type RankEntry = {
+  userId:  string;
+  name:    string;
+  carName: string;
+  carIcon: string;
+  igp:     number;
+  score:   number;
+  position: number;
+  payout:  number;
+};
+
+/** Type guard — rejeita entradas malformadas vindas do servidor. */
+function isValidRankEntry(x: unknown): x is RankEntry {
+  if (typeof x !== 'object' || x === null) return false;
+  const o = x as Record<string, unknown>;
+  return (
+    typeof o['userId']   === 'string' &&
+    typeof o['name']     === 'string' &&
+    typeof o['carName']  === 'string' &&
+    typeof o['carIcon']  === 'string' &&
+    typeof o['igp']      === 'number' &&
+    typeof o['score']    === 'number' &&
+    typeof o['position'] === 'number' &&
+    typeof o['payout']   === 'number'
+  );
 }
 
 // ── Helpers de localStorage ───────────────────────────────────────
@@ -79,29 +107,29 @@ function rowToLobby(row: Record<string, unknown>): OpenLobby {
 }
 
 // ── Map lobby.results.rankings → RacePlayerAnim[] ─────────────────
-type RankEntry = {
-  userId: string; name: string; carName: string; carIcon: string;
-  igp: number; score: number; position: number; payout: number;
-};
-
 function lobbyResultsToPlayers(lobby: OpenLobby, myUserId: string | null): RacePlayerAnim[] {
-  const raw =
-    ((lobby.results as Record<string, unknown> | null)?.['rankings']);
-  const rankings: RankEntry[] = Array.isArray(raw) ? (raw as RankEntry[]) : [];
+  const raw = (lobby.results as Record<string, unknown> | null)?.['rankings'];
+
+  // Valida cada entrada com type guard — descarta silhouetteadas malformadas
+  const rankings: RankEntry[] = Array.isArray(raw)
+    ? raw.filter(isValidRankEntry)
+    : [];
+
+  if (rankings.length === 0) return [];
+
   const maxScore = Math.max(...rankings.map(r => r.score), 1);
 
   return rankings.map(r => ({
-    userId:      r.userId,
-    name:        r.name,
-    carName:     r.carName,
-    carIcon:     r.carIcon,
-    igp:         r.igp,
-    score:       r.score,
-    finalPct:    Math.round((r.score / maxScore) * 100),
-    barProgress: Math.round((r.score / maxScore) * 100),
-    position:    r.position,
-    payout:      r.payout,
-    isMe:        r.userId === myUserId,
+    userId:   r.userId,
+    name:     r.name,
+    carName:  r.carName,
+    carIcon:  r.carIcon,
+    igp:      r.igp,
+    score:    r.score,
+    finalPct: Math.round((r.score / maxScore) * 100),
+    position: r.position,
+    payout:   r.payout,
+    isMe:     r.userId === myUserId,
   }));
 }
 
@@ -186,7 +214,8 @@ export function useRachaLobby({ onSpendMoney, onAddMoney, onRaceWon }: UseRachaL
     const uid = myUserIdRef.current;
     if (!uid) return;
 
-    const since = new Date(Date.now() - 7 * 24 * 3600 * 1_000).toISOString();
+    // 30 dias de lookback — garante que o jogador não perde resultados
+    const since = new Date(Date.now() - 30 * 24 * 3600 * 1_000).toISOString();
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const { data } = await (supabase as any)
       .from('race_lobbies')
@@ -232,9 +261,10 @@ export function useRachaLobby({ onSpendMoney, onAddMoney, onRaceWon }: UseRachaL
         'postgres_changes',
         { event: '*', schema: 'public', table: 'race_lobbies' },
         () => {
-          // Debounce: agrupa rafagas de mudanças em 300ms
+          // Debounce: agrupa rajadas de mudanças em 300ms
           if (subDebounceRef.current) clearTimeout(subDebounceRef.current);
           subDebounceRef.current = setTimeout(() => {
+            subDebounceRef.current = null;
             void fetchLobbies();
             void checkPendingResults();
           }, 300);
@@ -242,8 +272,15 @@ export function useRachaLobby({ onSpendMoney, onAddMoney, onRaceWon }: UseRachaL
       )
       .subscribe();
     listChannelRef.current = ch;
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    return () => void (supabase as any).removeChannel(ch);
+    return () => {
+      // Limpa o debounce pendente antes de remover o canal
+      if (subDebounceRef.current) {
+        clearTimeout(subDebounceRef.current);
+        subDebounceRef.current = null;
+      }
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      void (supabase as any).removeChannel(ch);
+    };
   }, [fetchLobbies, checkPendingResults]);
 
   // Verifica resultados quando usuário carrega
@@ -297,12 +334,12 @@ export function useRachaLobby({ onSpendMoney, onAddMoney, onRaceWon }: UseRachaL
     };
     setRaceHistory(prev => [record, ...prev].slice(0, 50));
 
-    // Inicia animação de corrida (tela de resultado aparece após 20s)
-    setCurrentResultPlayers(players);
+    // Inicia animação de corrida (tela de resultado aparece após animação)
+    setCurrentResultPlayers(players.length > 0 ? players : null);
     setState('racing');
   }, []);
 
-  // ── Transição racing → result (chamado pelo componente após 20s) ──
+  // ── Transição racing → result (chamado pelo componente após animação) ──
   // Aplica o prêmio aqui, só depois que a animação de corrida terminou.
   const finishRace = useCallback(() => {
     if (pendingPayoutRef.current > 0) {
@@ -397,14 +434,16 @@ export function useRachaLobby({ onSpendMoney, onAddMoney, onRaceWon }: UseRachaL
 
       if (err) throw new Error((err as { message?: string }).message ?? 'Lobby indisponível');
 
+      // Segurança: RPC pode retornar null se lobby foi removido concorrentemente
+      if (data == null) throw new Error('lobby_not_available');
+
       const updated = rowToLobby(data as Record<string, unknown>);
 
       if (updated.status === 'finished') {
         // Lobby preencheu agora — remove da lista e inicia animação
-        void fetchLobbies(); // garante que lobby sai da lista imediatamente
+        void fetchLobbies();
         collectResult(updated);
       } else {
-        // Ainda aguardando outros jogadores
         showSuccess('⚡ Você entrou no racha! Aguardando outros jogadores...');
         void fetchLobbies();
       }
@@ -433,12 +472,10 @@ export function useRachaLobby({ onSpendMoney, onAddMoney, onRaceWon }: UseRachaL
   // ── Cleanup ───────────────────────────────────────────────────
   useEffect(() => {
     return () => {
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      if (listChannelRef.current) void (supabase as any).removeChannel(listChannelRef.current);
       if (successTimerRef.current) clearTimeout(successTimerRef.current);
-      if (subDebounceRef.current)  clearTimeout(subDebounceRef.current);
+      // subDebounceRef limpo no effect da subscription
 
-      // Garante prêmio mesmo se usuário navegar durante a animação de 20s.
+      // Garante prêmio mesmo se usuário navegar durante a animação.
       // O lobby já está marcado como coletado no localStorage, então não há
       // risco de dupla-coleta — apenas aplicamos o crédito pendente.
       if (pendingPayoutRef.current > 0) {
