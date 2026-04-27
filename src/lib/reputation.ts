@@ -1,18 +1,17 @@
 /**
  * Sistema de Reputação (nível) do jogador.
  *
- * Regras:
- *   • 1 XP por compra de carro.
- *   • 3 XP por venda de carro.
- *   • 2 XP por reparo concluído na oficina.
- *   • 2 XP por tunagem aplicada.
- *   • 2 XP por lavagem concluída.
- *   • 10 XP por vitória em 1º lugar em racha.
- *   • O XP necessário dobra a cada nível:
- *        Lv 2 = 10 xp
- *        Lv 3 = 20 xp
- *        Lv 4 = 40 xp
- *        Lv N = 10 * 2^(N-2)
+ * Recompensas (XP_REWARDS — dobradas em relação à versão anterior):
+ *   • 2 XP por compra de carro
+ *   • 6 XP por venda de carro
+ *   • 4 XP por reparo concluído na oficina
+ *   • 4 XP por tunagem aplicada
+ *   • 4 XP por lavagem concluída
+ *   • 20 XP por vitória em 1º lugar em racha
+ *
+ * Custo por nível:
+ *   • XP necessário dobra a cada nível: 2.5 × 2^(N-2)
+ *   • Lv 2 = 3, Lv 3 = 5, Lv 4 = 10, Lv 5 = 20...
  *   • Level máximo = 100.
  *
  * Mantemos esse módulo puro (sem React/hooks) pra poder reusar em
@@ -22,6 +21,23 @@
 import type { Reputation } from '@/types/game';
 
 export const MAX_LEVEL = 100;
+
+/**
+ * Recompensas de XP por ação. Centralizado para facilitar ajustes globais
+ * (ex.: eventos "XP dobrado") sem precisar caçar callsites.
+ */
+export const XP_REWARDS = {
+  /** Comprar um carro (marketplace global ou P2P). */
+  carPurchase:  2,
+  /** Vender um carro para um NPC (incl. contraproposta aceita). */
+  carSale:      6,
+  /** Reparo ou lavagem concluído na oficina. */
+  repair:       4,
+  /** Aplicar uma tunagem em um carro. */
+  tune:         4,
+  /** Vencer uma corrida assíncrona em 1º lugar. */
+  raceWin:      20,
+} as const;
 
 /** Estado inicial de reputação (level 1, 0 xp). */
 export const INITIAL_REPUTATION: Reputation = {

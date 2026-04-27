@@ -24,7 +24,7 @@ import {
   maxBuyerSlots,
   generateCycleBuyers,
 } from '@/data/carBuyers';
-import { ensureReputation, addXp, reconstructReputation } from '@/lib/reputation';
+import { ensureReputation, addXp, reconstructReputation, XP_REWARDS } from '@/lib/reputation';
 import { supabase } from '@/integrations/supabase/client';
 
 // ── Config ────────────────────────────────────────────────────────
@@ -454,7 +454,7 @@ export function useCarGameLogic() {
             });
           });
           // XP por reparos/lavagens concluídos
-          const repairXp = finishedRepairs.length * 2;
+          const repairXp = finishedRepairs.length * XP_REWARDS.repair;
           next = { ...next, activeRepairs: pendingRepairs, garage: updatedGarage, reputation: addXp(next.reputation, repairXp).reputation };
         }
 
@@ -553,7 +553,7 @@ export function useCarGameLogic() {
       ...prev,
       money:          safeMoney(prev.money, prev.money - askingPrice),
       garage:         prev.garage.map(s => s.id === emptySlot.id ? { ...s, car: owned } : s),
-      reputation:     addXp(prev.reputation, 1).reputation,
+      reputation:     addXp(prev.reputation, XP_REWARDS.carPurchase).reputation,
       totalCarsBought: (prev.totalCarsBought ?? 0) + 1,
       totalSpent:     (prev.totalSpent ?? 0) + askingPrice,
       marketplaceCars: prev.marketplaceCars.filter(c => c.id !== car.id),
@@ -918,7 +918,7 @@ export function useCarGameLogic() {
         totalRevenue:    (prev.totalRevenue ?? 0) + playerOfferSafe,
         salesHistory:    [...(prev.salesHistory ?? []), saleRecord],
         totalProfit:     (prev.totalProfit ?? 0) + profit,
-        reputation:      addXp(prev.reputation, 3).reputation,
+        reputation:      addXp(prev.reputation, XP_REWARDS.carSale).reputation,
         buyerSlotLocks:  locks,
       };
     });
@@ -1048,7 +1048,7 @@ export function useCarGameLogic() {
         totalRevenue:   (prev.totalRevenue ?? 0) + counterPrice,
         salesHistory:   [...(prev.salesHistory ?? []), saleRecord],
         totalProfit:    (prev.totalProfit ?? 0) + profit,
-        reputation:     addXp(prev.reputation, 3).reputation,
+        reputation:     addXp(prev.reputation, XP_REWARDS.carSale).reputation,
         buyerSlotLocks: locks,
       };
     });
@@ -1099,7 +1099,7 @@ export function useCarGameLogic() {
     setGameState(prev => ({
       ...prev,
       asyncRacesWon: (prev.asyncRacesWon ?? 0) + 1,
-      reputation: addXp(prev.reputation, 10).reputation,
+      reputation: addXp(prev.reputation, XP_REWARDS.raceWin).reputation,
     }));
   }, []);
 
@@ -1137,7 +1137,7 @@ export function useCarGameLogic() {
       ...prev,
       money:           safeMoney(prev.money, prev.money - safePrice),
       garage:          prev.garage.map(s => s.id === emptySlot.id ? { ...s, car: owned } : s),
-      reputation:      addXp(prev.reputation, 1).reputation,
+      reputation:      addXp(prev.reputation, XP_REWARDS.carPurchase).reputation,
       totalCarsBought: (prev.totalCarsBought ?? 0) + 1,
       totalSpent:      (prev.totalSpent ?? 0) + safePrice,
     }));
@@ -1169,7 +1169,7 @@ export function useCarGameLogic() {
     setGameState(prev => ({
       ...prev,
       garage:          prev.garage.map(s => s.id === emptySlot.id ? { ...s, car: carToAdd } : s),
-      reputation:      addXp(prev.reputation, 1).reputation,
+      reputation:      addXp(prev.reputation, XP_REWARDS.carPurchase).reputation,
       totalCarsBought: (prev.totalCarsBought ?? 0) + 1,
       totalSpent:      (prev.totalSpent ?? 0) + paidPrice,
     }));
@@ -1194,7 +1194,7 @@ export function useCarGameLogic() {
           ? { ...s, car: { ...s.car!, tuneUpgrades: upgrades } }
           : s
       ),
-      reputation: addXp(prev.reputation, 2).reputation,
+      reputation: addXp(prev.reputation, XP_REWARDS.tune).reputation,
     }));
     setTimeout(() => void saveGame(), 400);
     return { success: true, message: 'Tunagem aplicada!' };
