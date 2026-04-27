@@ -205,7 +205,6 @@ function applyLoadedSave(raw: unknown): GameState {
   }
 
   // Regenera compradores apenas se o ciclo já encerrou (comparação por timestamp absoluto)
-  const now = Date.now();
   if (now >= saved.nextBuyerCycleAt) {
     const level      = saved.reputation.level;
     const totalSlots = maxBuyerSlots(level);
