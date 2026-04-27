@@ -276,8 +276,21 @@ export function useCarGameLogic() {
     setIsSyncing(false);
 
     if (cloud) {
-      // Prefere cloud se for mais avançado (mais dias jogados)
-      const useCloud = !local || cloud.gameTime.day >= local.gameTime.day;
+      // BUG FIX: usar critério mais robusto que apenas o dia in-game.
+      // Se ambos estão no mesmo dia, escolhe quem tem mais patrimônio
+      // (dinheiro + valor dos carros) para evitar perder progresso quando
+      // o jogador comprou/vendeu vários carros no mesmo dia.
+      const calcPatrimony = (s: GameState) => {
+        const carValue = (s.garage ?? [])
+          .filter(slot => slot.car)
+          .reduce((sum, slot) => sum + slot.car!.fipePrice * conditionValueFactor(slot.car!.condition), 0);
+        return s.money + carValue;
+      };
+      const useCloud =
+        !local ||
+        cloud.gameTime.day > local.gameTime.day ||
+        (cloud.gameTime.day === local.gameTime.day &&
+          calcPatrimony(cloud) >= calcPatrimony(local));
       if (useCloud) {
         setGameState(cloud);
         saveLocal(cloud); // sincroniza local com cloud
@@ -317,7 +330,8 @@ export function useCarGameLogic() {
     tickRef.current = setInterval(() => {
       setGameState(prev => {
         const now = Date.now();
-        let next = { ...prev };
+        // Sanitiza money corrompido (NaN) para não propagar em toda a sessão
+        let next = { ...prev, money: isFinite(prev.money) ? prev.money : 15_000 };
 
         // Avança tempo in-game
         let { day, hour, minute } = next.gameTime;
@@ -969,13 +983,19 @@ export function useCarGameLogic() {
   }, []);
 
   const addMoney = useCallback((amount: number) => {
-    setGameState(prev => ({ ...prev, money: prev.money + amount }));
+    const safe = isFinite(amount) ? amount : 0;
+    setGameState(prev => ({ ...prev, money: isFinite(prev.money) ? prev.money + safe : safe }));
   }, []);
 
   const spendMoney = useCallback((amount: number): boolean => {
+    if (!isFinite(amount) || amount <= 0) return false;
     const state = stateRef.current;
-    if (state.money - amount < state.overdraftLimit) return false;
-    setGameState(prev => ({ ...prev, money: prev.money - amount }));
+    const currentMoney = isFinite(state.money) ? state.money : 0;
+    if (currentMoney - amount < state.overdraftLimit) return false;
+    setGameState(prev => ({
+      ...prev,
+      money: (isFinite(prev.money) ? prev.money : 0) - amount,
+    }));
     return true;
   }, []);
 

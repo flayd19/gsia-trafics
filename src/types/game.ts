@@ -328,10 +328,14 @@ export interface GameState {
 
 // ── Helpers de tipo ───────────────────────────────────────────────
 
-/** Garante backwards-compat para saves antigos */
+/** Garante backwards-compat para saves antigos.
+ * Usa isFinite() em vez de ?? para também capturar NaN
+ * (NaN ?? default não funciona — NaN não é null/undefined). */
 export function ensureGameState(raw: Partial<GameState>): GameState {
+  const sanitizeMoney = (v: unknown, fallback: number) =>
+    typeof v === 'number' && isFinite(v) ? v : fallback;
   return {
-    money: raw.money ?? 15_000,
+    money: sanitizeMoney(raw.money, 15_000),
     garage: raw.garage ?? [{ id: 1, unlocked: true, unlockCost: 0, car: undefined }],
     activeRepairs: raw.activeRepairs ?? [],
     marketplaceCars: raw.marketplaceCars ?? [],

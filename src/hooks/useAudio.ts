@@ -33,12 +33,14 @@ export const useAudio = () => {
       const playPromise = audio.play();
       
       if (playPromise !== undefined) {
-        playPromise.catch(error => {
-          console.warn('Erro ao reproduzir áudio:', error);
+        playPromise.catch(() => {
+          // BUG FIX: silenciar warns em produção. Falha de reprodução de áudio
+          // é comum (autoplay bloqueado, sem interação do usuário) e não deve
+          // poluir o console.
         });
       }
-    } catch (error) {
-      console.warn('Erro ao carregar áudio:', error);
+    } catch {
+      // Silencia falha de carregamento (asset 404, codec incompatível, etc).
     }
   }, []);
 

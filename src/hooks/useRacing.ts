@@ -48,8 +48,10 @@ const BOT_CARS = [
 function randomBot(targetIgp: number): Opponent {
   const spread = 6 + Math.random() * 6;
   const igp    = Math.min(99, Math.max(1, Math.round(targetIgp + (Math.random() < 0.5 ? -spread : spread))));
+  // BUG FIX: usar timestamp + sufixo aleatório para evitar IDs duplicados
+  // quando randomBot é chamado várias vezes em sequência rápida (ex: testes).
   return {
-    id:      `bot_${Date.now()}`,
+    id:      `bot_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`,
     name:    BOT_NAMES[Math.floor(Math.random() * BOT_NAMES.length)],
     carName: BOT_CARS[Math.floor(Math.random() * BOT_CARS.length)],
     igp,

@@ -936,7 +936,10 @@ function RacingView({ players, myUserId, onFinish }: RacingViewProps) {
     return () => {
       if (rafRef.current) cancelAnimationFrame(rafRef.current);
     };
-  }, []);
+  // BUG FIX: declarar dependências reais do effect para evitar stale closure
+  // se o componente re-renderizar com nova lista de jogadores ou onFinish.
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [players, DURATION_MS, onFinish]);
 
   return (
     <div className="space-y-3">
