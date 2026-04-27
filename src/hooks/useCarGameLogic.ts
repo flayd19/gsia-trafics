@@ -41,6 +41,21 @@ function generateId(): string {
   return `${Date.now()}_${Math.random().toString(36).slice(2, 8)}`;
 }
 
+/**
+ * BUG FIX: garante que o saldo nunca vire NaN/Infinity. Usado em todos os
+ * caminhos de mutação de `money`. Se entrada for inválida, mantém o saldo
+ * anterior (preservando progresso do jogador).
+ */
+function safeMoney(prev: number, next: number): number {
+  if (typeof next === 'number' && Number.isFinite(next)) return next;
+  return Number.isFinite(prev) ? prev : 15_000;
+}
+
+/** Trata um valor de operação (preço, custo, etc.) — fallback 0 se inválido. */
+function safeAmount(v: unknown): number {
+  return typeof v === 'number' && Number.isFinite(v) ? v : 0;
+}
+
 // ── Helpers do sistema de atributos ──────────────────────────────
 const ATTR_LABELS: Record<AttributeKey, string> = {
   body:       'Lataria',
@@ -96,8 +111,14 @@ function buildInitialState(): GameState {
 
 // ── Prepara para salvar: remove dados transitórios grandes ─────────
 function serializeForSave(state: GameState): object {
+  // BUG FIX: garante que money nunca é persistido como NaN/Infinity. Isso
+  // protege contra um save corrompido que, ao recarregar, produziria NaN
+  // em todas as operações subsequentes.
+  const safeMoneyValue =
+    typeof state.money === 'number' && Number.isFinite(state.money) ? state.money : 15_000;
   return {
     ...state,
+    money: safeMoneyValue,
     marketplaceCars: [],  // regenerado no load
     carBuyers: state.carBuyers.filter(
       b => b.state === 'waiting' || b.state === 'thinking' || b.state === 'countering'
@@ -150,13 +171,15 @@ function loadLocal(): GameState | null {
 // Usa supabase.from() em vez de .rpc() para não depender dos tipos gerados
 async function saveSupabase(userId: string, displayName: string, state: GameState): Promise<boolean> {
   try {
+    const safeMoneyValue =
+      typeof state.money === 'number' && Number.isFinite(state.money) ? state.money : 15_000;
     const { error } = await (supabase as any)
       .from('game_progress')
       .upsert(
         {
           user_id:       userId,
           car_game_data: serializeForSave(state),
-          money:         state.money,
+          money:         safeMoneyValue,
           updated_at:    new Date().toISOString(),
         },
         { onConflict: 'user_id' }
@@ -342,9 +365,10 @@ export function useCarGameLogic() {
 
         // Juros do cheque especial
         if (next.money < 0 && day > next.lastInterestCalculation) {
+          const interest = Math.abs(next.money) * INTEREST_RATE;
           next = {
             ...next,
-            money: next.money - Math.abs(next.money) * INTEREST_RATE,
+            money: safeMoney(next.money, next.money - safeAmount(interest)),
             lastInterestCalculation: day,
           };
         }
@@ -353,10 +377,10 @@ export function useCarGameLogic() {
         if (day > next.lastRentCharge) {
           const dailyRent = next.garage
             .filter(s => s.unlocked && s.car)
-            .reduce((sum, slot) => sum + garageSlotDailyCost(slot.id), 0);
+            .reduce((sum, slot) => sum + safeAmount(garageSlotDailyCost(slot.id)), 0);
           next = {
             ...next,
-            money:          next.money - dailyRent,
+            money:          safeMoney(next.money, next.money - safeAmount(dailyRent)),
             lastRentCharge: day,
           };
         }
@@ -469,7 +493,8 @@ export function useCarGameLogic() {
     const state = stateRef.current;
     const emptySlot = state.garage.find(s => s.unlocked && !s.car);
     if (!emptySlot) return { success: false, message: 'Garagem cheia! Compre mais vagas.' };
-    if (state.money - car.askingPrice < state.overdraftLimit)
+    const askingPrice = safeAmount(car.askingPrice);
+    if (state.money - askingPrice < state.overdraftLimit)
       return { success: false, message: 'Saldo insuficiente.' };
 
     const owned: OwnedCar = {
@@ -480,18 +505,18 @@ export function useCarGameLogic() {
       year: car.year, icon: car.icon,
       fipePrice: car.fipePrice, condition: car.condition,
       mileage: car.mileage,
-      purchasePrice: car.askingPrice, purchasedAt: Date.now(),
+      purchasePrice: askingPrice, purchasedAt: Date.now(),
       completedRepairs: [],
       attributes: generateAttributes(car.condition),
     };
 
     setGameState(prev => ({
       ...prev,
-      money:          prev.money - car.askingPrice,
+      money:          safeMoney(prev.money, prev.money - askingPrice),
       garage:         prev.garage.map(s => s.id === emptySlot.id ? { ...s, car: owned } : s),
       reputation:     addXp(prev.reputation, 1).reputation,
       totalCarsBought: (prev.totalCarsBought ?? 0) + 1,
-      totalSpent:     (prev.totalSpent ?? 0) + car.askingPrice,
+      totalSpent:     (prev.totalSpent ?? 0) + askingPrice,
       marketplaceCars: prev.marketplaceCars.filter(c => c.id !== car.id),
     }));
 
@@ -508,12 +533,13 @@ export function useCarGameLogic() {
     if (state.money < slotDef.unlockCost)
       return { success: false, message: `Você precisa de ${formatMoney(slotDef.unlockCost)}.` };
 
+    const unlockCost = safeAmount(slotDef.unlockCost);
     setGameState(prev => ({
       ...prev,
-      money:  prev.money - slotDef.unlockCost,
+      money:  safeMoney(prev.money, prev.money - unlockCost),
       garage: prev.garage.some(s => s.id === slotId)
         ? prev.garage.map(s => s.id === slotId ? { ...s, unlocked: true } : s)
-        : [...prev.garage, { id: slotId, unlocked: true, unlockCost: slotDef.unlockCost, car: undefined }],
+        : [...prev.garage, { id: slotId, unlocked: true, unlockCost: unlockCost, car: undefined }],
     }));
 
     setTimeout(() => void saveGame(), 400);
@@ -544,9 +570,9 @@ export function useCarGameLogic() {
     }
 
     const attrVal = attrs[repairType.attribute];
-    const cost    = repairType.isAlwaysAvailable
+    const cost    = safeAmount(repairType.isAlwaysAvailable
       ? repairType.baseCost
-      : calcRepairCost(repairType.baseCost, attrVal);
+      : calcRepairCost(repairType.baseCost, attrVal));
 
     if (state.money - cost < state.overdraftLimit)
       return { success: false, message: `Você precisa de ${formatMoney(cost)}.` };
@@ -556,7 +582,7 @@ export function useCarGameLogic() {
 
     setGameState(prev => ({
       ...prev,
-      money: prev.money - cost,
+      money: safeMoney(prev.money, prev.money - cost),
       garage: prev.garage.map(s => {
         if (s.car?.instanceId !== carInstanceId) return s;
         return {
@@ -631,7 +657,7 @@ export function useCarGameLogic() {
     // Sempre persiste o resultado ([] = sem problemas) e desconta o custo
     setGameState(prev => ({
       ...prev,
-      money: prev.money - DIAGNOSIS_COST,
+      money: safeMoney(prev.money, prev.money - DIAGNOSIS_COST),
       garage: prev.garage.map(s =>
         s.car?.instanceId === carInstanceId
           ? { ...s, car: { ...s.car!, attributes: attrs, diagnosisResult: results } }
@@ -806,22 +832,25 @@ export function useCarGameLogic() {
     }
 
     // ── Aceite ────────────────────────────────────────────────────────
-    let finalPrice = buyer.playerOffer;
+    const playerOfferSafe = safeAmount(buyer.playerOffer);
+    const purchasePriceSafe = safeAmount(car.purchasePrice);
+    let finalPrice = playerOfferSafe;
     let tradeInCar: OwnedCar | undefined;
     if (buyer.playerIncludedTradeIn && buyer.tradeInCar && buyer.tradeInValue) {
       // Usa a valoração personalizada do jogador; se ausente, usa a do comprador.
-      const rawValuation = buyer.playerTradeInValuation ?? buyer.tradeInValue;
+      const rawValuation = safeAmount(buyer.playerTradeInValuation ?? buyer.tradeInValue);
       // Segurança em profundidade: cap em 95 % do valor de mercado do carro vendido.
-      const carMarketValue = car.fipePrice * conditionValueFactor(car.condition);
+      const carMarketValue = safeAmount(car.fipePrice) * conditionValueFactor(car.condition);
       const safeTradeInValue = Math.min(rawValuation, carMarketValue * 0.95);
-      finalPrice = Math.max(0, buyer.playerOffer - safeTradeInValue);
+      finalPrice = Math.max(0, playerOfferSafe - safeTradeInValue);
       tradeInCar = { ...buyer.tradeInCar, completedRepairs: buyer.tradeInCar.completedRepairs ?? [] };
     }
+    finalPrice = safeAmount(finalPrice);
 
-    const profit     = buyer.playerOffer - car.purchasePrice;
+    const profit     = playerOfferSafe - purchasePriceSafe;
     const saleRecord = {
       id: generateId(), carInstanceId: car.instanceId, fullName: car.fullName,
-      purchasePrice: car.purchasePrice, salePrice: buyer.playerOffer,
+      purchasePrice: purchasePriceSafe, salePrice: playerOfferSafe,
       fipePrice: car.fipePrice, condition: car.condition,
       profit, soldAt: Date.now(), gameDay: state.gameTime.day,
     };
@@ -841,13 +870,13 @@ export function useCarGameLogic() {
       if (slotIdx >= 0) locks[slotIdx] = lockEpoch;
       return {
         ...prev,
-        money:           prev.money + finalPrice,
+        money:           safeMoney(prev.money, prev.money + finalPrice),
         garage,
         // Remove reparos órfãos do carro vendido
         activeRepairs:   prev.activeRepairs.filter(r => r.carInstanceId !== car.instanceId),
-        carBuyers:       prev.carBuyers.map(b => b.id === buyerId ? { ...b, state: 'accepted' as const, finalPrice: buyer.playerOffer } : b),
+        carBuyers:       prev.carBuyers.map(b => b.id === buyerId ? { ...b, state: 'accepted' as const, finalPrice: playerOfferSafe } : b),
         carSales:        [...prev.carSales, saleRecord],
-        totalRevenue:    (prev.totalRevenue ?? 0) + buyer.playerOffer,
+        totalRevenue:    (prev.totalRevenue ?? 0) + playerOfferSafe,
         salesHistory:    [...(prev.salesHistory ?? []), saleRecord],
         totalProfit:     (prev.totalProfit ?? 0) + profit,
         reputation:      addXp(prev.reputation, 3).reputation,
@@ -909,22 +938,24 @@ export function useCarGameLogic() {
         }
 
         const car          = slot.car;
-        const counterPrice = buyer.counterOffer!;
+        const counterPrice = safeAmount(buyer.counterOffer);
+        const purchasePriceSafe = safeAmount(car.purchasePrice);
 
         let finalPrice = counterPrice;
         let tradeInCar: OwnedCar | undefined;
         if (buyer.playerIncludedTradeIn && buyer.tradeInCar && buyer.tradeInValue) {
-          const rawValuation     = buyer.playerTradeInValuation ?? buyer.tradeInValue;
-          const carMarketValue   = car.fipePrice * conditionValueFactor(car.condition);
+          const rawValuation     = safeAmount(buyer.playerTradeInValuation ?? buyer.tradeInValue);
+          const carMarketValue   = safeAmount(car.fipePrice) * conditionValueFactor(car.condition);
           const safeTradeInValue = Math.min(rawValuation, carMarketValue * 0.95);
           finalPrice  = Math.max(0, counterPrice - safeTradeInValue);
           tradeInCar  = { ...buyer.tradeInCar, completedRepairs: buyer.tradeInCar.completedRepairs ?? [] };
         }
+        finalPrice = safeAmount(finalPrice);
 
-        const profit     = counterPrice - car.purchasePrice;
+        const profit     = counterPrice - purchasePriceSafe;
         const saleRecord = {
           id: generateId(), carInstanceId: car.instanceId, fullName: car.fullName,
-          purchasePrice: car.purchasePrice, salePrice: counterPrice,
+          purchasePrice: purchasePriceSafe, salePrice: counterPrice,
           fipePrice: car.fipePrice, condition: car.condition,
           profit, soldAt: Date.now(), gameDay: prev.gameTime.day,
         };
@@ -949,7 +980,7 @@ export function useCarGameLogic() {
 
         return {
           ...prev,
-          money:          prev.money + finalPrice,
+          money:          safeMoney(prev.money, prev.money + finalPrice),
           garage,
           activeRepairs:  prev.activeRepairs.filter(r => r.carInstanceId !== car.instanceId),
           carBuyers:      prev.carBuyers.map(b => b.id === buyerId ? { ...b, state: 'accepted' as const, finalPrice: counterPrice } : b),
@@ -1016,7 +1047,8 @@ export function useCarGameLogic() {
     const state    = stateRef.current;
     const emptySlot = state.garage.find(s => s.unlocked && !s.car);
     if (!emptySlot) return { success: false, message: 'Garagem cheia! Libere uma vaga primeiro.' };
-    if (state.money - finalPrice < state.overdraftLimit)
+    const safePrice = safeAmount(finalPrice);
+    if (state.money - safePrice < state.overdraftLimit)
       return { success: false, message: 'Saldo insuficiente.' };
 
     const owned: OwnedCar = {
@@ -1031,7 +1063,7 @@ export function useCarGameLogic() {
       icon:          car.icon,
       fipePrice:     car.fipePrice,
       condition:     car.condition,
-      purchasePrice: finalPrice,
+      purchasePrice: safePrice,
       purchasedAt:   Date.now(),
       completedRepairs: [],
       attributes:    generateAttributes(car.condition),
@@ -1039,11 +1071,11 @@ export function useCarGameLogic() {
 
     setGameState(prev => ({
       ...prev,
-      money:           prev.money - finalPrice,
+      money:           safeMoney(prev.money, prev.money - safePrice),
       garage:          prev.garage.map(s => s.id === emptySlot.id ? { ...s, car: owned } : s),
       reputation:      addXp(prev.reputation, 1).reputation,
       totalCarsBought: (prev.totalCarsBought ?? 0) + 1,
-      totalSpent:      (prev.totalSpent ?? 0) + finalPrice,
+      totalSpent:      (prev.totalSpent ?? 0) + safePrice,
     }));
 
     setTimeout(() => void saveGame(), 400);

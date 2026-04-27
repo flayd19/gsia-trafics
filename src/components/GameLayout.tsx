@@ -96,13 +96,17 @@ export const GameLayout = ({
     mainRef.current?.scrollTo({ top: 0, behavior: 'smooth' });
   }, [currentTab]);
 
-  const formatMoney = (amount: number) =>
-    new Intl.NumberFormat('pt-BR', {
+  const formatMoney = (amount: number) => {
+    // BUG FIX: defesa contra NaN/Infinity. Intl.NumberFormat formata NaN como
+    // a string literal "NaN", causando a HUD aparecer "NaN" para o jogador.
+    const safe = typeof amount === 'number' && Number.isFinite(amount) ? amount : 0;
+    return new Intl.NumberFormat('pt-BR', {
       style: 'currency',
       currency: 'BRL',
       minimumFractionDigits: 0,
       maximumFractionDigits: 0,
-    }).format(amount);
+    }).format(safe);
+  };
 
   const currentTabInPrimary = useMemo(
     () => PRIMARY_TABS.some((t) => t.id === currentTab),
