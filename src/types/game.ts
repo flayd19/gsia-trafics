@@ -128,6 +128,8 @@ export interface CarBuyerNPC {
   state: 'waiting' | 'thinking' | 'countering' | 'accepted' | 'rejected' | 'expired';
   /** Timestamp que entrou no estado thinking */
   thinkingStartedAt?: number;
+  /** Duração do tempo de pensamento sorteado (3–10 s) */
+  thinkDuration?: number;
   /** Oferta enviada pelo jogador */
   playerOffer?: number;
   /** Inclui trade-in? */

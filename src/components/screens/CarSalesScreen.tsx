@@ -7,7 +7,7 @@ import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import type { GameState, CarBuyerNPC, OwnedCar } from '@/types/game';
 import { conditionLabel, conditionColor, conditionValueFactor, CAR_MODELS } from '@/data/cars';
-import { CAR_IMAGES } from '@/data/carImages';
+import { useCarImages } from '@/hooks/useCarImages';
 import {
   maxBuyerSlots,
   currentCycleEpoch,
@@ -127,11 +127,14 @@ function CycleRemainingBar({ buyer }: { buyer: CarBuyerNPC }) {
   );
 }
 
-// ── Timer de pensamento (10 s) ─────────────────────────────────────
+// ── Timer de pensamento (3–10 s) ────────────────────────────────────
 
-function ThinkingTimer({ thinkingStartedAt, onTimeUp }: { thinkingStartedAt: number; onTimeUp: () => void }) {
+function ThinkingTimer({ thinkingStartedAt, thinkDuration = 10, onTimeUp }: {
+  thinkingStartedAt: number;
+  thinkDuration?: number;
+  onTimeUp: () => void;
+}) {
   const [elapsed, setElapsed] = useState(0);
-  const THINK_TIME = 10;
   // Ref para evitar que mudanças de referência de onTimeUp reiniciem o timer
   const onTimeUpRef = useRef(onTimeUp);
   onTimeUpRef.current = onTimeUp;
@@ -140,14 +143,14 @@ function ThinkingTimer({ thinkingStartedAt, onTimeUp }: { thinkingStartedAt: num
     const id = setInterval(() => {
       const e = (Date.now() - thinkingStartedAt) / 1_000;
       setElapsed(e);
-      if (e >= THINK_TIME) { onTimeUpRef.current(); clearInterval(id); }
+      if (e >= thinkDuration) { onTimeUpRef.current(); clearInterval(id); }
     }, 200);
     return () => clearInterval(id);
   // Só reinicia o timer se thinkingStartedAt mudar — onTimeUp via ref
-  }, [thinkingStartedAt]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [thinkingStartedAt, thinkDuration]); // eslint-disable-line react-hooks/exhaustive-deps
 
-  const pct       = Math.min(100, (elapsed / THINK_TIME) * 100);
-  const remaining = Math.max(0, THINK_TIME - elapsed);
+  const pct       = Math.min(100, (elapsed / thinkDuration) * 100);
+  const remaining = Math.max(0, thinkDuration - elapsed);
 
   return (
     <div className="space-y-2">
@@ -238,6 +241,7 @@ function BuyerCard({
   onResolveCounterOffer: (accept: boolean) => void;
   onDismiss: () => void;
 }) {
+  const getImg         = useCarImages();
   const compatibleCars = filterCompatibleCars(carsInGarage, buyer);
 
   const [selectedCarId, setSelectedCarId]       = useState<string>(compatibleCars[0]?.instanceId ?? '');
@@ -543,9 +547,9 @@ function BuyerCard({
                     isSelected ? 'border-primary/40 bg-primary/5' : 'border-border bg-muted/20'
                   }`}
                 >
-                  {CAR_IMAGES[car.modelId] ? (
+                  {getImg(car.modelId) ? (
                     <img
-                      src={CAR_IMAGES[car.modelId]}
+                      src={getImg(car.modelId)}
                       alt={`${car.brand} ${car.model}`}
                       className="w-10 h-10 object-cover rounded-[8px] shrink-0"
                       onError={(e) => {
@@ -557,7 +561,7 @@ function BuyerCard({
                   ) : null}
                   <span
                     className="text-2xl shrink-0"
-                    style={{ display: CAR_IMAGES[car.modelId] ? 'none' : 'inline' }}
+                    style={{ display: getImg(car.modelId) ? 'none' : 'inline' }}
                   >{car.icon}</span>
                   <div className="flex-1 min-w-0">
                     <div className="font-semibold text-[13px] truncate">{car.brand} {car.model}</div>
@@ -654,6 +658,7 @@ function BuyerCard({
       {buyer.state === 'thinking' && (
         <ThinkingTimer
           thinkingStartedAt={buyer.thinkingStartedAt ?? Date.now()}
+          thinkDuration={buyer.thinkDuration ?? 10}
           onTimeUp={handleTimeUp}
         />
       )}

@@ -12,7 +12,7 @@ import { Input } from '@/components/ui/input';
 import type { GameState, OwnedCar } from '@/types/game';
 import type { GlobalCar } from '@/hooks/useGlobalMarketplace';
 import { conditionLabel, conditionColor, fmtKm, type CarCategory } from '@/data/cars';
-import { CAR_IMAGES } from '@/data/carImages';
+import { useCarImages } from '@/hooks/useCarImages';
 import { generateBasePerformance } from '@/lib/performanceEngine';
 
 interface FornecedoresCarrosScreenProps {
@@ -64,6 +64,7 @@ function CarDetailSheet({
   const [offerResult, setOfferResult] = useState<OfferResult | null>(null);
   const [offerPending, setOfferPending] = useState(false);
 
+  const getImg      = useCarImages();
   const label       = conditionLabel(car.condition);
   const colorClass  = conditionColor(car.condition);
   const fipeDiff    = car.askingPrice - car.fipePrice;
@@ -101,9 +102,9 @@ function CarDetailSheet({
     <div className="fixed inset-0 z-[60] flex flex-col bg-background animate-fade-in">
       {/* Hero */}
       <div className="relative w-full bg-muted overflow-hidden" style={{ height: 220 }}>
-        {CAR_IMAGES[car.modelId] ? (
+        {getImg(car.modelId) ? (
           <img
-            src={CAR_IMAGES[car.modelId]}
+            src={getImg(car.modelId)}
             alt={`${car.brand} ${car.model}`}
             className={`w-full h-full object-cover ${isSold ? 'opacity-40' : ''}`}
             onError={(e) => {
@@ -115,7 +116,7 @@ function CarDetailSheet({
         ) : null}
         <div
           className={`w-full h-full items-center justify-center text-[88px] ${isSold ? 'opacity-40' : ''}`}
-          style={{ display: CAR_IMAGES[car.modelId] ? 'none' : 'flex' }}
+          style={{ display: getImg(car.modelId) ? 'none' : 'flex' }}
         >
           {car.icon}
         </div>
@@ -367,6 +368,7 @@ function MarketplaceCard({
   hasGarageSpace: boolean;
   onClick: () => void;
 }) {
+  const getImg      = useCarImages();
   const fipeDiff    = car.askingPrice - car.fipePrice;
   const isBelowFipe = fipeDiff < 0;
   const diffPct     = Math.abs(Math.round((fipeDiff / car.fipePrice) * 100));
@@ -379,9 +381,9 @@ function MarketplaceCard({
     >
       {/* Thumbnail */}
       <div className="relative w-full bg-muted flex items-center justify-center overflow-hidden" style={{ height: 110 }}>
-        {CAR_IMAGES[car.modelId] ? (
+        {getImg(car.modelId) ? (
           <img
-            src={CAR_IMAGES[car.modelId]}
+            src={getImg(car.modelId)}
             alt={`${car.brand} ${car.model}`}
             className={`w-full h-full object-cover ${isSold ? 'opacity-30' : ''}`}
             onError={(e) => {
@@ -393,7 +395,7 @@ function MarketplaceCard({
         ) : null}
         <span
           className={`text-[52px] items-center justify-center ${isSold ? 'opacity-30' : ''}`}
-          style={{ display: CAR_IMAGES[car.modelId] ? 'none' : 'flex' }}
+          style={{ display: getImg(car.modelId) ? 'none' : 'flex' }}
         >{car.icon}</span>
 
         {/* FIPE badge — só quando disponível */}

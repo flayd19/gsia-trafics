@@ -8,7 +8,7 @@ import { Badge } from '@/components/ui/badge';
 import { Progress } from '@/components/ui/progress';
 import type { GameState, OwnedCar, GarageSlot } from '@/types/game';
 import { GARAGE_SLOTS, conditionLabel, conditionColor, garageSlotDailyCost, fmtKm } from '@/data/cars';
-import { CAR_IMAGES } from '@/data/carImages';
+import { useCarImages } from '@/hooks/useCarImages';
 
 interface GaragemScreenProps {
   gameState: GameState;
@@ -24,7 +24,8 @@ function CarCard({ car, slotId, onRepair }: { car: OwnedCar; slotId: number; onR
   const colorClass = conditionColor(car.condition);
   const totalCost = car.purchasePrice + (car.totalRepairCost ?? 0);
 
-  const imgUrl = car.modelId ? CAR_IMAGES[car.modelId] : undefined;
+  const getImg = useCarImages();
+  const imgUrl = car.modelId ? getImg(car.modelId) : undefined;
 
   return (
     <div className="ios-surface rounded-[16px] overflow-hidden space-y-0">

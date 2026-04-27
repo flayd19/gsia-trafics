@@ -415,10 +415,10 @@ export function useCarGameLogic() {
           return b;
         });
 
-        // Finaliza compradores "pensando" há mais de 10 s (auto-resolve)
+        // Finaliza compradores "pensando" quando o tempo sorteado acabar (auto-resolve)
         const buyersResolved = buyersAfterExpiry.map(b => {
           if (b.state !== 'thinking') return b;
-          if ((now - (b.thinkingStartedAt ?? now)) / 1_000 < 10) return b;
+          if ((now - (b.thinkingStartedAt ?? now)) / 1_000 < (b.thinkDuration ?? 10)) return b;
           if (!b.targetCarInstanceId || b.playerOffer === undefined)
             return { ...b, state: 'rejected' as const };
           return b;
@@ -717,6 +717,7 @@ export function useCarGameLogic() {
               ...b,
               state: 'thinking' as const,
               thinkingStartedAt: Date.now(),
+              thinkDuration: Math.floor(Math.random() * 8) + 3, // 3–10 s aleatório
               playerOffer: askingPrice,
               playerIncludedTradeIn: includeTradeIn && !!b.tradeInCar,
               playerTradeInValuation: effectiveTradeInValuation,
