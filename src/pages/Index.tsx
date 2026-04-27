@@ -28,7 +28,6 @@ const Index = () => {
     if (!loading && !user) navigate('/auth');
   }, [user, loading, navigate]);
 
-  // Fetch display name once user is known
   useEffect(() => {
     if (!user) return;
     supabase
@@ -94,16 +93,16 @@ const Index = () => {
     return result;
   };
 
-  // ── Buy at negotiated price (offer accepted) ─────────────────────
+  // ── Buy at negotiated price ──────────────────────────────────────
   const handleBuyAtPrice = async (car: GlobalCar, price: number) => {
     const result = await buyGlobal(car.id, playerName);
     if (result.success) {
       const addResult = addCarFromGlobal(car, price);
-      // Devolve a diferença de desconto (buyGlobal cobra asking price internamente via Supabase,
-      // mas o preço local é ajustado aqui)
       const diff = car.askingPrice - price;
       if (diff > 0) addMoney(diff);
-      addResult.success ? toast.success(`Comprado com ${Math.round((diff / car.askingPrice) * 100)}% de desconto! 🎉`) : toast.error(addResult.message);
+      addResult.success
+        ? toast.success(`Comprado com ${Math.round((diff / car.askingPrice) * 100)}% de desconto! 🎉`)
+        : toast.error(addResult.message);
     } else {
       toast.error(result.message);
     }
@@ -123,22 +122,27 @@ const Index = () => {
   };
 
   const handleRunDiagnosis = (carInstanceId: string) => {
-    const result = runDiagnosis(carInstanceId);
-    return result;
+    return runDiagnosis(carInstanceId);
   };
 
-  const handleSendOffer = (buyerId: string, carInstanceId: string, price: number, includeTradeIn: boolean) => {
-    const result = sendOfferToBuyer(buyerId, carInstanceId, price, includeTradeIn);
+  const handleSendOffer = (
+    buyerId: string,
+    carInstanceId: string,
+    price: number,
+    includeTradeIn: boolean,
+    playerTradeInValuation?: number,
+  ) => {
+    const result = sendOfferToBuyer(buyerId, carInstanceId, price, includeTradeIn, playerTradeInValuation);
     result.success ? toast.info(result.message) : toast.error(result.message);
     return result;
   };
 
   const handleResolveDecision = (buyerId: string) => {
     const result = resolveBuyerDecision(buyerId);
-    if (result.accepted)              toast.success(result.message);
-    else if (result.counterOffer)     toast.info(result.message);
-    else if (!result.success)         toast.error(result.message);
-    else                              toast.warning(result.message);
+    if (result.accepted)          toast.success(result.message);
+    else if (result.counterOffer) toast.info(result.message);
+    else if (!result.success)     toast.error(result.message);
+    else                          toast.warning(result.message);
     return result;
   };
 
@@ -160,9 +164,6 @@ const Index = () => {
   };
 
   // ── Publicação de ranking em background ─────────────────────────
-  // Roda independentemente de qual aba está aberta.
-  // Faz upsert sempre que o patrimônio muda (com debounce de 5 s)
-  // e também a cada 2 minutos como keep-alive.
   const lastPublishedPatrimonyRef = useRef<number | null>(null);
   const rankingDebounceRef        = useRef<ReturnType<typeof setTimeout> | null>(null);
 
@@ -207,7 +208,6 @@ const Index = () => {
         );
     };
 
-    // Debounce: aguarda 5 s sem mudanças antes de publicar
     if (rankingDebounceRef.current) clearTimeout(rankingDebounceRef.current);
     rankingDebounceRef.current = setTimeout(() => void publish(), 5_000);
 
@@ -217,11 +217,10 @@ const Index = () => {
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [gameState.money, gameState.garage, gameState.reputation?.level, gameLoaded, user]);
 
-  // Keep-alive: publica a cada 2 minutos mesmo sem mudanças
   useEffect(() => {
     if (!user || !gameLoaded) return;
     const interval = setInterval(() => {
-      lastPublishedPatrimonyRef.current = null; // força re-publish
+      lastPublishedPatrimonyRef.current = null;
     }, 2 * 60_000);
     return () => clearInterval(interval);
   }, [user, gameLoaded]);

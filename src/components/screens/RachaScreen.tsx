@@ -88,38 +88,157 @@ function fmtTimer(sec: number): string {
 const LAPS       = 3;
 const LAP_METERS = 1_000;
 
-// Geometria do oval SVG
-const TRK_CX = 155, TRK_CY = 87;
-const TRK_RX = 118, TRK_RY = 50;
-
-/** Cores por índice de piloto (posição final) */
+/** Cores por índice de piloto */
 const PLAYER_COLORS = ['#facc15', '#94a3b8', '#f97316', '#60a5fa'] as const;
 
+// ── Pista estilo F1 (segmentos matemáticos) ──────────────────────
+// Circuito definido como sequência de segmentos Linha / Bezier Cúbico.
+// viewBox: 360 × 210. Sentido horário. Largada no topo à esquerda.
+//
+//  [Reta Principal] → [T1 hairpin direita] → [Reta de volta]
+//  → [T2 curva média direita] → [Chicane] → [T3 hairpin esquerda]
+//  → [Seção rápida] → [Volta à reta principal]
+
+type Pt = [number, number];
+type Seg =
+  | { t: 'L'; p0: Pt; p1: Pt }
+  | { t: 'C'; p0: Pt; p1: Pt; p2: Pt; p3: Pt };
+
+function segPt(seg: Seg, u: number): Pt {
+  if (seg.t === 'L') {
+    return [
+      seg.p0[0] + (seg.p1[0] - seg.p0[0]) * u,
+      seg.p0[1] + (seg.p1[1] - seg.p0[1]) * u,
+    ];
+  }
+  const v = 1 - u;
+  return [
+    v*v*v*seg.p0[0] + 3*v*v*u*seg.p1[0] + 3*v*u*u*seg.p2[0] + u*u*u*seg.p3[0],
+    v*v*v*seg.p0[1] + 3*v*v*u*seg.p1[1] + 3*v*u*u*seg.p2[1] + u*u*u*seg.p3[1],
+  ];
+}
+
+function segLen(seg: Seg, steps = 24): number {
+  let len = 0, prev = segPt(seg, 0);
+  for (let i = 1; i <= steps; i++) {
+    const cur = segPt(seg, i / steps);
+    const dx = cur[0] - prev[0], dy = cur[1] - prev[1];
+    len += Math.sqrt(dx*dx + dy*dy);
+    prev = cur;
+  }
+  return len;
+}
+
+// Circuito F1 — 14 segmentos
+const F1_SEGS: Seg[] = [
+  // S0 — Reta principal (longa, esquerda→direita)
+  { t: 'L', p0: [78, 34],  p1: [248, 34] },
+  // S1 — Entrada T1 (curva direita suave)
+  { t: 'C', p0: [248, 34], p1: [278, 34],  p2: [292, 48],  p3: [292, 72] },
+  // S2 — T1 saída e reta de volta (direita, descendo)
+  { t: 'L', p0: [292, 72], p1: [292, 98] },
+  // S3 — T2 curva direita média (curva mais rápida)
+  { t: 'C', p0: [292, 98], p1: [292, 128], p2: [272, 140], p3: [244, 140] },
+  // S4 — Reta curta antes da chicane
+  { t: 'L', p0: [244, 140], p1: [208, 140] },
+  // S5 — Chicane: defletora esquerda
+  { t: 'C', p0: [208, 140], p1: [194, 140], p2: [188, 152], p3: [192, 163] },
+  // S6 — Chicane: defletora direita
+  { t: 'C', p0: [192, 163], p1: [196, 174], p2: [180, 178], p3: [165, 174] },
+  // S7 — Reta de fundo (direita→esquerda)
+  { t: 'L', p0: [165, 174], p1: [118, 174] },
+  // S8 — T3 hairpin esquerda lento
+  { t: 'C', p0: [118, 174], p1: [90, 174],  p2: [78, 160],  p3: [78, 140] },
+  // S9 — Reta de saída do hairpin (subindo)
+  { t: 'L', p0: [78, 140],  p1: [78, 112] },
+  // S10 — Kink rápido esquerda
+  { t: 'C', p0: [78, 112],  p1: [78, 90],   p2: [68, 78],   p3: [58, 70] },
+  // S11 — Curva longa esquerda subindo
+  { t: 'C', p0: [58, 70],   p1: [48, 62],   p2: [48, 44],   p3: [62, 38] },
+  // S12 — Retorno para a reta principal
+  { t: 'C', p0: [62, 38],   p1: [68, 34],   p2: [72, 34],   p3: [78, 34] },
+];
+
+// Tabela de lookup: arc-length uniform (600 pontos)
+const LOOKUP_N = 600;
+interface LookupEntry { x: number; y: number }
+
+function buildF1Lookup(): LookupEntry[] {
+  // 1) Calcular comprimento de cada segmento
+  const lens = F1_SEGS.map(s => segLen(s));
+  const total = lens.reduce((a, b) => a + b, 0);
+
+  // 2) Amostrar LOOKUP_N pontos uniformes ao longo do comprimento total
+  const pts: LookupEntry[] = [];
+  const steps = LOOKUP_N;
+
+  for (let i = 0; i <= steps; i++) {
+    const target = (i / steps) * total;
+    // Encontrar o segmento correspondente
+    let accum = 0;
+    for (let si = 0; si < F1_SEGS.length; si++) {
+      const sl = lens[si]!;
+      if (accum + sl >= target || si === F1_SEGS.length - 1) {
+        const u = sl > 0 ? Math.min(1, (target - accum) / sl) : 0;
+        const [x, y] = segPt(F1_SEGS[si]!, u);
+        pts.push({ x, y });
+        break;
+      }
+      accum += sl;
+    }
+  }
+  return pts;
+}
+
+// Calculado uma vez no load do módulo
+const F1_LOOKUP = buildF1Lookup();
+const TRACK_TOTAL_LEN = F1_SEGS.reduce((a, s) => a + segLen(s), 0);
+
+// Path SVG para desenhar a pista (usado só na renderização)
+const F1_PATH_D = [
+  'M 78 34 L 248 34',
+  'C 278 34 292 48 292 72',
+  'L 292 98',
+  'C 292 128 272 140 244 140',
+  'L 208 140',
+  'C 194 140 188 152 192 163',
+  'C 196 174 180 178 165 174',
+  'L 118 174',
+  'C 90 174 78 160 78 140',
+  'L 78 112',
+  'C 78 90 68 78 58 70',
+  'C 48 62 48 44 62 38',
+  'C 68 34 72 34 78 34 Z',
+].join(' ');
+
 /**
- * Converte uma fração de volta (0–1) em coordenadas {x,y} no SVG.
- * Sentido horário, começando no topo (linha de largada).
+ * Converte fração de volta (0-1) em {x,y} no SVG usando lookup table.
+ * Determinístico e uniforme em velocidade visual.
  */
 function trackPt(lapFrac: number): { x: number; y: number } {
   const frac = ((lapFrac % 1) + 1) % 1;
-  const θ    = -Math.PI / 2 + frac * 2 * Math.PI;
-  return {
-    x: TRK_CX + TRK_RX * Math.cos(θ),
-    y: TRK_CY + TRK_RY * Math.sin(θ),
-  };
+  const idx  = Math.round(frac * LOOKUP_N);
+  return F1_LOOKUP[Math.min(idx, LOOKUP_N)] ?? { x: 165, y: 100 };
 }
 
 /**
- * Ruído sinusoidal para simular ultrapassagens.
- * Amplitude: ≈ ±1. Funde suavemente a 0 conforme t → 0.6.
+ * Ruído sinusoidal REDUZIDO para simular ultrapassagens leves.
+ * Amplitude: ≈ ±0.5 (bem menor que antes).
+ * Funde suavemente a 0 conforme t → 0.55.
  */
 function racingNoise(t: number, seed: number): number {
-  const fade = Math.max(0, 1 - t * 1.7);
+  const fade = Math.max(0, 1 - t * 1.82);
   return (
-    Math.sin(t * 9.3  + seed * 6.1) * 0.40 +
-    Math.sin(t * 5.7  + seed * 3.4) * 0.35 +
-    Math.sin(t * 14.1 + seed * 8.7) * 0.25
+    Math.sin(t * 7.1  + seed * 5.3) * 0.55 +
+    Math.sin(t * 13.4 + seed * 8.9) * 0.45
   ) * fade;
 }
+
+// Posição S/F (linha de largada) — ponto 5% na reta principal
+const SF_PT = trackPt(0.03);
+// Setores: S1 = 33%, S2 = 66%
+const S1_PT = trackPt(0.33);
+const S2_PT = trackPt(0.66);
 
 // ── Componente principal ─────────────────────────────────────────
 export function RachaScreen({ gameState, onSpendMoney, onAddMoney, onRaceWon }: RachaScreenProps) {
@@ -564,7 +683,7 @@ function LobbyCard({
 }
 
 // ══════════════════════════════════════════════════════════════════
-// TrackSVG — pista oval com carros animados
+// TrackSVG — pista estilo F1 com carros animados
 // ══════════════════════════════════════════════════════════════════
 interface TrackSVGProps {
   players:  RacePlayerAnim[];
@@ -573,9 +692,30 @@ interface TrackSVGProps {
   myUserId: string | null;
 }
 
-function TrackSVG({ players, lapProgs, posMaps, myUserId }: TrackSVGProps) {
-  const sfPt = trackPt(0);
+// Bordas laterais da pista (offset ±12px do centro)
+const TRACK_OUTER_D = [
+  'M 78 22 L 248 22',
+  'C 286 22 304 40 304 72 L 304 98',
+  'C 304 134 280 152 244 152 L 208 152',
+  'C 190 152 174 164 178 177',
+  'C 182 190 162 194 147 190 L 118 186',
+  'C 82 186 66 168 66 140 L 66 112',
+  'C 66 84 55 70 45 62',
+  'C 34 54 34 36 50 28 C 56 24 66 22 78 22 Z',
+].join(' ');
 
+const TRACK_INNER_D = [
+  'M 78 46 L 248 46',
+  'C 270 46 280 56 280 72 L 280 98',
+  'C 280 122 264 128 244 128 L 208 128',
+  'C 198 128 202 140 206 149',
+  'C 210 158 198 162 183 158 L 118 162',
+  'C 98 162 90 152 90 140 L 90 112',
+  'C 90 96 81 86 71 78',
+  'C 62 70 62 52 74 48 C 76 46 77 46 78 46 Z',
+].join(' ');
+
+function TrackSVG({ players, lapProgs, posMaps, myUserId }: TrackSVGProps) {
   // Z-ordering: carros mais baixos no SVG (y maior) ficam na frente
   const zSorted = [...players].sort((a, b) => {
     const ya = trackPt((lapProgs[a.userId] ?? 0) % 1).y;
@@ -583,75 +723,102 @@ function TrackSVG({ players, lapProgs, posMaps, myUserId }: TrackSVGProps) {
     return ya - yb;
   });
 
+  // Kerbs nas apexes principais (decoração de corrida)
+  const kerbPts = [
+    trackPt(0.12), // T1 hairpin
+    trackPt(0.25), // T2
+    trackPt(0.42), // chicane
+    trackPt(0.60), // T3 hairpin
+    trackPt(0.82), // kink
+  ];
+
   return (
-    <svg viewBox="0 0 310 178" className="w-full select-none" style={{ maxHeight: 200 }}>
-      {/* Fundo */}
-      <rect width={310} height={178} fill="#111827" rx={12} />
+    <svg viewBox="0 0 360 210" className="w-full select-none" style={{ maxHeight: 220 }}>
+      {/* Fundo grama */}
+      <rect width={360} height={210} fill="#0f1a0f" rx={14} />
 
-      {/* Área externa da pista */}
-      <ellipse cx={TRK_CX} cy={TRK_CY} rx={TRK_RX + 16} ry={TRK_RY + 16} fill="#1c1917" />
+      {/* Zona gramada interna */}
+      <path d={TRACK_OUTER_D} fill="#1a3a1a" opacity={0.8} />
 
-      {/* Asfalto */}
-      <ellipse cx={TRK_CX} cy={TRK_CY} rx={TRK_RX} ry={TRK_RY}
-        fill="none" stroke="#374151" strokeWidth={28} />
+      {/* Asfalto (entre outer e inner) */}
+      <path d={F1_PATH_D} fill="none" stroke="#3d4451" strokeWidth={26} />
 
-      {/* Gramado interno */}
-      <ellipse cx={TRK_CX} cy={TRK_CY} rx={TRK_RX - 16} ry={TRK_RY - 16}
-        fill="#14532d" opacity={0.65} />
+      {/* Asfalto central mais escuro */}
+      <path d={F1_PATH_D} fill="none" stroke="#2e3340" strokeWidth={22} />
 
-      {/* Bordas brancas */}
-      <ellipse cx={TRK_CX} cy={TRK_CY} rx={TRK_RX + 15} ry={TRK_RY + 15}
-        fill="none" stroke="white" strokeWidth={1.2} opacity={0.2} />
-      <ellipse cx={TRK_CX} cy={TRK_CY} rx={TRK_RX - 15} ry={TRK_RY - 15}
-        fill="none" stroke="white" strokeWidth={1.2} opacity={0.2} />
+      {/* Gramado interno claro */}
+      <path d={TRACK_INNER_D} fill="#163016" opacity={0.9} />
 
-      {/* Faixa central tracejada */}
-      <ellipse cx={TRK_CX} cy={TRK_CY} rx={TRK_RX} ry={TRK_RY}
-        fill="none" stroke="#6b7280" strokeWidth={0.8} strokeDasharray="10 8" opacity={0.35} />
+      {/* Bordas da pista */}
+      <path d={F1_PATH_D} fill="none" stroke="#1a1f2e" strokeWidth={28}
+        strokeDasharray="1 0" opacity={0} />
+      {/* Linha branca externa */}
+      <path d={F1_PATH_D} fill="none" stroke="white" strokeWidth={27}
+        strokeOpacity={0.12} />
+      {/* Linha branca interna */}
+      <path d={F1_PATH_D} fill="none" stroke="white" strokeWidth={17}
+        strokeOpacity={0} />
+
+      {/* Faixa de asfalto visível */}
+      <path d={F1_PATH_D} fill="none" stroke="#4a5160" strokeWidth={24} />
+      <path d={F1_PATH_D} fill="none" stroke="white" strokeWidth={24.5}
+        strokeOpacity={0.07} />
+      <path d={F1_PATH_D} fill="none" stroke="#374151" strokeWidth={23} />
+
+      {/* Linha central tracejada branca */}
+      <path d={F1_PATH_D} fill="none" stroke="rgba(255,255,255,0.18)"
+        strokeWidth={0.8} strokeDasharray="12 10" />
+
+      {/* Bordas brancas da pista */}
+      <path d={F1_PATH_D} fill="none" stroke="white" strokeWidth={26}
+        strokeOpacity={0.15} />
+
+      {/* Kerbs nas apexes (listras vermelhas/brancas) */}
+      {kerbPts.map((pt, i) => (
+        <g key={i}>
+          <rect x={pt.x - 5} y={pt.y - 3} width={10} height={6}
+            fill={i % 2 === 0 ? '#dc2626' : '#ffffff'}
+            opacity={0.7} rx={1}
+            transform={`rotate(${i * 30}, ${pt.x}, ${pt.y})`} />
+        </g>
+      ))}
 
       {/* Marcadores de setor S1 / S2 */}
-      {([0.333, 0.667] as const).map((frac, i) => {
-        const pt = trackPt(frac);
-        return (
-          <g key={i}>
-            <circle cx={pt.x} cy={pt.y} r={3}
-              fill="none" stroke="#6b7280" strokeWidth={1.2} opacity={0.5} />
-            <text x={pt.x + 5} y={pt.y + 3} fontSize={5.5} fill="#6b7280" opacity={0.6}>
-              S{i + 1}
-            </text>
-          </g>
-        );
-      })}
+      {[{ pt: S1_PT, label: 'S1', color: '#22c55e' },
+        { pt: S2_PT, label: 'S2', color: '#f59e0b' }].map(({ pt, label, color }) => (
+        <g key={label}>
+          <line x1={pt.x - 5} y1={pt.y - 5} x2={pt.x + 5} y2={pt.y + 5}
+            stroke={color} strokeWidth={2.5} opacity={0.8} />
+          <line x1={pt.x + 5} y1={pt.y - 5} x2={pt.x - 5} y2={pt.y + 5}
+            stroke={color} strokeWidth={2.5} opacity={0.8} />
+          <text x={pt.x + 8} y={pt.y + 4} fontSize={6} fill={color}
+            fontWeight="bold" opacity={0.9}>{label}</text>
+        </g>
+      ))}
 
-      {/* Linha de Largada / Chegada (xadrez) */}
-      <line
-        x1={sfPt.x} y1={TRK_CY - TRK_RY - 15}
-        x2={sfPt.x} y2={TRK_CY - TRK_RY + 15}
-        stroke="white" strokeWidth={2.5} opacity={0.85}
-      />
+      {/* Linha de Largada/Chegada (xadrez) */}
       {[0, 1, 2, 3].map(i => (
         <rect key={i}
-          x={sfPt.x - 1.5} y={TRK_CY - TRK_RY - 15 + i * 7.5}
-          width={3} height={3.5}
-          fill={i % 2 === 0 ? 'black' : 'white'} opacity={0.7}
-        />
+          x={SF_PT.x - 1.5} y={SF_PT.y - 8 + i * 4}
+          width={3} height={4}
+          fill={i % 2 === 0 ? '#000' : '#fff'} opacity={0.85} />
       ))}
-      <text x={sfPt.x + 7} y={TRK_CY - TRK_RY - 5}
-        fontSize={6} fill="#facc15" fontWeight="bold" opacity={0.9}>
-        S/F
+      <text x={SF_PT.x + 6} y={SF_PT.y - 4}
+        fontSize={5.5} fill="#facc15" fontWeight="bold" opacity={0.95}>S/F</text>
+
+      {/* Nome do circuito */}
+      <text x={180} y={100} textAnchor="middle"
+        fontSize={7.5} fill="#6b7280" fontWeight="bold" letterSpacing={1.5} opacity={0.6}>
+        CIRCUITO · {LAPS}V · {LAP_METERS * LAPS / 1000}KM
       </text>
 
-      {/* Texto central */}
-      <text x={TRK_CX} y={TRK_CY - 5} textAnchor="middle"
-        fontSize={8} fill="#9ca3af" fontWeight="bold" letterSpacing={1}>
-        {LAPS} VOLTAS
-      </text>
-      <text x={TRK_CX} y={TRK_CY + 7} textAnchor="middle"
-        fontSize={7} fill="#6b7280">
-        {LAP_METERS * LAPS / 1000}km
+      {/* Total length info */}
+      <text x={180} y={112} textAnchor="middle"
+        fontSize={5.5} fill="#4b5563" opacity={0.5}>
+        {Math.round(TRACK_TOTAL_LEN)}m SVG · F1-Style
       </text>
 
-      {/* Carros — z-ordenados por Y */}
+      {/* ── Carros — z-ordenados por Y ────────────────────────────── */}
       {zSorted.map(p => {
         const pIdx   = players.indexOf(p);
         const prog   = lapProgs[p.userId] ?? 0;
@@ -663,31 +830,32 @@ function TrackSVG({ players, lapProgs, posMaps, myUserId }: TrackSVGProps) {
 
         return (
           <g key={p.userId}>
+            {/* Halo do jogador */}
             {isMe && (
-              <circle cx={pt.x} cy={pt.y} r={15} fill={color} opacity={0.12} />
+              <circle cx={pt.x} cy={pt.y} r={14} fill={color} opacity={0.15} />
             )}
             {/* Sombra */}
-            <circle cx={pt.x + 1} cy={pt.y + 2} r={isMe ? 9 : 8}
-              fill="black" opacity={0.3} />
-            {/* Círculo */}
-            <circle cx={pt.x} cy={pt.y} r={isMe ? 9 : 8}
+            <circle cx={pt.x + 1} cy={pt.y + 1.5} r={isMe ? 8.5 : 7.5}
+              fill="black" opacity={0.4} />
+            {/* Círculo do carro */}
+            <circle cx={pt.x} cy={pt.y} r={isMe ? 8.5 : 7.5}
               fill={color} opacity={0.95}
               stroke={isMe ? 'white' : '#111827'}
-              strokeWidth={isMe ? 1.8 : 1.2}
+              strokeWidth={isMe ? 2 : 1.2}
             />
-            {/* Emoji do carro */}
-            <text x={pt.x} y={pt.y + 4} textAnchor="middle"
-              fontSize={isMe ? 10 : 9} style={{ userSelect: 'none' }}>
+            {/* Emoji */}
+            <text x={pt.x} y={pt.y + 3.5} textAnchor="middle"
+              fontSize={isMe ? 9 : 8} style={{ userSelect: 'none' }}>
               {p.carIcon}
             </text>
             {/* Volta */}
-            <text x={pt.x + (isMe ? 13 : 11)} y={pt.y - 9}
-              fontSize={6} fill={color} fontWeight="bold" opacity={0.95}>
+            <text x={pt.x + (isMe ? 12 : 10)} y={pt.y - 8}
+              fontSize={5.5} fill={color} fontWeight="bold" opacity={0.95}>
               V{lapNum}
             </text>
-            {/* Posição visual */}
-            <text x={pt.x - (isMe ? 13 : 11)} y={pt.y - 9}
-              fontSize={6} fill="white" fontWeight="bold" opacity={0.7}>
+            {/* Posição */}
+            <text x={pt.x - (isMe ? 12 : 10)} y={pt.y - 8}
+              fontSize={5.5} fill="white" fontWeight="bold" opacity={0.75}>
               {visPos}°
             </text>
           </g>
@@ -749,13 +917,14 @@ function RacingView({
     [players],
   );
 
-  // Amplitude de ruído: maior para carros com score próximo ao vencedor
+  // Amplitude de ruído REDUZIDA: mais realista, menos aleatoriedade
+  // amp ∈ [0.02, 0.08]: carros com IGP similar oscilam um pouco
+  // Carros muito diferentes (diff > 15 IGP) praticamente não se ultrapassam
   const noiseAmps = useMemo(() => {
     const winScore = winner?.score ?? 60;
     return players.map(p => {
       const diff = Math.abs(p.score - winScore);
-      // amp ∈ [0.04, 0.13]: carros similares oscilam mais
-      return Math.max(0.04, 0.13 - diff * 0.004);
+      return Math.max(0.02, 0.08 - diff * 0.004);
     });
   }, [players, winner]);
 

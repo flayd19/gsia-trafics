@@ -233,20 +233,48 @@ function rawToWeight(kg: number): number {
   return Math.round(Math.min(100, Math.max(0, (kg - 800) / (2300 - 800) * 100)));
 }
 
-// ── IGP ──────────────────────────────────────────────────────────
-function calcIgp(s: Omit<PerformanceStats, 'igp'>): number {
-  const raw =
-    s.topSpeed      * 0.20 +
-    s.acceleration  * 0.20 +
-    s.power         * 0.15 +
-    s.torque        * 0.10 +
-    s.aerodynamics  * 0.10 +
-    s.stability     * 0.10 +
-    s.grip          * 0.10 +
-    s.gearShift     * 0.05;
+// ── IGP com física realista para pista estilo F1 ─────────────────
+// Circuito: reta longa + hairpin + chicane + curvas médias
+// Pesos refletem o impacto de cada atributo no tempo de volta:
+//   • Reta longa       → velocidade de ponta + potência
+//   • Saída de curvas  → aceleração + torque + tração
+//   • Chicane / curva  → grip + câmbio rápido + aerodinâmica
+//   • Hairpin          → grip + estabilidade
+//   • Geral            → peso é penalidade universal
+function calcIgp(
+  s: Omit<PerformanceStats, 'igp'>,
+  condition = 100,
+): number {
+  // Bônus de tração no circuito
+  const tractionBonus =
+    s.traction === 'AWD' ? 3.5 :
+    s.traction === 'RWD' ? 1.5 : 0;
 
-  const weightPenalty = (s.weight / 100) * 0.10;
-  const igp = raw * (1 - weightPenalty);
+  // Setores do circuito (cada setor tem pesos próprios)
+  const straightSector  = s.topSpeed * 0.60 + s.power * 0.40;                         // Reta principal
+  const accelSector     = s.acceleration * 0.65 + s.torque * 0.35;                     // Saídas de curva
+  const chicSector      = s.aerodynamics * 0.40 + s.grip * 0.35 + s.gearShift * 0.25; // Chicane/setor técnico
+  const hairpinSector   = s.grip * 0.50 + s.stability * 0.30 + s.torque * 0.20;       // Hairpin
+
+  // Peso dos setores na volta total:
+  const raw =
+    straightSector  * 0.27 +
+    accelSector     * 0.27 +
+    chicSector      * 0.20 +
+    hairpinSector   * 0.14 +
+    s.aerodynamics  * 0.06 +
+    s.stability     * 0.04 +
+    s.gearShift     * 0.02 +
+    tractionBonus;
+
+  // Penalidade de peso: carro mais pesado perde até 15% de performance nas curvas
+  const weightPenalty = (s.weight / 100) * 0.15;
+
+  // Fator de condição do motor: degrada a performance física progressivamente
+  // 100% condição → 1.00x | 50% → 0.88x | 20% → 0.79x
+  const condFactor = 0.73 + (Math.max(0, Math.min(100, condition)) / 100) * 0.27;
+
+  const igp = raw * (1 - weightPenalty) * condFactor;
   return Math.round(Math.min(99, Math.max(1, igp)));
 }
 
@@ -328,11 +356,11 @@ export function generateBasePerformance(car: OwnedCar): PerformanceStats {
 
   const traction = tractionFor(category, car.fipePrice);
 
-  // ── Variação de performance por instância (±15%) ─────────────────
-  // Dois carros do mesmo modelo podem ter até 30% de diferença de desempenho.
+  // ── Variação de performance por instância (±5%) ──────────────────
+  // Pequena variação para dar personalidade ao carro sem ser injusto.
   // O seed usa instanceId independente do modelId para garantir determinismo.
   const varRng = seededRng(car.instanceId + '_var');
-  const variation = 0.85 + varRng() * 0.30; // 0.85 → 1.15
+  const variation = 0.95 + varRng() * 0.10; // 0.95 → 1.05
 
   const vary = (v: number) => clamp(Math.round(v * variation));
 
@@ -356,7 +384,8 @@ export function generateBasePerformance(car: OwnedCar): PerformanceStats {
     _engineType: engineType,
   };
 
-  return { ...stats, igp: calcIgp(stats) };
+  // Passa condição para calcIgp: carro em mau estado perde performance
+  return { ...stats, igp: calcIgp(stats, car.condition) };
 }
 
 // ── Aplica tuning ────────────────────────────────────────────────
@@ -469,7 +498,8 @@ export function applyTuneUpgrades(base: PerformanceStats, upgrades: TuneUpgrade[
     }
   }
 
-  return { ...s, igp: calcIgp(s) };
+  // Após tunagem, recalcula com condição preservada (upgrades não alteram condição)
+  return { ...s, igp: calcIgp(s, 100) };
 }
 
 // ── Custo do tuning ──────────────────────────────────────────────
