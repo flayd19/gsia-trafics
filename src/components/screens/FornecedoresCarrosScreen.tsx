@@ -2,7 +2,7 @@
 // FornecedoresCarrosScreen — Marketplace global compartilhado
 // Todos os jogadores veem os mesmos carros.
 // Quando alguém compra primeiro, o carro fica "Vendido para [nome]".
-// Inventário renovado a cada 30 min.
+// Inventário renovado a cada 24h.
 // =====================================================================
 import { useState, useMemo } from 'react';
 import { createPortal } from 'react-dom';
@@ -541,7 +541,10 @@ export function FornecedoresCarrosScreen({
               {!loading && minsLeft != null && isOnline && (
                 <div className="flex items-center gap-1 px-2 py-1 rounded-full bg-muted text-[10px] font-semibold text-muted-foreground">
                   <Clock size={10} />
-                  <span>{minsLeft}min</span>
+                  <span>{minsLeft >= 60
+                    ? `${Math.floor(minsLeft / 60)}h${minsLeft % 60 > 0 ? ` ${minsLeft % 60}m` : ''}`
+                    : `${minsLeft}min`}
+                  </span>
                 </div>
               )}
               <button

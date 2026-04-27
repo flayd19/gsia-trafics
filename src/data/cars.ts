@@ -2288,7 +2288,7 @@ function pickModels(pool: CarModel[], count: number): CarModel[] {
 }
 
 /**
- * Gera o inventário do mercado global para um ciclo de 30 min.
+ * Gera o inventário do mercado global para um ciclo de 24h.
  *
  * Distribuição por ciclo:
  *   • Total: 500–600 veículos (aleatório)

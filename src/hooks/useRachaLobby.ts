@@ -131,6 +131,9 @@ export function useRachaLobby({ onSpendMoney, onAddMoney, onRaceWon }: UseRachaL
   const listChannelRef  = useRef<unknown>(null);
   const successTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const subDebounceRef  = useRef<ReturnType<typeof setTimeout> | null>(null);
+  // Prêmio pendente — aplicado somente após a animação terminar (finishRace)
+  const pendingPayoutRef = useRef<number>(0);
+  const pendingIsWinRef  = useRef<boolean>(false);
 
   useEffect(() => { onAddMoneyRef.current   = onAddMoney;   }, [onAddMoney]);
   useEffect(() => { onSpendMoneyRef.current = onSpendMoney; }, [onSpendMoney]);
@@ -258,19 +261,14 @@ export function useRachaLobby({ onSpendMoney, onAddMoney, onRaceWon }: UseRachaL
     const players  = lobbyResultsToPlayers(lobby, uid);
     const myEntry  = players.find(p => p.isMe);
 
-    // Marca como coletado ANTES de aplicar o prêmio (evita re-entrada)
+    // Marca como coletado ANTES de qualquer efeito (evita re-entrada)
     markCollected(uid, lobby.id);
 
-    // Aplica prêmio
-    if (myEntry && myEntry.payout > 0) {
-      onAddMoneyRef.current(myEntry.payout);
-    }
-
-    // Notifica vitória para rastrear races_won no perfil
+    // Guarda prêmio e vitória para aplicar SOMENTE após a animação terminar
     const myPos = myEntry?.position ?? 0;
-    if (myPos === 1) {
-      onRaceWonRef.current?.();
-    }
+    pendingPayoutRef.current = myEntry?.payout ?? 0;
+    pendingIsWinRef.current  = myPos === 1;
+
     setPendingResults(prev => prev.filter(l => l.id !== lobby.id));
 
     // Histórico local
@@ -304,7 +302,16 @@ export function useRachaLobby({ onSpendMoney, onAddMoney, onRaceWon }: UseRachaL
   }, []);
 
   // ── Transição racing → result (chamado pelo componente após 20s) ──
+  // Aplica o prêmio aqui, só depois que a animação de corrida terminou.
   const finishRace = useCallback(() => {
+    if (pendingPayoutRef.current > 0) {
+      onAddMoneyRef.current(pendingPayoutRef.current);
+      pendingPayoutRef.current = 0;
+    }
+    if (pendingIsWinRef.current) {
+      onRaceWonRef.current?.();
+      pendingIsWinRef.current = false;
+    }
     setState('result');
   }, []);
 
@@ -392,7 +399,8 @@ export function useRachaLobby({ onSpendMoney, onAddMoney, onRaceWon }: UseRachaL
       const updated = rowToLobby(data as Record<string, unknown>);
 
       if (updated.status === 'finished') {
-        // Lobby preencheu agora — coleta imediatamente
+        // Lobby preencheu agora — remove da lista e inicia animação
+        void fetchLobbies(); // garante que lobby sai da lista imediatamente
         collectResult(updated);
       } else {
         // Ainda aguardando outros jogadores

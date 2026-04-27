@@ -40,7 +40,7 @@ interface MarketplaceRow {
   batch_id: number;
 }
 
-const REFRESH_MS = 30 * 60 * 1_000; // 30 min entre refreshes de inventario
+const REFRESH_MS = 24 * 60 * 60_000; // 24h entre refreshes de inventario
 const POLL_MS    =  5 * 60 * 1_000; // poll a cada 5 min (fallback p/ Realtime)
 const db = () => supabase as any;
 
