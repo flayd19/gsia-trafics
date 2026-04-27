@@ -19,7 +19,6 @@ interface ComprarScreenProps {
   errorMsg?: string | null;
   minsLeft: number | null;
   onBuyCar: (car: GlobalCar) => Promise<{ success: boolean; message: string }>;
-  onMakeOffer: (carId: string, value: number) => Promise<{ success: boolean; message: string; finalPrice?: number }>;
   onRefreshMarketplace: () => void | Promise<void>;
 
   // ── Mercado P2P ──────────────────────────────────────────────
@@ -37,7 +36,7 @@ export function ComprarScreen(props: ComprarScreenProps) {
   const {
     gameState,
     globalCars, loading, isOnline, errorMsg, minsLeft,
-    onBuyCar, onMakeOffer, onRefreshMarketplace,
+    onBuyCar, onRefreshMarketplace,
     onSpendMoney, onAddMoney, onAddToGarage, onSoldListing,
   } = props;
 
@@ -79,7 +78,6 @@ export function ComprarScreen(props: ComprarScreenProps) {
           errorMsg={errorMsg}
           minsLeft={minsLeft}
           onBuyCar={onBuyCar}
-          onMakeOffer={onMakeOffer}
           onRefreshMarketplace={onRefreshMarketplace}
         />
       ) : (

@@ -482,52 +482,6 @@ export function useCarGameLogic() {
     return { success: true, message: `${car.brand} ${car.model} adicionado à garagem!` };
   }, [saveGame]);
 
-  const makeOfferOnMarketplace = useCallback((carId: string, offerValue: number): { success: boolean; message: string } => {
-    const state = stateRef.current;
-    const car = state.marketplaceCars.find(c => c.id === carId);
-    if (!car)         return { success: false, message: 'Carro não encontrado.' };
-    if (offerValue <= 0) return { success: false, message: 'Oferta inválida.' };
-
-    const emptySlot = state.garage.find(s => s.unlocked && !s.car);
-    if (!emptySlot) return { success: false, message: 'Garagem cheia!' };
-
-    // Piso da oferta: 90 % do preço de listagem (que já reflete conditionValueFactor).
-    const minOffer = Math.round(car.askingPrice * 0.90);
-    if (offerValue < minOffer)
-      return { success: false, message: 'Vendedor recusou sua oferta.' };
-
-    if (state.money - offerValue < state.overdraftLimit)
-      return { success: false, message: 'Saldo insuficiente.' };
-
-    const owned: OwnedCar = {
-      instanceId: generateId(),
-      modelId: car.modelId, variantId: car.variantId,
-      fullName: `${car.brand} ${car.model} ${car.trim}`,
-      brand: car.brand, model: car.model, trim: car.trim,
-      year: car.year, icon: car.icon,
-      fipePrice: car.fipePrice, condition: car.condition,
-      purchasePrice: offerValue, purchasedAt: Date.now(),
-      completedRepairs: [],
-      attributes: generateAttributes(car.condition),
-    };
-
-    setGameState(prev => ({
-      ...prev,
-      money:           prev.money - offerValue,
-      garage:          prev.garage.map(s => s.id === emptySlot.id ? { ...s, car: owned } : s),
-      marketplaceCars: prev.marketplaceCars.filter(c => c.id !== carId),
-      totalCarsBought: (prev.totalCarsBought ?? 0) + 1,
-      totalSpent:      (prev.totalSpent ?? 0) + offerValue,
-    }));
-
-    setTimeout(() => void saveGame(), 400);
-    const discount = Math.round(((car.askingPrice - offerValue) / car.askingPrice) * 100);
-    const msg = discount > 0
-      ? `Desconto de ${discount}%! ${car.brand} ${car.model} por ${formatMoney(offerValue)}.`
-      : `Oferta aceita! ${car.brand} ${car.model} na garagem.`;
-    return { success: true, message: msg };
-  }, [saveGame]);
-
   const unlockGarageSlot = useCallback((slotId: number): { success: boolean; message: string } => {
     const state = stateRef.current;
     const slotDef = GARAGE_SLOTS.find(s => s.id === slotId);
@@ -790,24 +744,23 @@ export function useCarGameLogic() {
     const car         = slot.car;
     const playerOffer = buyer.playerOffer;
 
-    // ── Avaliação em 3 vias ──────────────────────────────────────────
-    // 1. Decisão probabilística baseada em condição e ratio de preço
+    // ── Avaliação: aceita, faz contraproposta ou rejeita ────────────
+    const buyerMax = calculateBuyerOffer(buyer, car.fipePrice, car.condition);
     const accepted = evaluatePlayerOffer(buyer, playerOffer, car.fipePrice, car.condition);
 
     if (!accepted) {
-      // 2. Não aceitou → decide entre contraoferta e rejeição
-      // buyerMax: valor que o comprador pagaria (base para a contraoferta)
-      const buyerMax = calculateBuyerOffer(buyer, car.fipePrice, car.condition);
+      // Contraproposta: só uma por negociação e apenas se oferta não estiver longe demais
+      const jaFezContra = buyer.state === 'countering' || buyer.counterOffer !== undefined;
+      const dentroDoRange = playerOffer <= buyerMax * COUNTER_OFFER_RATIO;
 
-      if (!buyer.counterOfferMade && playerOffer <= buyerMax * COUNTER_OFFER_RATIO) {
-        // ── Contraoferta: sempre abaixo do preço pedido pelo jogador ──
-        // Usa o menor entre buyerMax e 95% do preço pedido, garantindo desconto visível
-        const counterValue = Math.min(buyerMax, Math.round(playerOffer * 0.95));
+      if (!jaFezContra && dentroDoRange) {
+        // Contra = o máximo real que o comprador pagaria
+        const counterValue = buyerMax;
         setGameState(prev => ({
           ...prev,
           carBuyers: prev.carBuyers.map(b =>
             b.id === buyerId
-              ? { ...b, state: 'countering' as const, counterOffer: counterValue, counterOfferMade: true }
+              ? { ...b, state: 'countering' as const, counterOffer: counterValue }
               : b
           ),
         }));
@@ -819,7 +772,7 @@ export function useCarGameLogic() {
         };
       }
 
-      // ── Rejeição direta: preço muito alto ou já houve contraoferta ──
+      // ── Rejeição direta ──────────────────────────────────────────
       const slotIdx   = buyer.slotIndex ?? -1;
       const lockEpoch = currentCycleEpoch();
       setGameState(prev => {
@@ -888,15 +841,15 @@ export function useCarGameLogic() {
     return { success: true, accepted: true, message: `Venda confirmada! Lucro: ${formatMoney(profit)}` };
   }, [saveGame]);
 
-  // ── Resposta do jogador à contraoferta do comprador ───────────────
+  // ── Resposta do jogador à contraproposta do comprador ─────────────
   const resolveCounterOffer = useCallback((
     buyerId: string,
     accept: boolean,
-  ): { success: boolean; message: string; finalPrice?: number } => {
+  ): { success: boolean; message: string; accepted?: boolean; finalPrice?: number } => {
     const state = stateRef.current;
     const buyer = state.carBuyers.find(b => b.id === buyerId);
-    if (!buyer || buyer.state !== 'countering')
-      return { success: false, message: 'Nenhuma contraoferta pendente.' };
+    if (!buyer || buyer.state !== 'countering' || buyer.counterOffer === undefined)
+      return { success: false, message: 'Nenhuma contraproposta pendente.' };
 
     const slotIdx   = buyer.slotIndex ?? -1;
     const lockEpoch = currentCycleEpoch();
@@ -912,12 +865,12 @@ export function useCarGameLogic() {
           buyerSlotLocks: locks,
         };
       });
-      return { success: true, message: `${buyer.name} foi embora.` };
+      return { success: true, accepted: false, message: `${buyer.name} foi embora.` };
     }
 
-    // Jogador aceitou → conclui a venda pelo valor da contraoferta
-    if (!buyer.targetCarInstanceId || buyer.counterOffer === undefined)
-      return { success: false, message: 'Dados da contraoferta incompletos.' };
+    // Jogador aceitou → conclui venda pelo valor da contraproposta
+    if (!buyer.targetCarInstanceId)
+      return { success: false, message: 'Dados da contraproposta incompletos.' };
 
     const slot = state.garage.find(s => s.car?.instanceId === buyer.targetCarInstanceId);
     if (!slot?.car) {
@@ -963,7 +916,6 @@ export function useCarGameLogic() {
         ...prev,
         money:           prev.money + finalPrice,
         garage,
-        // Remove reparos órfãos do carro vendido
         activeRepairs:   prev.activeRepairs.filter(r => r.carInstanceId !== car.instanceId),
         carBuyers:       prev.carBuyers.map(b => b.id === buyerId ? { ...b, state: 'accepted' as const, finalPrice: counterPrice } : b),
         carSales:        [...prev.carSales, saleRecord],
@@ -976,7 +928,7 @@ export function useCarGameLogic() {
     });
 
     setTimeout(() => void saveGame(), 400);
-    return { success: true, message: `Contraoferta aceita! Lucro: ${formatMoney(profit)}`, finalPrice };
+    return { success: true, accepted: true, message: `Contraproposta aceita! Lucro: ${formatMoney(profit)}`, finalPrice };
   }, [saveGame]);
 
   const dismissBuyer = useCallback((buyerId: string) => {
@@ -1134,7 +1086,6 @@ export function useCarGameLogic() {
     garageCarCount,
 
     buyCarFromMarketplace,
-    makeOfferOnMarketplace,
     addCarFromGlobal,
     addOwnedCarToGarage,
     removeCarFromGarage,

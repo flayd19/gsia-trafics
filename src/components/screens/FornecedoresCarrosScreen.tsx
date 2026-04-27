@@ -6,7 +6,7 @@
 // =====================================================================
 import { useState, useMemo } from 'react';
 import { createPortal } from 'react-dom';
-import { RefreshCw, Search, X, Tag, CheckCircle, TrendingDown, TrendingUp, ChevronLeft, Clock } from 'lucide-react';
+import { RefreshCw, Search, X, CheckCircle, TrendingDown, TrendingUp, ChevronLeft, Clock } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import type { GameState, OwnedCar } from '@/types/game';
@@ -22,7 +22,6 @@ interface FornecedoresCarrosScreenProps {
   errorMsg?: string | null;
   minsLeft: number | null;
   onBuyCar: (car: GlobalCar) => Promise<{ success: boolean; message: string }>;
-  onMakeOffer: (carId: string, value: number) => Promise<{ success: boolean; message: string; finalPrice?: number }>;
   onRefreshMarketplace: () => void | Promise<void>;
 }
 
@@ -40,117 +39,22 @@ const CATEGORY_LABELS: Record<CarCategory, string> = {
   luxo:      '💎 Luxo',
 };
 
-// ── Painel de oferta ──────────────────────────────────────────────
-function OfferPanel({
-  car,
-  hasGarageSpace,
-  onOffer,
-  onClose,
-}: {
-  car: GlobalCar;
-  hasGarageSpace: boolean;
-  onOffer: (value: number) => void;
-  onClose: () => void;
-}) {
-  const [offerValue, setOfferValue] = useState('');
-
-  const parsed   = parseInt(offerValue.replace(/\D/g, '')) || 0;
-  const canSend  = parsed > 0;
-  const discount = parsed > 0 ? Math.round(((car.askingPrice - parsed) / car.askingPrice) * 100) : 0;
-
-  const handleOffer = () => {
-    if (canSend) onOffer(parsed);
-  };
-
-  return (
-    <div className="ios-surface rounded-[16px] p-4 space-y-4 border border-blue-500/20">
-      <div className="flex items-center justify-between">
-        <span className="text-[14px] font-bold text-foreground">💬 Fazer Proposta</span>
-        <button onClick={onClose} className="text-muted-foreground hover:text-foreground">
-          <X size={16} />
-        </button>
-      </div>
-
-      <div className="text-[12px] text-muted-foreground">
-        <div className="flex justify-between">
-          <span>Preço pedido:</span>
-          <span className="font-semibold text-foreground">{fmt(car.askingPrice)}</span>
-        </div>
-        <div className="mt-1 text-[11px] text-muted-foreground/70 italic">
-          O vendedor pode aceitar ou recusar dependendo da proposta.
-        </div>
-      </div>
-
-      <div className="space-y-2">
-        <Input
-          type="text"
-          inputMode="numeric"
-          pattern="[0-9]*"
-          placeholder="Digite sua proposta…"
-          value={offerValue}
-          onChange={e => setOfferValue(e.target.value.replace(/\D/g, ''))}
-          className="text-[15px] font-bold h-11"
-          autoFocus
-        />
-        {parsed > 0 && (
-          <div className="text-[11px] font-semibold text-center text-muted-foreground">
-            {discount > 0
-              ? `Desconto de ${discount}% sobre o preço pedido`
-              : discount < 0
-              ? `${Math.abs(discount)}% acima do preço pedido`
-              : 'Igual ao preço pedido'}
-          </div>
-        )}
-      </div>
-
-      {/* Botões rápidos */}
-      <div className="grid grid-cols-3 gap-2">
-        {[0.95, 0.90, 0.85].map(pct => (
-          <button
-            key={pct}
-            onClick={() => setOfferValue(String(Math.round(car.askingPrice * pct)))}
-            className="text-[11px] font-semibold bg-muted hover:bg-muted/80 rounded-[10px] py-2 px-1 transition-colors"
-          >
-            -{Math.round((1 - pct) * 100)}%<br />
-            <span className="text-muted-foreground">{fmt(car.askingPrice * pct)}</span>
-          </button>
-        ))}
-      </div>
-
-      <div className="grid grid-cols-2 gap-2">
-        <Button variant="outline" size="sm" onClick={onClose}>Cancelar</Button>
-        <Button
-          size="sm"
-          onClick={handleOffer}
-          disabled={!hasGarageSpace || !canSend}
-          className="bg-blue-600 hover:bg-blue-700 text-white"
-        >
-          Enviar proposta
-        </Button>
-      </div>
-    </div>
-  );
-}
-
 // ── Card de detalhe (abre ao clicar num card do grid) ─────────────
 function CarDetailSheet({
   car,
   canAfford,
   hasGarageSpace,
   onBuy,
-  onOffer,
   onClose,
 }: {
   car: GlobalCar;
   canAfford: boolean;
   hasGarageSpace: boolean;
   onBuy: () => void;
-  onOffer: (value: number) => void;
   onClose: () => void;
 }) {
-  const [showOfferPanel, setShowOfferPanel] = useState(false);
-  const [toast, setToast]                   = useState<{ msg: string; ok: boolean } | null>(null);
-  const [busy, setBusy]                     = useState(false);
+  const [toast, setToast] = useState<{ msg: string; ok: boolean } | null>(null);
+  const [busy, setBusy]   = useState(false);
 
   const label       = conditionLabel(car.condition);
   const colorClass  = conditionColor(car.condition);
@@ -164,12 +68,6 @@ function CarDetailSheet({
     setBusy(true);
     onBuy();
     setBusy(false);
-  };
-
-  const handleOffer = (value: number) => {
-    onOffer(value);
-    setShowOfferPanel(false);
-    setTimeout(() => setToast(null), 3500);
   };
 
   return (
@@ -343,54 +241,32 @@ function CarDetailSheet({
           </div>
         )}
 
-        {/* Painel de oferta */}
-        {!isSold && showOfferPanel && (
-          <OfferPanel
-            car={car}
-            hasGarageSpace={hasGarageSpace}
-            onOffer={handleOffer}
-            onClose={() => setShowOfferPanel(false)}
-          />
-        )}
       </div>
 
       {/* Barra de ação fixa no rodapé */}
-      {!showOfferPanel && (
-        <div
-          className="px-4 pb-6 pt-3 border-t border-border bg-background space-y-2"
-          style={{ paddingBottom: 'calc(1.5rem + var(--safe-bottom))' }}
-        >
-          {isSold ? (
-            <Button variant="outline" className="w-full h-12 text-[15px] font-bold" onClick={onClose}>
-              Fechar
-            </Button>
-          ) : (
-            <>
-              <Button
-                className="w-full h-12 text-[15px] font-bold gap-2"
-                disabled={!canAfford || !hasGarageSpace || busy}
-                onClick={handleBuy}
-              >
-                <CheckCircle size={16} />
-                {!hasGarageSpace
-                  ? 'Garagem cheia'
-                  : !canAfford
-                  ? 'Saldo insuficiente'
-                  : `Comprar por ${fmt(car.askingPrice)}`}
-              </Button>
-              <Button
-                variant="outline"
-                className="w-full h-11 text-[14px] gap-2 border-blue-500/40 text-blue-600 hover:bg-blue-50"
-                disabled={!hasGarageSpace || busy}
-                onClick={() => setShowOfferPanel(true)}
-              >
-                <Tag size={14} />
-                Fazer uma proposta
-              </Button>
-            </>
-          )}
-        </div>
-      )}
+      <div
+        className="px-4 pb-6 pt-3 border-t border-border bg-background"
+        style={{ paddingBottom: 'calc(1.5rem + var(--safe-bottom))' }}
+      >
+        {isSold ? (
+          <Button variant="outline" className="w-full h-12 text-[15px] font-bold" onClick={onClose}>
+            Fechar
+          </Button>
+        ) : (
+          <Button
+            className="w-full h-12 text-[15px] font-bold gap-2"
+            disabled={!canAfford || !hasGarageSpace || busy}
+            onClick={handleBuy}
+          >
+            <CheckCircle size={16} />
+            {!hasGarageSpace
+              ? 'Garagem cheia'
+              : !canAfford
+              ? 'Saldo insuficiente'
+              : `Comprar por ${fmt(car.askingPrice)}`}
+          </Button>
+        )}
+      </div>
     </div>
   );
 }
@@ -475,7 +351,6 @@ export function FornecedoresCarrosScreen({
   errorMsg,
   minsLeft,
   onBuyCar,
-  onMakeOffer,
   onRefreshMarketplace,
 }: FornecedoresCarrosScreenProps) {
   const [search, setSearch]         = useState('');
@@ -512,12 +387,6 @@ export function FornecedoresCarrosScreen({
 
   const handleBuy = (car: GlobalCar) => {
     void onBuyCar(car).then(result => {
-      if (result.success) setSelectedCar(null);
-    });
-  };
-
-  const handleOffer = (carId: string, value: number) => {
-    void onMakeOffer(carId, value).then(result => {
       if (result.success) setSelectedCar(null);
     });
   };
@@ -660,7 +529,6 @@ export function FornecedoresCarrosScreen({
           canAfford={gameState.money >= selectedCar.askingPrice}
           hasGarageSpace={hasGarageSpace}
           onBuy={() => handleBuy(selectedCar)}
-          onOffer={(value) => handleOffer(selectedCar.id, value)}
           onClose={() => setSelectedCar(null)}
         />,
         document.body

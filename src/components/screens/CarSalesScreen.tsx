@@ -24,7 +24,7 @@ interface CarSalesScreenProps {
     playerTradeInValuation?: number,
   ) => { success: boolean; message: string };
   onResolveDecision: (buyerId: string) => { success: boolean; accepted: boolean; message: string; finalPrice?: number; counterOffer?: number };
-  onResolveCounterOffer: (buyerId: string, accept: boolean) => { success: boolean; message: string; finalPrice?: number };
+  onResolveCounterOffer: (buyerId: string, accept: boolean) => { success: boolean; message: string; accepted?: boolean; finalPrice?: number };
   onDismissBuyer: (buyerId: string) => void;
 }
 
@@ -280,9 +280,11 @@ function BuyerCard({
 
   const handleTimeUp = () => {
     const result = onResolveDecision();
-    // Quando há contraoferta, buyer.state muda para 'countering' e o componente
-    // re-renderiza para esse estado — não usar setDecided para evitar conflito.
-    if (result && !result.counterOffer) setDecided(result);
+    if (!result) return;
+    // Se há contraproposta, o buyer.state muda para 'countering' e o componente
+    // re-renderiza para a UI de contra — NÃO definir decided para evitar conflito.
+    if (result.counterOffer !== undefined) return;
+    setDecided(result);
   };
 
   // ── estados terminais ────────────────────────────────────────────
@@ -314,50 +316,44 @@ function BuyerCard({
     );
   }
 
-  // ── Estado: contraoferta aguardando resposta do jogador ────────────
+  // ── Estado: contraproposta aguardando resposta do jogador ──────────
   if (buyer.state === 'countering' && buyer.counterOffer !== undefined) {
-    const counterAmt       = buyer.counterOffer;
-    const tradeInVal       = buyer.tradeInCar ? (tradeInValuation ?? buyer.tradeInValue ?? 0) : 0;
-    const cashAfterCounter = Math.max(0, counterAmt - tradeInVal);
+    const counterAmt  = buyer.counterOffer;
+    const tradeInVal  = buyer.tradeInCar ? (tradeInValuation ?? buyer.tradeInValue ?? 0) : 0;
+    const cashReceive = Math.max(0, counterAmt - tradeInVal);
     return (
       <div className="ios-surface rounded-[16px] p-4 space-y-4">
-        {/* Comprador info */}
         <div className="flex items-start gap-3">
           <div className="w-11 h-11 rounded-[14px] bg-amber-500/10 flex items-center justify-center text-2xl">
             {buyer.avatar}
           </div>
           <div className="flex-1 min-w-0">
             <div className="font-bold text-foreground text-[15px]">{buyer.name}</div>
-            <div className="text-[11px] text-amber-500 font-medium">💬 Fez uma contraoferta</div>
+            <div className="text-[11px] text-amber-500 font-medium">💬 Fez uma contraproposta</div>
           </div>
         </div>
 
-        {/* Contraoferta */}
-        <div className="bg-amber-500/10 border border-amber-500/20 rounded-[14px] px-4 py-3 space-y-1">
+        <div className="bg-amber-500/10 border border-amber-500/20 rounded-[14px] px-4 py-3 space-y-1.5">
           <div className="text-[10px] uppercase tracking-wider text-amber-500 font-semibold">
-            Contraoferta do comprador
+            Máximo que estou disposto a pagar
           </div>
-          <div className="text-[26px] font-bold text-foreground tabular-nums leading-tight">
+          <div className="text-[28px] font-black text-foreground tabular-nums leading-tight">
             {fmt(counterAmt)}
           </div>
-          <div className="text-[11px] text-muted-foreground">
-            Este é o máximo que estou disposto a pagar.
-          </div>
           {buyer.tradeInCar && tradeInVal > 0 && (
-            <div className="pt-1 border-t border-amber-500/20 flex justify-between text-[11px]">
-              <span className="text-muted-foreground">Troca ({buyer.tradeInCar.brand} {buyer.tradeInCar.model})</span>
-              <span className="text-blue-500 font-semibold">− {fmt(tradeInVal)}</span>
-            </div>
-          )}
-          {(tradeInVal > 0) && (
-            <div className="flex justify-between text-[12px] font-bold">
-              <span className="text-muted-foreground">Você recebe em dinheiro</span>
-              <span className="text-emerald-500">{fmt(cashAfterCounter)}</span>
+            <div className="pt-1 border-t border-amber-500/20 space-y-0.5">
+              <div className="flex justify-between text-[11px]">
+                <span className="text-muted-foreground">Troca — {buyer.tradeInCar.brand} {buyer.tradeInCar.model}</span>
+                <span className="text-blue-400 font-semibold">−{fmt(tradeInVal)}</span>
+              </div>
+              <div className="flex justify-between text-[12px] font-bold">
+                <span className="text-muted-foreground">Você recebe em dinheiro</span>
+                <span className="text-emerald-500">{fmt(cashReceive)}</span>
+              </div>
             </div>
           )}
         </div>
 
-        {/* Ações */}
         <div className="grid grid-cols-2 gap-2">
           <button
             type="button"
@@ -784,7 +780,6 @@ export function CarSalesScreen({
                 }
                 onResolveDecision={() => {
                   const result = onResolveDecision(buyer.id);
-                  // Só propaga se a decisão foi bem-sucedida (evita setDecided com erro)
                   if (result.success && 'accepted' in result) return result;
                 }}
                 onResolveCounterOffer={(accept) => onResolveCounterOffer(buyer.id, accept)}

@@ -223,38 +223,6 @@ export function useGlobalMarketplace() {
     }
   }, []);
 
-  // -- Negociacao (client-side) + compra atomica ----------------------------
-  const makeOfferGlobal = useCallback(async (
-    carId: string,
-    offerValue: number,
-    buyerName: string,
-    playerMoney: number,
-    overdraftLimit: number
-  ): Promise<{ success: boolean; message: string; finalPrice?: number }> => {
-    const car = listingsRef.current.find(l => l.id === carId);
-    if (!car)                  return { success: false, message: 'Carro nao encontrado.' };
-    if (car.status === 'sold') return { success: false, message: 'Este carro ja foi vendido por outro jogador!' };
-    if (offerValue <= 0)       return { success: false, message: 'Oferta invalida.' };
-
-    // Piso da oferta: 90% do preco de listagem
-    const minOffer = Math.round(car.askingPrice * 0.90);
-    if (offerValue < minOffer)
-      return { success: false, message: 'Vendedor recusou sua oferta.' };
-
-    if (playerMoney - offerValue < overdraftLimit)
-      return { success: false, message: 'Saldo insuficiente para esta oferta.' };
-
-    const result = await buyGlobal(carId, buyerName);
-    if (!result.success) return result;
-
-    const discount = Math.round(((car.askingPrice - offerValue) / car.askingPrice) * 100);
-    const msg = discount > 0
-      ? `Desconto de ${discount}%! ${car.brand} ${car.model} por ${fmt(offerValue)}.`
-      : `Oferta aceita! ${car.brand} ${car.model} adicionado a garagem.`;
-
-    return { success: true, message: msg, finalPrice: offerValue };
-  }, [buyGlobal]);
-
   // -- Countdown (atualiza a cada 30s) --------------------------------------
   useEffect(() => {
     const tick = () => {
@@ -314,6 +282,5 @@ export function useGlobalMarketplace() {
     minsLeft,
     loadMarketplace,
     buyGlobal,
-    makeOfferGlobal,
   };
 }

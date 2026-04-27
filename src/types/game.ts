@@ -140,16 +140,8 @@ export interface CarBuyerNPC {
   playerTradeInValuation?: number;
   /** Resultado final */
   finalPrice?: number;
-  /**
-   * Valor da contraoferta gerada pelo comprador (apenas quando state = 'countering').
-   * Representa o máximo real que o comprador está disposto a pagar.
-   */
+  /** Valor máximo que o comprador aceita pagar — preenchido quando state='countering' */
   counterOffer?: number;
-  /**
-   * Flag que impede loops: apenas 1 contraoferta por negociação.
-   * Após emitir a contraoferta, rejeições seguintes são diretas.
-   */
-  counterOfferMade?: boolean;
   targetCarInstanceId?: string; // qual carro da garagem quer comprar
 
   // ── Sistema de ciclos (30 min) ──────────────────────────────────

@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useAuth } from '@/hooks/useAuth';
 import { GameLayout } from '@/components/GameLayout';
@@ -14,6 +14,7 @@ import { useCarGameLogic } from '@/hooks/useCarGameLogic';
 import type { TuneUpgrade } from '@/types/performance';
 import { useGlobalMarketplace, type GlobalCar } from '@/hooks/useGlobalMarketplace';
 import { supabase } from '@/integrations/supabase/client';
+import { conditionValueFactor } from '@/data/cars';
 import { toast } from 'sonner';
 
 const Index = () => {
@@ -78,7 +79,6 @@ const Index = () => {
     minsLeft,
     loadMarketplace,
     buyGlobal,
-    makeOfferGlobal,
     errorMsg: marketplaceError,
   } = useGlobalMarketplace();
 
@@ -89,27 +89,6 @@ const Index = () => {
       const addResult = addCarFromGlobal(car, car.askingPrice);
       addResult.success ? toast.success(addResult.message) : toast.error(addResult.message);
     } else {
-      toast.error(result.message);
-    }
-    return result;
-  };
-
-  // ── Make offer / negotiate ───────────────────────────────────────
-  const handleMakeOffer = async (carId: string, value: number) => {
-    const result = await makeOfferGlobal(
-      carId,
-      value,
-      playerName,
-      gameState.money,
-      (gameState as any).overdraftLimit ?? -50_000
-    );
-    if (result.success && result.finalPrice != null) {
-      const car = globalCars.find(c => c.id === carId);
-      if (car) {
-        const addResult = addCarFromGlobal(car, result.finalPrice);
-        addResult.success ? toast.success(result.message) : toast.error(addResult.message);
-      }
-    } else if (!result.success) {
       toast.error(result.message);
     }
     return result;
@@ -140,18 +119,18 @@ const Index = () => {
 
   const handleResolveDecision = (buyerId: string) => {
     const result = resolveBuyerDecision(buyerId);
-    if (result.accepted)        toast.success(result.message);
-    else if (result.counterOffer) toast.info(result.message);
-    else if (!result.success)   toast.error(result.message);
-    else                        toast.warning(result.message);
+    if (result.accepted)              toast.success(result.message);
+    else if (result.counterOffer)     toast.info(result.message);
+    else if (!result.success)         toast.error(result.message);
+    else                              toast.warning(result.message);
     return result;
   };
 
   const handleResolveCounterOffer = (buyerId: string, accept: boolean) => {
     const result = resolveCounterOffer(buyerId, accept);
-    if (!result.success)  toast.error(result.message);
-    else if (result.finalPrice !== undefined) toast.success(result.message);
-    else                  toast.info(result.message);
+    if (result.accepted)      toast.success(result.message);
+    else if (!result.success) toast.error(result.message);
+    else                      toast.info(result.message);
     return result;
   };
 
@@ -163,6 +142,73 @@ const Index = () => {
     setOficinaPendingCar(carInstanceId);
     setCurrentTab('oficina');
   };
+
+  // ── Publicação de ranking em background ─────────────────────────
+  // Roda independentemente de qual aba está aberta.
+  // Faz upsert sempre que o patrimônio muda (com debounce de 5 s)
+  // e também a cada 2 minutos como keep-alive.
+  const lastPublishedPatrimonyRef = useRef<number | null>(null);
+  const rankingDebounceRef        = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  useEffect(() => {
+    if (!user || !gameLoaded) return;
+
+    const calcPatrimony = () => {
+      const carValue = (gameState.garage ?? [])
+        .filter(s => s.car)
+        .reduce((sum, s) => sum + s.car!.fipePrice * conditionValueFactor(s.car!.condition), 0);
+      return Math.round(gameState.money + carValue);
+    };
+
+    const calcRacesWon = () =>
+      (gameState.garage ?? [])
+        .filter(s => s.car?.raceHistory)
+        .reduce((sum, s) => sum + (s.car!.raceHistory!.filter(r => r.won).length), 0);
+
+    const publish = async () => {
+      const patrimony = calcPatrimony();
+      if (lastPublishedPatrimonyRef.current === patrimony) return;
+      lastPublishedPatrimonyRef.current = patrimony;
+
+      const displayName =
+        (user.user_metadata?.display_name as string | undefined) ??
+        (user.user_metadata?.full_name as string | undefined) ??
+        user.email?.split('@')[0] ??
+        'Jogador';
+
+      await (supabase as any)
+        .from('player_profiles')
+        .upsert(
+          {
+            user_id:         user.id,
+            display_name:    displayName,
+            total_patrimony: patrimony,
+            level:           gameState.reputation?.level ?? 1,
+            races_won:       calcRacesWon(),
+            updated_at:      new Date().toISOString(),
+          },
+          { onConflict: 'user_id' }
+        );
+    };
+
+    // Debounce: aguarda 5 s sem mudanças antes de publicar
+    if (rankingDebounceRef.current) clearTimeout(rankingDebounceRef.current);
+    rankingDebounceRef.current = setTimeout(() => void publish(), 5_000);
+
+    return () => {
+      if (rankingDebounceRef.current) clearTimeout(rankingDebounceRef.current);
+    };
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [gameState.money, gameState.garage, gameState.reputation?.level, gameLoaded, user]);
+
+  // Keep-alive: publica a cada 2 minutos mesmo sem mudanças
+  useEffect(() => {
+    if (!user || !gameLoaded) return;
+    const interval = setInterval(() => {
+      lastPublishedPatrimonyRef.current = null; // força re-publish
+    }, 2 * 60_000);
+    return () => clearInterval(interval);
+  }, [user, gameLoaded]);
 
   const handleTabChange = (tab: string) => {
     setCurrentTab(tab);
@@ -219,7 +265,6 @@ const Index = () => {
             errorMsg={marketplaceError}
             minsLeft={minsLeft}
             onBuyCar={handleBuyCar}
-            onMakeOffer={handleMakeOffer}
             onRefreshMarketplace={loadMarketplace}
             onSpendMoney={spendMoney}
             onAddMoney={addMoney}
