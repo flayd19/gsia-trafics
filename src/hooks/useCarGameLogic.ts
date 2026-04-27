@@ -376,7 +376,9 @@ export function useCarGameLogic() {
               };
             });
           });
-          next = { ...next, activeRepairs: pendingRepairs, garage: updatedGarage };
+          // XP por reparos/lavagens concluídos
+          const repairXp = finishedRepairs.length * 2;
+          next = { ...next, activeRepairs: pendingRepairs, garage: updatedGarage, reputation: addXp(next.reputation, repairXp).reputation };
         }
 
         // ── Expansão imediata de slots ao subir de nível ──────────
@@ -979,7 +981,11 @@ export function useCarGameLogic() {
 
   /** Incrementa contador de vitórias em rachas assíncronos */
   const addAsyncRaceWon = useCallback(() => {
-    setGameState(prev => ({ ...prev, asyncRacesWon: (prev.asyncRacesWon ?? 0) + 1 }));
+    setGameState(prev => ({
+      ...prev,
+      asyncRacesWon: (prev.asyncRacesWon ?? 0) + 1,
+      reputation: addXp(prev.reputation, 10).reputation,
+    }));
   }, []);
 
   /**
@@ -1072,6 +1078,7 @@ export function useCarGameLogic() {
           ? { ...s, car: { ...s.car!, tuneUpgrades: upgrades } }
           : s
       ),
+      reputation: addXp(prev.reputation, 2).reputation,
     }));
     setTimeout(() => void saveGame(), 400);
     return { success: true, message: 'Tunagem aplicada!' };
@@ -1131,3 +1138,4 @@ export function useCarGameLogic() {
     garageSlotDefs: GARAGE_SLOTS,
   };
 }
+                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                     

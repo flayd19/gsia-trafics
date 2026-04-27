@@ -303,8 +303,9 @@ export function useRachaLobby({ onSpendMoney, onAddMoney, onRaceWon }: UseRachaL
     markCollected(uid, lobby.id);
 
     // Guarda prêmio e vitória para aplicar SOMENTE após a animação terminar
+    // Somente 1º lugar recebe o pote — 2º e 3º não ganham nada
     const myPos = myEntry?.position ?? 0;
-    pendingPayoutRef.current = myEntry?.payout ?? 0;
+    pendingPayoutRef.current = myPos === 1 ? (myEntry?.payout ?? 0) : 0;
     pendingIsWinRef.current  = myPos === 1;
 
     setPendingResults(prev => prev.filter(l => l.id !== lobby.id));

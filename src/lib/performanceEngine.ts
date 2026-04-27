@@ -223,296 +223,234 @@ function rawToTopSpeed(vmax: number): number {
 function rawToAcceleration(t: number): number {
   return Math.round(Math.min(100, Math.max(0, (20 - t) / (20 - 3) * 100)));
 }
+
 function rawToPower(hp: number): number {
-  return Math.round(Math.min(100, Math.max(0, (hp - 60) / (550 - 60) * 100)));
+  return Math.round(Math.min(100, Math.max(0, (hp - 60) / (1200 - 60) * 100)));
 }
 function rawToTorque(nm: number): number {
-  return Math.round(Math.min(100, Math.max(0, (nm - 80) / (700 - 80) * 100)));
+  return Math.round(Math.min(100, Math.max(0, (nm - 80) / (1400 - 80) * 100)));
 }
 function rawToWeight(kg: number): number {
-  return Math.round(Math.min(100, Math.max(0, (kg - 800) / (2300 - 800) * 100)));
+  // Inverted: menor peso = score maior
+  return Math.round(Math.min(100, Math.max(0, (2300 - kg) / (2300 - 800) * 100)));
 }
 
-// ── IGP com física realista para pista estilo F1 ─────────────────
-// Circuito: reta longa + hairpin + chicane + curvas médias
-// Pesos refletem o impacto de cada atributo no tempo de volta:
-//   • Reta longa       → velocidade de ponta + potência
-//   • Saída de curvas  → aceleração + torque + tração
-//   • Chicane / curva  → grip + câmbio rápido + aerodinâmica
-//   • Hairpin          → grip + estabilidade
-//   • Geral            → peso é penalidade universal
-function calcIgp(
-  s: Omit<PerformanceStats, 'igp'>,
-  condition = 100,
-): number {
-  // Bônus de tração no circuito
+// ── calcIgp — Pesos por setor do circuito F1 + fator de condição ─────
+function calcIgp(s: Omit<PerformanceStats, 'igp'>, condition = 100): number {
   const tractionBonus =
     s.traction === 'AWD' ? 3.5 :
     s.traction === 'RWD' ? 1.5 : 0;
 
-  // Setores do circuito (cada setor tem pesos próprios)
-  const straightSector  = s.topSpeed * 0.60 + s.power * 0.40;                         // Reta principal
-  const accelSector     = s.acceleration * 0.65 + s.torque * 0.35;                     // Saídas de curva
-  const chicSector      = s.aerodynamics * 0.40 + s.grip * 0.35 + s.gearShift * 0.25; // Chicane/setor técnico
-  const hairpinSector   = s.grip * 0.50 + s.stability * 0.30 + s.torque * 0.20;       // Hairpin
+  // Setores do circuito F1
+  const straightSector = s.topSpeed * 0.60 + s.power * 0.40;
+  const accelSector    = s.acceleration * 0.65 + s.torque * 0.35;
+  const chicSector     = s.aerodynamics * 0.40 + s.grip * 0.35 + s.gearShift * 0.25;
+  const hairpinSector  = s.grip * 0.50 + s.stability * 0.30 + s.torque * 0.20;
 
-  // Peso dos setores na volta total:
   const raw =
-    straightSector  * 0.27 +
-    accelSector     * 0.27 +
-    chicSector      * 0.20 +
-    hairpinSector   * 0.14 +
-    s.aerodynamics  * 0.06 +
-    s.stability     * 0.04 +
-    s.gearShift     * 0.02 +
+    straightSector * 0.27 +
+    accelSector    * 0.27 +
+    chicSector     * 0.20 +
+    hairpinSector  * 0.14 +
+    s.aerodynamics * 0.06 +
+    s.stability    * 0.04 +
+    s.gearShift    * 0.02 +
     tractionBonus;
 
-  // Penalidade de peso: carro mais pesado perde até 15% de performance nas curvas
   const weightPenalty = (s.weight / 100) * 0.15;
-
-  // Fator de condição do motor: degrada a performance física progressivamente
-  // 100% condição → 1.00x | 50% → 0.88x | 20% → 0.79x
-  const condFactor = 0.73 + (Math.max(0, Math.min(100, condition)) / 100) * 0.27;
-
+  // Condição afeta IGP: carro a 0% tem 73% do IGP máximo; a 100% tem 100%
+  const condFactor    = 0.73 + (Math.max(0, Math.min(100, condition)) / 100) * 0.27;
   const igp = raw * (1 - weightPenalty) * condFactor;
   return Math.round(Math.min(99, Math.max(1, igp)));
 }
 
-// ── Soft cap ─────────────────────────────────────────────────────
-function softCapMultiplier(current: number): number {
-  if (current < 70) return 1.0;
-  if (current < 85) return 0.7;
-  if (current < 95) return 0.4;
-  return 0.15;
-}
+// ── generateBasePerformance ──────────────────────────────────────────
+export function generateBasePerformance(
+  car: Pick<OwnedCar, 'instanceId' | 'modelId' | 'fipePrice' | 'condition'>
+): PerformanceStats {
+  const model    = CAR_MODELS.find(m => m.id === car.modelId);
+  const category = (model?.category ?? 'popular') as CarCategory;
+  const ranges   = CATEGORY_RANGES[category];
 
-// ── Ganho por nível ───────────────────────────────────────────────
-function gainForLevel(level: number): number {
-  const gains = [0, 6, 5, 4, 3, 2];
-  return gains[Math.min(5, Math.max(1, level))] ?? 2;
-}
+  const rng    = seededRng(car.instanceId);
+  const varRng = seededRng(car.instanceId + '_var');
+  const variation = 0.95 + varRng() * 0.10; // ±5% por instância
 
-// ── Clamp 0-100 ───────────────────────────────────────────────────
-function clamp(v: number): number {
-  return Math.round(Math.min(100, Math.max(0, v)));
-}
+  // Faixa de preço do modelo para interpolação
+  const prices  = model?.variants.map(v => v.fipePrice) ?? [30_000, 500_000];
+  const fipeMin = Math.min(...prices);
+  const fipeMax = Math.max(...prices, fipeMin + 1);
 
-// ── Faixa de FIPE por categoria (para interpolação) ──────────────
-const FIPE_RANGES: Record<CarCategory, [number, number]> = {
-  popular:   [40_000,   130_000],
-  medio:     [80_000,   250_000],
-  suv:       [90_000,   450_000],
-  pickup:    [80_000,   500_000],
-  esportivo: [150_000,  2_000_000],
-  luxo:      [200_000,  2_500_000],
-  classico:  [20_000,   200_000],
-  eletrico:  [150_000,  1_500_000],
-  jdm:       [75_000,   4_000_000],
-  supercar:  [1_000_000, 15_000_000],
-};
-
-// ── Geração base ─────────────────────────────────────────────────
-export function generateBasePerformance(car: OwnedCar): PerformanceStats {
-  const rng = seededRng(car.instanceId + car.modelId);
-
-  // Busca categoria
-  const carModel = CAR_MODELS.find(m => m.id === car.modelId);
-  const category: CarCategory = (carModel?.category ?? 'popular') as CarCategory;
-  const ranges = CATEGORY_RANGES[category];
-  const fipeRange = FIPE_RANGES[category];
-
-  // Overrides específicos
   const override = MODEL_OVERRIDES[car.modelId];
 
-  const hp = override?.hp ??
-    interpolate(car.fipePrice, fipeRange[0], fipeRange[1], ranges.hp[0], ranges.hp[1], rng);
-  const torqueNm = override?.torqueNm ??
-    interpolate(car.fipePrice, fipeRange[0], fipeRange[1], ranges.torqueNm[0], ranges.torqueNm[1], rng);
-  const weightKg = override?.weightKg ??
-    interpolate(car.fipePrice, fipeRange[0], fipeRange[1], ranges.weight[0], ranges.weight[1], rng);
-  const time0to100 = override?.time0to100 ??
-    // carros mais caros dentro da categoria = mais rápidos (invertido)
-    interpolate(car.fipePrice, fipeRange[0], fipeRange[1], ranges.time0to100[1], ranges.time0to100[0], rng);
-  const topSpeedKmh = override?.topSpeedKmh ??
-    interpolate(car.fipePrice, fipeRange[0], fipeRange[1], ranges.vmax[0], ranges.vmax[1], rng);
+  const rawHp   = override?.hp          ?? interpolate(car.fipePrice, fipeMin, fipeMax, ranges.hp[0],         ranges.hp[1],         rng);
+  const rawNm   = override?.torqueNm    ?? interpolate(car.fipePrice, fipeMin, fipeMax, ranges.torqueNm[0],   ranges.torqueNm[1],   rng);
+  const rawKg   = override?.weightKg    ?? interpolate(car.fipePrice, fipeMin, fipeMax, ranges.weight[0],     ranges.weight[1],     rng);
+  const rawT100 = override?.time0to100  ?? interpolate(car.fipePrice, fipeMin, fipeMax, ranges.time0to100[0], ranges.time0to100[1], rng);
+  const rawVmax = override?.topSpeedKmh ?? interpolate(car.fipePrice, fipeMin, fipeMax, ranges.vmax[0],       ranges.vmax[1],       rng);
+  const rawAero = interpolate(car.fipePrice, fipeMin, fipeMax, ranges.aero[0],      ranges.aero[1],      rng);
+  const rawStab = interpolate(car.fipePrice, fipeMin, fipeMax, ranges.stability[0], ranges.stability[1], rng);
+  const rawGrip = interpolate(car.fipePrice, fipeMin, fipeMax, ranges.grip[0],      ranges.grip[1],      rng);
+  const rawGear = interpolate(car.fipePrice, fipeMin, fipeMax, ranges.gearShift[0], ranges.gearShift[1], rng);
 
-  const hasTurbo = override?.hasTurbo ??
-    (rng() < ranges.hasTurboChance);
-
-  const engineType = override?.engineType ?? (hasTurbo ? 'Turbo' : 'Aspirado');
-
-  const aero = clamp(
-    interpolate(car.fipePrice, fipeRange[0], fipeRange[1], ranges.aero[0], ranges.aero[1], rng)
-  );
-  const stability = clamp(
-    interpolate(car.fipePrice, fipeRange[0], fipeRange[1], ranges.stability[0], ranges.stability[1], rng)
-  );
-  const grip = clamp(
-    interpolate(car.fipePrice, fipeRange[0], fipeRange[1], ranges.grip[0], ranges.grip[1], rng)
-  );
-  const gearShift = clamp(
-    interpolate(car.fipePrice, fipeRange[0], fipeRange[1], ranges.gearShift[0], ranges.gearShift[1], rng)
-  );
-
-  const traction = tractionFor(category, car.fipePrice);
-
-  // ── Variação de performance por instância (±5%) ──────────────────
-  // Pequena variação para dar personalidade ao carro sem ser injusto.
-  // O seed usa instanceId independente do modelId para garantir determinismo.
-  const varRng = seededRng(car.instanceId + '_var');
-  const variation = 0.95 + varRng() * 0.10; // 0.95 → 1.05
-
-  const vary = (v: number) => clamp(Math.round(v * variation));
+  const hasTurbo  = override?.hasTurbo !== undefined
+    ? override.hasTurbo
+    : rng() < ranges.hasTurboChance;
+  const traction  = tractionFor(category, car.fipePrice);
+  const condition = car.condition ?? 100;
 
   const stats: Omit<PerformanceStats, 'igp'> = {
-    topSpeed:     vary(rawToTopSpeed(topSpeedKmh)),
-    acceleration: vary(rawToAcceleration(time0to100)),
-    power:        vary(rawToPower(hp)),
-    torque:       vary(rawToTorque(torqueNm)),
-    weight:       rawToWeight(weightKg), // peso é propriedade física — não varia
-    aerodynamics: vary(aero),
-    stability:    vary(stability),
-    grip:         vary(grip),
-    gearShift:    vary(gearShift),
+    power:        Math.round(Math.min(99, Math.max(1, rawToPower(rawHp) * variation))),
+    torque:       Math.round(Math.min(99, Math.max(1, rawToTorque(rawNm) * variation))),
+    weight:       Math.round(Math.min(99, Math.max(1, rawToWeight(rawKg) * variation))),
+    topSpeed:     Math.round(Math.min(99, Math.max(1, rawToTopSpeed(rawVmax) * variation))),
+    acceleration: Math.round(Math.min(99, Math.max(1, rawToAcceleration(rawT100) * variation))),
+    aerodynamics: Math.round(Math.min(99, Math.max(1, rawAero * variation))),
+    stability:    Math.round(Math.min(99, Math.max(1, rawStab * variation))),
+    grip:         Math.round(Math.min(99, Math.max(1, rawGrip * variation))),
+    gearShift:    Math.round(Math.min(99, Math.max(1, rawGear * variation))),
     traction,
-    _hp: Math.round(hp),
-    _torqueNm: Math.round(torqueNm),
-    _weightKg: Math.round(weightKg),
-    _0to100: Math.round(time0to100 * 10) / 10,
-    _topSpeedKmh: Math.round(topSpeedKmh),
-    _hasTurbo: hasTurbo,
-    _engineType: engineType,
+    _hp:          Math.round(rawHp),
+    _torqueNm:    Math.round(rawNm),
+    _weightKg:    Math.round(rawKg),
+    _0to100:      Math.round(rawT100 * 10) / 10,
+    _topSpeedKmh: Math.round(rawVmax),
+    _hasTurbo:    hasTurbo,
+    _engineType:  override?.engineType ?? (hasTurbo ? 'Turbinado' : 'Atmosférico'),
   };
 
-  // Passa condição para calcIgp: carro em mau estado perde performance
-  return { ...stats, igp: calcIgp(stats, car.condition) };
+  return { ...stats, igp: calcIgp(stats, condition) };
 }
 
-// ── Aplica tuning ────────────────────────────────────────────────
-export function applyTuneUpgrades(base: PerformanceStats, upgrades: TuneUpgrade[]): PerformanceStats {
-  // Trabalha com cópia mutável interna
-  let s = { ...base };
+// ── Bônus de stat por nível de tunagem ───────────────────────────────
+const TUNE_BONUS_PER_LEVEL: Partial<Record<TuneType, number>> = {
+  engine:          4.0,
+  turbo:           5.0,
+  intercooler:     3.0,
+  exhaust:         2.5,
+  injection:       3.5,
+  ecu:             3.0,
+  transmission:    3.0,
+  clutch:          2.5,
+  suspension:      3.5,
+  sway_bar:        2.5,
+  differential:    3.0,
+  geometry:        2.5,
+  aerodynamics:    4.0,
+  wing:            3.0,
+  diffuser:        2.5,
+  tires:           3.0,
+  light_rims:      2.5,
+  weight_reduction: 3.5,
+  carbon_parts:    4.0,
+};
+
+// ── applyTuneUpgrades ────────────────────────────────────────────────
+export function applyTuneUpgrades(
+  base: PerformanceStats,
+  upgrades: TuneUpgrade[],
+  condition = 100,
+): PerformanceStats {
+  const s = { ...base };
+  const clamp = (v: number) => Math.round(Math.min(99, Math.max(1, v)));
 
   for (const upgrade of upgrades) {
-    const gainBase = gainForLevel(upgrade.level);
-
-    const applyGain = (stat: keyof PerformanceStats, multiplier: number) => {
-      const cur = s[stat] as number;
-      const gain = Math.round(gainBase * multiplier * softCapMultiplier(cur));
-      (s as Record<string, number>)[stat as string] = clamp(cur + gain);
-    };
-
-    switch (upgrade.type) {
+    const bonus = upgrade.level * (TUNE_BONUS_PER_LEVEL[upgrade.type as TuneType] ?? 3.0);
+    switch (upgrade.type as TuneType) {
       case 'engine':
-        // Maior efeito se não tem turbo (aspirado ganha mais do kit motor)
-        applyGain('power',  s._hasTurbo ? 1.0 : 1.4);
-        applyGain('torque', s._hasTurbo ? 0.9 : 1.2);
+        s.power        = clamp(s.power        + bonus);
+        s.torque       = clamp(s.torque       + bonus * 0.6);
         break;
       case 'turbo':
-        // Mais eficiente em base já turbinada
-        applyGain('power',        s._hasTurbo ? 1.4 : 1.0);
-        applyGain('acceleration', s._hasTurbo ? 1.2 : 0.8);
-        applyGain('torque',       s._hasTurbo ? 1.0 : 0.7);
+        s.power        = clamp(s.power        + bonus);
+        s.torque       = clamp(s.torque       + bonus * 0.8);
+        s.acceleration = clamp(s.acceleration + bonus * 0.4);
+        s._hasTurbo    = true;
         break;
-      case 'ecu':
-        applyGain('gearShift', 1.3);
-        applyGain('torque',    0.8);
-        break;
-      case 'transmission':
-        applyGain('gearShift',    1.2);
-        applyGain('acceleration', 1.0);
-        break;
-      case 'suspension':
-        applyGain('grip',      1.0);
-        applyGain('stability', 1.0);
-        break;
-      case 'tires':
-        applyGain('grip',      1.5);
-        applyGain('stability', 0.8);
-        break;
-      case 'weight_reduction': {
-        // Reduz o atributo weight (menor = melhor), com maior impacto se carro pesado
-        const cur = s.weight;
-        const heavyBonus = cur > 60 ? 1.4 : 1.0;
-        const reduction = Math.round(gainBase * heavyBonus * softCapMultiplier(100 - cur));
-        s = { ...s, weight: clamp(cur - reduction) };
-        break;
-      }
-      case 'aerodynamics': {
-        // Maior impacto em carro rápido
-        const speedBonus = s.topSpeed > 60 ? 1.3 : 1.0;
-        applyGain('aerodynamics', speedBonus);
-        applyGain('stability',    0.8);
-        break;
-      }
       case 'intercooler':
-        // Só eficiente com turbo — multiplica ganho se hasTurbo
-        applyGain('power',  s._hasTurbo ? 1.3 : 0.5);
-        applyGain('torque', s._hasTurbo ? 1.1 : 0.4);
+        s.power        = clamp(s.power        + bonus * 0.7);
+        s.torque       = clamp(s.torque       + bonus * 0.5);
         break;
       case 'exhaust':
-        applyGain('power',     1.0);
-        applyGain('gearShift', 1.1);
+        s.power        = clamp(s.power        + bonus * 0.6);
+        s.gearShift    = clamp(s.gearShift    + bonus * 0.5);
         break;
       case 'injection':
-        applyGain('power',  1.2);
-        applyGain('torque', 1.0);
+        s.power        = clamp(s.power        + bonus * 0.8);
+        s.torque       = clamp(s.torque       + bonus * 0.7);
+        break;
+      case 'ecu':
+        s.gearShift    = clamp(s.gearShift    + bonus);
+        s.torque       = clamp(s.torque       + bonus * 0.5);
+        break;
+      case 'transmission':
+        s.gearShift    = clamp(s.gearShift    + bonus);
+        s.acceleration = clamp(s.acceleration + bonus * 0.5);
         break;
       case 'clutch':
-        applyGain('gearShift',    1.2);
-        applyGain('acceleration', 0.9);
+        s.gearShift    = clamp(s.gearShift    + bonus * 0.8);
+        s.acceleration = clamp(s.acceleration + bonus * 0.4);
+        break;
+      case 'suspension':
+        s.stability    = clamp(s.stability    + bonus);
+        s.grip         = clamp(s.grip         + bonus * 0.5);
         break;
       case 'sway_bar':
-        applyGain('stability', 1.4);
+        s.stability    = clamp(s.stability    + bonus);
         break;
       case 'differential':
-        applyGain('grip',      1.1);
-        applyGain('stability', 1.0);
+        s.grip         = clamp(s.grip         + bonus * 0.7);
+        s.stability    = clamp(s.stability    + bonus * 0.5);
         break;
       case 'geometry':
-        applyGain('grip', 1.6);
+        s.grip         = clamp(s.grip         + bonus);
+        break;
+      case 'aerodynamics':
+        s.aerodynamics = clamp(s.aerodynamics + bonus);
+        s.topSpeed     = clamp(s.topSpeed     + bonus * 0.3);
         break;
       case 'wing':
-        applyGain('aerodynamics', 1.0);
-        applyGain('stability',    1.2);
+        s.aerodynamics = clamp(s.aerodynamics + bonus * 0.8);
+        s.stability    = clamp(s.stability    + bonus * 0.5);
         break;
       case 'diffuser':
-        applyGain('aerodynamics', 1.1);
-        applyGain('stability',    1.0);
+        s.aerodynamics = clamp(s.aerodynamics + bonus * 0.7);
+        s.stability    = clamp(s.stability    + bonus * 0.4);
+        break;
+      case 'tires':
+        s.grip         = clamp(s.grip         + bonus);
+        s.acceleration = clamp(s.acceleration + bonus * 0.3);
         break;
       case 'light_rims':
-        applyGain('grip',         1.0);
-        applyGain('acceleration', 0.9);
-        // leve redução de peso também
-        s = { ...s, weight: clamp(s.weight - Math.round(gainBase * 0.5)) };
+        s.grip         = clamp(s.grip         + bonus * 0.5);
+        s.acceleration = clamp(s.acceleration + bonus * 0.5);
         break;
-      case 'carbon_parts': {
-        // Grande redução de peso, similar a weight_reduction mas mais agressiva
-        const cur = s.weight;
-        const reduction = Math.round(gainBase * 1.6 * softCapMultiplier(100 - cur));
-        s = { ...s, weight: clamp(cur - reduction) };
-        applyGain('acceleration', 0.6);
-        applyGain('topSpeed',     0.5);
+      case 'weight_reduction':
+        s.acceleration = clamp(s.acceleration + bonus * 0.8);
+        s.topSpeed     = clamp(s.topSpeed     + bonus * 0.4);
         break;
-      }
+      case 'carbon_parts':
+        s.acceleration = clamp(s.acceleration + bonus * 0.7);
+        s.topSpeed     = clamp(s.topSpeed     + bonus * 0.5);
+        break;
     }
   }
 
-  // Após tunagem, recalcula com condição preservada (upgrades não alteram condição)
-  return { ...s, igp: calcIgp(s, 100) };
+  // Recalcula IGP com condição atual
+  const { igp: _igp, ...rest } = s;
+  return { ...rest, igp: calcIgp(rest, condition) };
 }
 
-// ── Custo do tuning ──────────────────────────────────────────────
-export function calcTuneCost(type: TuneType, level: number, _base: PerformanceStats): number {
-  const meta = TUNE_META[type];
-  // Custo sobe exponencialmente com o nível (×1.8 por nível)
-  return Math.round(meta.baseCost * Math.pow(1.8, level - 1));
-}
-
-// ── Full performance (base + upgrades) ──────────────────────────
+// ── getFullPerformance — ponto de entrada principal ──────────────────
 export function getFullPerformance(car: OwnedCar): PerformanceStats {
-  const base     = generateBasePerformance(car);
-  const upgrades = car.tuneUpgrades ?? [];
-  if (upgrades.length === 0) return base;
-  return applyTuneUpgrades(base, upgrades);
+  const condition = car.condition ?? 100;
+  // Usa cache de stats base (seeded/determinístico), recalcula IGP com condição atual
+  const base = car.performance ?? generateBasePerformance(car);
+
+  if (!car.tuneUpgrades || car.tuneUpgrades.length === 0) {
+    const { igp: _igp, ...stats } = base;
+    return { ...stats, igp: calcIgp(stats, condition) };
+  }
+
+  return applyTuneUpgrades(base, car.tuneUpgrades, condition);
 }

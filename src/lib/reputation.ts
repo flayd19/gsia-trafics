@@ -2,13 +2,17 @@
  * Sistema de Reputação (nível) do jogador.
  *
  * Regras:
- *   • 1 XP por venda concluída com sucesso.
- *   • 1 XP por viagem concluída SEM quebra e SEM apreensão.
+ *   • 1 XP por compra de carro.
+ *   • 3 XP por venda de carro.
+ *   • 2 XP por reparo concluído na oficina.
+ *   • 2 XP por tunagem aplicada.
+ *   • 2 XP por lavagem concluída.
+ *   • 10 XP por vitória em 1º lugar em racha.
  *   • O XP necessário dobra a cada nível:
- *        Lv 2 = 20 xp
- *        Lv 3 = 40 xp
- *        Lv 4 = 80 xp
- *        Lv N = 20 * 2^(N-2)
+ *        Lv 2 = 10 xp
+ *        Lv 3 = 20 xp
+ *        Lv 4 = 40 xp
+ *        Lv N = 10 * 2^(N-2)
  *   • Level máximo = 100.
  *
  * Mantemos esse módulo puro (sem React/hooks) pra poder reusar em
@@ -28,15 +32,15 @@ export const INITIAL_REPUTATION: Reputation = {
 
 /**
  * XP necessário para subir de `level-1` pra `level`.
- * Ex.: xpRequiredForLevel(2) = 20, (3) = 40, (4) = 80...
+ * Ex.: xpRequiredForLevel(2) = 10, (3) = 20, (4) = 40...
  * Pra level <= 1 retorna 0 (não existe "subir pro level 1").
  * Pra level > MAX_LEVEL retorna Infinity.
  */
 export function xpRequiredForLevel(level: number): number {
   if (level <= 1) return 0;
   if (level > MAX_LEVEL) return Infinity;
-  // 20 * 2^(level-2) — dobrando a cada nível
-  const raw = 20 * Math.pow(2, level - 2);
+  // 10 * 2^(level-2) — dobrando a cada nível (metade do valor anterior)
+  const raw = 10 * Math.pow(2, level - 2);
   // Proteção contra overflow em níveis absurdos (>50)
   if (!Number.isFinite(raw) || raw > Number.MAX_SAFE_INTEGER) {
     return Number.MAX_SAFE_INTEGER;

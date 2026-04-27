@@ -856,7 +856,7 @@ function TrackSVG({ players, lapProgs, posMaps, myUserId }: TrackSVGProps) {
             {/* Posição */}
             <text x={pt.x - (isMe ? 12 : 10)} y={pt.y - 8}
               fontSize={5.5} fill="white" fontWeight="bold" opacity={0.75}>
-              {visPos}°
+              {positionMedal(visPos)}
             </text>
           </g>
         );
@@ -866,307 +866,222 @@ function TrackSVG({ players, lapProgs, posMaps, myUserId }: TrackSVGProps) {
 }
 
 // ══════════════════════════════════════════════════════════════════
-// RacingView — contagem regressiva + pista oval + narração
+// RacingView — Animação da corrida com pista F1
 // ══════════════════════════════════════════════════════════════════
-function RacingView({
-  players,
-  myUserId,
-  onFinish,
-}: {
-  players:  RacePlayerAnim[];
-  myUserId: string | null;
-  onFinish: () => void;
-}) {
-  const RACE_DURATION = 24_000; // 24 s de animação para 3 voltas
+interface RacingViewProps {
+  players:   RacePlayerAnim[];
+  myUserId:  string | null;
+  onFinish:  () => void;
+}
 
-  const sorted     = useMemo(() => [...players].sort((a, b) => a.position - b.position), [players]);
-  const winner     = sorted[0];
-  // Tempo total do vencedor em 3 voltas
-  const winnerTime = (winner ? calcRaceTimeSec(winner.score) : 25) * LAPS;
+function RacingView({ players, myUserId, onFinish }: RacingViewProps) {
+  const DURATION_MS = 5000 + players.length * 500;
 
-  type Phase = 'countdown' | 'racing' | 'done';
-  const [phase,        setPhase]        = useState<Phase>('countdown');
-  const [countdownNum, setCountdownNum] = useState<number | 'GO!'>(3);
-  // lapProgs: voltas percorridas por piloto (0 → LAPS)
-  const [lapProgs,     setLapProgs]     = useState<Record<string, number>>(
-    () => Object.fromEntries(players.map(p => [p.userId, 0])),
+  const [lapProgs, setLapProgs] = useState<Record<string, number>>(() =>
+    Object.fromEntries(players.map(p => [p.userId, 0]))
   );
-  // posMaps: posição visual em tempo real
-  const [posMaps,      setPosMaps]      = useState<Record<string, number>>(
-    () => Object.fromEntries(players.map(p => [p.userId, p.position])),
+  const [posMaps, setPosMaps] = useState<Record<string, number>>(() =>
+    Object.fromEntries(players.map(p => [p.userId, p.position]))
   );
-  // currentLaps: volta atual exibida por piloto
-  const [currentLaps,  setCurrentLaps]  = useState<Record<string, number>>(
-    () => Object.fromEntries(players.map(p => [p.userId, 1])),
-  );
-  const [elapsed,      setElapsed]      = useState(0);
-  const [commentary,   setCommentary]   = useState('');
-  const [photoFinish,  setPhotoFinish]  = useState(false);
+  const [timeLeft, setTimeLeft] = useState(Math.ceil(DURATION_MS / 1000));
+  const startRef   = useRef<number | null>(null);
+  const rafRef     = useRef<number | null>(null);
+  const finishedRef = useRef(false);
 
-  const startRef         = useRef<number | null>(null);
-  const rafRef           = useRef<number | null>(null);
-  const finishedRef      = useRef(false);
-  const finishShownRef   = useRef(false);
-  const shownCommentsRef = useRef(new Set<number>());
-  const onFinishRef      = useRef(onFinish);
-  useEffect(() => { onFinishRef.current = onFinish; }, [onFinish]);
-
-  // Sementes de ruído estáticas (uma por piloto)
-  const noiseSeeds = useMemo(
-    () => players.map((_, i) => 1.618 + i * Math.PI),
-    [players],
-  );
-
-  // Amplitude de ruído REDUZIDA: mais realista, menos aleatoriedade
-  // amp ∈ [0.02, 0.08]: carros com IGP similar oscilam um pouco
-  // Carros muito diferentes (diff > 15 IGP) praticamente não se ultrapassam
-  const noiseAmps = useMemo(() => {
-    const winScore = winner?.score ?? 60;
-    return players.map(p => {
-      const diff = Math.abs(p.score - winScore);
-      return Math.max(0.02, 0.08 - diff * 0.004);
-    });
-  }, [players, winner]);
-
-  // Foto-finish: diferença de tempo < 0.5 s entre 1º e 2º
   useEffect(() => {
-    if (sorted.length >= 2) {
-      const t1 = calcRaceTimeSec(sorted[0]!.score);
-      const t2 = calcRaceTimeSec(sorted[1]!.score);
-      if (Math.abs(t1 - t2) < 0.5) setPhotoFinish(true);
-    }
-  }, [sorted]);
+    const maxScore = Math.max(...players.map(p => p.score), 1);
 
-  const commentaryLines = useMemo(() => {
-    const leader = sorted[0];
-    const last   = sorted[sorted.length - 1];
-    const icons  = sorted.map(p => p.carIcon).join('');
-    return [
-      { at: 0.04, text: `🟢 ${icons} — Pistão no fundo!` },
-      { at: 0.30, text: leader ? `⚡ ${leader.name} na frente!` : '⚡ Luta pela liderança!' },
-      { at: 0.50, text: '🔄 2ª volta — ritmo aumenta!' },
-      { at: 0.68, text: last && last.userId !== leader?.userId
-          ? `🔥 ${last.name} pressiona de trás!`
-          : '🔥 Duelo acirrado na pista!' },
-      { at: 0.84, text: photoFinish ? '📸 Vai dar foto-finish!' : '🏁 Última volta — tudo ou nada!' },
-    ];
-  }, [sorted, photoFinish]);
+    const tick = (now: number) => {
+      if (startRef.current === null) startRef.current = now;
+      const elapsed = now - startRef.current;
+      const t       = Math.min(1, elapsed / DURATION_MS);
+      const eased   = t < 0.5 ? 2 * t * t : -1 + (4 - 2 * t) * t;
 
-  // ── Contagem regressiva ───────────────────────────────────────
-  useEffect(() => {
-    if (phase !== 'countdown') return;
-    const steps: Array<number | 'GO!'> = [3, 2, 1, 'GO!'];
-    let i = 0;
-    setCountdownNum(steps[0]!);
-    const timer = setInterval(() => {
-      i += 1;
-      if (i < steps.length) setCountdownNum(steps[i]!);
-      if (i >= steps.length - 1) {
-        clearInterval(timer);
-        setTimeout(() => setPhase('racing'), 700);
-      }
-    }, 850);
-    return () => clearInterval(timer);
-  }, [phase]);
-
-  // ── RAF loop (corrida) ────────────────────────────────────────
-  const tick = useCallback((now: number) => {
-    if (startRef.current === null) startRef.current = now;
-    const delta = Math.min(now - startRef.current, RACE_DURATION);
-    const t     = delta / RACE_DURATION; // 0 → 1
-    const ease  = easeInOut(t);
-
-    setElapsed(ease * winnerTime);
-
-    const nextProgs: Record<string, number> = {};
-    const nextLaps:  Record<string, number> = {};
-
-    players.forEach((p, idx) => {
-      const targetLaps = (p.finalPct / 100) * LAPS;
-      const base       = ease * targetLaps;
-      // Ruído: cria ultrapassagens visuais; funde a 0 no final da corrida
-      const noise      = racingNoise(t, noiseSeeds[idx]!) * noiseAmps[idx]!;
-      const laps       = Math.max(0, Math.min(base + noise, targetLaps));
-      nextProgs[p.userId] = laps;
-      nextLaps[p.userId]  = Math.min(Math.floor(laps) + 1, LAPS);
-    });
-
-    // Posição visual em tempo real (quem está à frente na pista)
-    const nextPos: Record<string, number> = {};
-    [...players]
-      .sort((a, b) => (nextProgs[b.userId] ?? 0) - (nextProgs[a.userId] ?? 0))
-      .forEach((p, i) => { nextPos[p.userId] = i + 1; });
-
-    setLapProgs(nextProgs);
-    setPosMaps(nextPos);
-    setCurrentLaps(nextLaps);
-
-    commentaryLines.forEach((line, i) => {
-      if (t >= line.at && !shownCommentsRef.current.has(i)) {
-        shownCommentsRef.current.add(i);
-        setCommentary(line.text);
-      }
-    });
-
-    if (ease >= 0.95 && !finishShownRef.current) {
-      finishShownRef.current = true;
-    }
-
-    if (delta < RACE_DURATION) {
-      rafRef.current = requestAnimationFrame(tick);
-    } else if (!finishedRef.current) {
-      finishedRef.current = true;
-      // Garante posição final correta ao encerrar
-      const finalProgs: Record<string, number> = {};
-      const finalPos:   Record<string, number> = {};
-      players.forEach(p => {
-        finalProgs[p.userId] = (p.finalPct / 100) * LAPS;
-        finalPos[p.userId]   = p.position;
+      const newProgs: Record<string, number> = {};
+      players.forEach((p, idx) => {
+        const speed = 0.85 + (p.score / maxScore) * 0.15;
+        const noise = racingNoise(t, idx * 7.3 + 1.1);
+        const amp   = Math.max(0.01, 0.06 - Math.abs(p.score / maxScore - 0.5) * 0.04);
+        newProgs[p.userId] = eased * LAPS * speed + noise * amp;
       });
-      setLapProgs(finalProgs);
-      setPosMaps(finalPos);
-      setCurrentLaps(Object.fromEntries(players.map(p => [p.userId, LAPS])));
-      setPhase('done');
-      setTimeout(() => onFinishRef.current(), 2_500);
-    }
-  }, [players, winnerTime, commentaryLines, noiseSeeds, noiseAmps]);
+      setLapProgs(newProgs);
 
-  useEffect(() => {
-    if (phase !== 'racing') return;
+      // Recalcular posições em tempo real pelo progresso na volta
+      const sorted = [...players].sort((a, b) =>
+        (newProgs[b.userId] ?? 0) - (newProgs[a.userId] ?? 0)
+      );
+      const newPos: Record<string, number> = {};
+      sorted.forEach((p, i) => { newPos[p.userId] = i + 1; });
+      setPosMaps(newPos);
+
+      setTimeLeft(Math.max(0, Math.ceil((DURATION_MS - elapsed) / 1000)));
+
+      if (t < 1) {
+        rafRef.current = requestAnimationFrame(tick);
+      } else if (!finishedRef.current) {
+        finishedRef.current = true;
+        // Fixar posições finais (baseado em score real, não animação)
+        const finalPos: Record<string, number> = {};
+        players.forEach(p => { finalPos[p.userId] = p.position; });
+        setPosMaps(finalPos);
+        // Fixar lapProgs em LAPS para todos
+        const finalProgs: Record<string, number> = {};
+        players.forEach(p => { finalProgs[p.userId] = LAPS; });
+        setLapProgs(finalProgs);
+        setTimeout(onFinish, 600);
+      }
+    };
+
     rafRef.current = requestAnimationFrame(tick);
     return () => {
-      if (rafRef.current !== null) cancelAnimationFrame(rafRef.current);
+      if (rafRef.current) cancelAnimationFrame(rafRef.current);
     };
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [phase]);
+  }, []);
 
-  // ── Tela de contagem regressiva ───────────────────────────────
-  if (phase === 'countdown') {
-    return (
-      <div className="flex flex-col items-center justify-center min-h-[60vh] space-y-6">
-        <div className="text-center space-y-2">
-          <div className="text-[13px] text-muted-foreground uppercase tracking-widest font-semibold">
-            Circuito · {LAPS} voltas · {LAP_METERS * LAPS}m
-          </div>
-          <div className="flex items-center justify-center gap-2 text-[11px] text-muted-foreground">
-            {sorted.map(p => (
-              <span key={p.userId}>{p.carIcon} {p.name}</span>
-            ))}
-          </div>
-        </div>
-
-        <div
-          key={String(countdownNum)}
-          className={`font-black tabular-nums leading-none ${
-            countdownNum === 'GO!'
-              ? 'text-[72px] text-emerald-400 animate-pulse'
-              : 'text-[96px] text-primary'
-          }`}
-        >
-          {countdownNum}
-        </div>
-
-        <div className="text-[12px] text-muted-foreground">
-          {photoFinish ? '📸 Previsão de foto-finish!' : '🏁 Largada em instantes...'}
-        </div>
-
-        <div className="w-full max-w-sm space-y-2 px-4">
-          {sorted.map((p, i) => (
-            <div key={p.userId} className="flex items-center gap-2 ios-surface rounded-[12px] px-3 py-2">
-              <span className="text-[18px]">{p.carIcon}</span>
-              <div className="flex-1 min-w-0">
-                <div className="text-[12px] font-semibold text-foreground truncate">
-                  {p.name}
-                  {(p.isMe || p.userId === myUserId) && (
-                    <span className="ml-1 text-[10px] text-primary">(você)</span>
-                  )}
-                </div>
-                <div className="text-[10px] text-muted-foreground truncate">{p.carName}</div>
-              </div>
-              <span className={`text-[10px] px-1.5 py-0.5 rounded-full border font-bold ${igpClass(p.igp)}`}>
-                {i === 0 ? '🏆' : ''} IGP {p.igp}
-              </span>
-            </div>
-          ))}
-        </div>
-      </div>
-    );
-  }
-
-  // ── Tela de corrida (pista SVG + lista de pilotos) ────────────
   return (
     <div className="space-y-3">
-      {/* Header */}
-      <div className="ios-surface rounded-[20px] p-4 text-center space-y-1.5 border border-primary/20">
-        <div className="flex items-center justify-center gap-2">
-          <span className="text-xl">🏁</span>
-          <span className="font-black text-[16px] text-foreground tracking-wider uppercase">
-            Circuito — {LAPS} Voltas
-          </span>
-          <span className="text-xl">🏁</span>
+      {/* Header da corrida */}
+      <div className="flex items-center justify-between px-1">
+        <span className="font-game-title text-lg font-bold text-foreground flex items-center gap-2">
+          🏎️ Corrida em andamento
+        </span>
+        <span className="text-[13px] font-mono text-primary font-bold">
+          {timeLeft > 0 ? `${timeLeft}s` : '🏁'}
+        </span>
+      </div>
+
+      {/* Pista */}
+      <TrackSVG
+        players={players}
+        lapProgs={lapProgs}
+        posMaps={posMaps}
+        myUserId={myUserId}
+      />
+
+      {/* Classificação em tempo real */}
+      <div className="space-y-1.5">
+        {[...players]
+          .sort((a, b) => (posMaps[a.userId] ?? a.position) - (posMaps[b.userId] ?? b.position))
+          .map(p => {
+            const pos   = posMaps[p.userId] ?? p.position;
+            const laps  = lapProgs[p.userId] ?? 0;
+            const isMe  = p.isMe || p.userId === myUserId;
+            const color = PLAYER_COLORS[players.indexOf(p)] ?? '#94a3b8';
+            return (
+              <div key={p.userId}
+                className={`flex items-center gap-2.5 px-3 py-2 rounded-[12px] ios-surface ${
+                  isMe ? 'border border-primary/30 bg-primary/5' : ''
+                }`}
+              >
+                <span className="text-base w-6 text-center">{positionMedal(pos)}</span>
+                <span className="text-lg">{p.carIcon}</span>
+                <div className="flex-1 min-w-0">
+                  <div className="flex items-center gap-1.5">
+                    <span className={`text-[12px] font-semibold ${isMe ? 'text-foreground' : 'text-muted-foreground'}`}>
+                      {p.name}
+                    </span>
+                    {isMe && <span className="text-[9px] text-primary font-bold bg-primary/10 px-1 rounded">você</span>}
+                  </div>
+                  <div className="text-[10px] text-muted-foreground">{p.carName}</div>
+                </div>
+                <div className="text-right">
+                  <div className="text-[11px] font-bold" style={{ color }}>
+                    V{Math.min(Math.floor(laps) + 1, LAPS)}/{LAPS}
+                  </div>
+                  <div className="text-[10px] text-muted-foreground">IGP {p.igp}</div>
+                </div>
+              </div>
+            );
+          })}
+      </div>
+    </div>
+  );
+}
+
+// ══════════════════════════════════════════════════════════════════
+// ResultView — Resultado final da corrida
+// Apenas 1º lugar recebe prêmio
+// ══════════════════════════════════════════════════════════════════
+interface ResultViewProps {
+  players:  RacePlayerAnim[];
+  myUserId: string | null;
+  onBack:   () => void;
+}
+
+function ResultView({ players, myUserId, onBack }: ResultViewProps) {
+  const sorted  = [...players].sort((a, b) => a.position - b.position);
+  const me      = players.find(p => p.isMe || p.userId === myUserId);
+  const myPos   = me?.position ?? 0;
+  const won     = myPos === 1;
+  const pot     = players.reduce((s, p) => s + p.payout, 0); // soma dos payouts
+
+  return (
+    <div className="space-y-4">
+      {/* Banner resultado */}
+      <div className={`rounded-[16px] p-4 text-center ${
+        won
+          ? 'bg-emerald-500/10 border border-emerald-500/25'
+          : 'bg-muted/30 border border-border'
+      }`}>
+        <div className="text-4xl mb-1">
+          {won ? '🏆' : myPos === 2 ? '🥈' : myPos === 3 ? '🥉' : '😤'}
         </div>
-        <div className="font-mono text-[34px] font-black tabular-nums text-primary leading-none">
-          {fmtTimer(elapsed)}
+        <div className={`font-bold text-lg ${won ? 'text-emerald-400' : 'text-foreground'}`}>
+          {won ? 'VOCÊ VENCEU!' : myPos === 2 ? '2º Lugar' : myPos === 3 ? '3º Lugar' : `${myPos}º Lugar`}
         </div>
-        <div className="text-[11px] text-muted-foreground min-h-[16px]">
-          {commentary || (phase === 'done' ? '🏆 Corrida encerrada!' : '⚡ Em andamento...')}
-        </div>
-        {photoFinish && (
-          <div className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full bg-yellow-400/15 border border-yellow-400/40 text-yellow-400 text-[10px] font-bold">
-            📸 Foto-Finish
+        {won && me && me.payout > 0 && (
+          <div className="text-emerald-400 font-semibold text-[14px] mt-1">
+            +{fmt(me.payout)} recebidos 🤑
+          </div>
+        )}
+        {!won && (
+          <div className="text-muted-foreground text-[12px] mt-1">
+            Apenas o 1º lugar recebe o prêmio
+          </div>
+        )}
+        {won && (
+          <div className="text-emerald-300/70 text-[11px] mt-1">
+            +10 XP de reputação 🔥
           </div>
         )}
       </div>
 
-      {/* Pista SVG */}
-      <div className="ios-surface rounded-[16px] p-3 border border-border/30">
-        <TrackSVG
-          players={sorted}
-          lapProgs={lapProgs}
-          posMaps={posMaps}
-          myUserId={myUserId}
-        />
-      </div>
-
-      {/* Lista de pilotos com volta e posição */}
-      <div className="space-y-2">
-        {sorted.map((p, idx) => {
-          const isMe   = p.isMe || p.userId === myUserId;
-          const color  = PLAYER_COLORS[idx] ?? '#fff';
-          const lapNum = currentLaps[p.userId] ?? 1;
-          const visPos = posMaps[p.userId] ?? p.position;
-
+      {/* Classificação final */}
+      <div className="space-y-1.5">
+        <div className="text-[11px] uppercase tracking-wider text-muted-foreground font-semibold px-1">
+          Classificação Final
+        </div>
+        {sorted.map(p => {
+          const isMe  = p.isMe || p.userId === myUserId;
+          const color = PLAYER_COLORS[players.indexOf(p)] ?? '#94a3b8';
+          const timeSec = calcRaceTimeSec(p.score);
           return (
-            <div
-              key={p.userId}
-              className={`ios-surface rounded-[14px] px-3.5 py-2.5 flex items-center gap-3 ${
-                isMe ? 'border border-primary/30 bg-primary/3' : ''
+            <div key={p.userId}
+              className={`flex items-center gap-2.5 px-3 py-2.5 rounded-[12px] ios-surface ${
+                isMe ? 'border border-primary/30 bg-primary/5' : ''
               }`}
             >
-              {/* Posição visual */}
-              <div
-                className="w-7 h-7 rounded-full flex items-center justify-center font-black text-[13px] shrink-0"
-                style={{ background: color, color: '#111' }}
-              >
-                {visPos}
-              </div>
-              <span className="text-xl">{p.carIcon}</span>
+              <span className="text-xl w-7 text-center">{positionMedal(p.position)}</span>
+              <span className="text-lg">{p.carIcon}</span>
               <div className="flex-1 min-w-0">
-                <div className="text-[12px] font-semibold text-foreground truncate">
-                  {p.name}
-                  {isMe && <span className="ml-1 text-[10px] text-primary font-normal">(você)</span>}
+                <div className="flex items-center gap-1.5 flex-wrap">
+                  <span className={`text-[13px] font-semibold ${isMe ? 'text-foreground' : 'text-muted-foreground'}`}>
+                    {p.name}
+                  </span>
+                  {isMe && <span className="text-[9px] text-primary font-bold bg-primary/10 px-1 rounded">você</span>}
                 </div>
-                <div className="text-[10px] text-muted-foreground truncate">{p.carName}</div>
+                <div className="text-[10px] text-muted-foreground">{p.carName} · IGP {p.igp}</div>
               </div>
-              {/* Volta atual */}
-              <div className="text-right shrink-0">
-                <div className="text-[12px] font-bold" style={{ color }}>
-                  V{lapNum}/{LAPS}
+              <div className="text-right space-y-0.5">
+                <div className="text-[11px] font-mono text-muted-foreground">
+                  {calcTopSpeed(timeSec).toFixed(0)} km/h
                 </div>
-                {phase === 'done' && (
-                  <div className={`text-[11px] font-bold ${positionColor(p.position)}`}>
-                    {positionMedal(p.position)}
+                {p.position === 1 && p.payout > 0 ? (
+                  <div className="text-[12px] font-bold text-emerald-400">
+                    +{fmt(p.payout)}
                   </div>
+                ) : p.position === 1 ? null : (
+                  <div className="text-[11px] text-muted-foreground">sem prêmio</div>
                 )}
               </div>
             </div>
@@ -1174,631 +1089,257 @@ function RacingView({
         })}
       </div>
 
-      {phase === 'done' && (
-        <Button className="w-full gap-2 animate-pulse" onClick={onFinish}>
-          <Trophy size={16} />
-          Ver Resultado
-        </Button>
-      )}
-    </div>
-  );
-}
-
-// ══════════════════════════════════════════════════════════════════
-// ResultView — classificação final + estatísticas 1000m
-// ══════════════════════════════════════════════════════════════════
-function ResultView({
-  players, myUserId, onBack,
-}: {
-  players:  RacePlayerAnim[];
-  myUserId: string | null;
-  onBack:   () => void;
-}) {
-  const sorted = [...players].sort((a, b) => a.position - b.position);
-  const me     = sorted.find(p => p.isMe || p.userId === myUserId);
-
-  // Estatísticas do meu carro (3 voltas)
-  const myTime     = me ? calcRaceTimeSec(me.score) * LAPS : null;
-  const myAvg      = myTime ? calcAvgSpeed(myTime / LAPS) : null;
-  const myTop      = myTime ? calcTopSpeed(myTime / LAPS) : null;
-  const winnerTime = calcRaceTimeSec(sorted[0]?.score ?? 60) * LAPS;
-  const timeDiff   = myTime && myTime !== winnerTime
-    ? `+${(myTime - winnerTime).toFixed(2)}s`
-    : null;
-
-  return (
-    <div className="space-y-4">
-      {/* Meu resultado */}
+      {/* Estatísticas */}
       {me && (
-        <div className={`ios-surface rounded-[20px] p-5 text-center border-2 ${
-          me.position === 1 ? 'border-yellow-400/50 bg-yellow-400/5'
-          : me.position === 2 ? 'border-gray-400/50 bg-gray-400/5'
-          : me.position === 3 ? 'border-amber-600/50 bg-amber-600/5'
-          : 'border-border bg-muted/20'
-        }`}>
-          <div className="text-6xl mb-2">{positionMedal(me.position)}</div>
-          <div className={`font-black text-[28px] ${positionColor(me.position)}`}>
-            {me.position === 1 ? 'VITÓRIA!'
-             : me.position === 2 ? '2º LUGAR'
-             : me.position === 3 ? '3º LUGAR'
-             : `${me.position}º LUGAR`}
+        <div className="ios-surface rounded-[14px] p-3 space-y-2">
+          <div className="text-[11px] uppercase tracking-wider text-muted-foreground font-semibold">
+            Suas Estatísticas
           </div>
-          {me.position === 1 && (
-            <div className="text-[12px] text-yellow-400/80 mt-0.5 font-semibold">
-              🏎️ {LAPS} voltas em {winnerTime.toFixed(2)}s
-            </div>
-          )}
-          <div className="mt-2 text-[14px] font-semibold text-foreground">
-            {me.payout > 0
-              ? <span className="text-emerald-400">+{fmt(me.payout)}</span>
-              : <span className="text-muted-foreground">Nenhum prêmio</span>
-            }
+          <div className="grid grid-cols-3 gap-2 text-center">
+            {[
+              { label: 'Tempo', value: `${calcRaceTimeSec(me.score).toFixed(1)}s` },
+              { label: 'Vel. Máx', value: `${calcTopSpeed(calcRaceTimeSec(me.score)).toFixed(0)} km/h` },
+              { label: 'IGP', value: `${me.igp}` },
+            ].map(({ label, value }) => (
+              <div key={label} className="space-y-0.5">
+                <div className="text-[11px] text-muted-foreground">{label}</div>
+                <div className="text-[13px] font-bold text-foreground">{value}</div>
+              </div>
+            ))}
           </div>
-          {timeDiff && (
-            <div className="mt-1 text-[12px] text-red-400 font-semibold">{timeDiff} do vencedor</div>
-          )}
         </div>
       )}
 
-      {/* Estatísticas do meu racha */}
-      {me && myTime && myAvg && myTop && (
-        <div className="ios-surface rounded-[16px] p-4 space-y-3">
-          <div className="text-[11px] uppercase tracking-wider text-muted-foreground font-semibold flex items-center gap-1.5">
-            <Flag size={11} />
-            Estatísticas da Prova — {LAPS} voltas
-          </div>
-
-          <div className="grid grid-cols-2 gap-2">
-            <StatCard label="Distância"    value={`${(LAP_METERS * LAPS / 1000).toFixed(0)}km`} icon="📏" />
-            <StatCard label="Tempo de Prova" value={`${myTime.toFixed(2)}s`} icon="⏱" highlight={me.position === 1} />
-            <StatCard label="Vel. Média"   value={`${myAvg} km/h`} icon="🚗" />
-            <StatCard label="Vel. Máxima"  value={`${myTop} km/h`} icon="⚡" />
-            <StatCard label="IGP"          value={String(me.igp)}  icon="📊" />
-            <StatCard label="Score"        value={me.score.toFixed(1)} icon="🎯" />
-          </div>
-
-          {/* Linha do vencedor para comparação */}
-          {me.position !== 1 && sorted[0] && (
-            <div className="border-t border-border/40 pt-3 space-y-1">
-              <div className="text-[10px] uppercase text-muted-foreground tracking-wider font-semibold">
-                Vencedor
-              </div>
-              <div className="flex items-center gap-2">
-                <span>{sorted[0].carIcon}</span>
-                <span className="text-[12px] text-foreground font-semibold flex-1 truncate">
-                  {sorted[0].name}
-                </span>
-                <span className="text-[12px] text-yellow-400 font-mono font-bold">
-                  {calcRaceTimeSec(sorted[0].score).toFixed(2)}s
-                </span>
-              </div>
-            </div>
-          )}
-        </div>
-      )}
-
-      {/* Classificação completa */}
-      <div className="ios-surface rounded-[16px] p-4 space-y-3">
-        <div className="text-[11px] uppercase tracking-wider text-muted-foreground font-semibold">
-          Classificação Final
-        </div>
-        {sorted.map(p => {
-          const t = calcRaceTimeSec(p.score) * LAPS;
-          return (
-            <div
-              key={p.userId}
-              className={`flex items-center gap-3 p-2.5 rounded-[12px] ${
-                p.isMe || p.userId === myUserId
-                  ? 'bg-primary/5 border border-primary/20'
-                  : 'bg-muted/20'
-              }`}
-            >
-              <span className="text-[18px] w-8 text-center shrink-0">
-                {positionMedal(p.position)}
-              </span>
-              <span className="text-xl">{p.carIcon}</span>
-              <div className="flex-1 min-w-0">
-                <div className="text-[12px] font-semibold text-foreground truncate">
-                  {p.name}
-                  {(p.isMe || p.userId === myUserId) && (
-                    <span className="ml-1.5 text-[10px] text-primary font-normal">(você)</span>
-                  )}
-                </div>
-                <div className="text-[10px] text-muted-foreground flex items-center gap-2">
-                  <span>{p.carName}</span>
-                  <span>·</span>
-                  <span className="font-mono text-yellow-300/70">{t.toFixed(2)}s</span>
-                  <span>·</span>
-                  <span>{calcAvgSpeed(t / LAPS)} km/h</span>
-                </div>
-              </div>
-              <div className="text-right shrink-0">
-                {p.payout > 0
-                  ? <div className="text-[12px] font-bold text-emerald-400">+{fmt(p.payout)}</div>
-                  : <div className="text-[12px] text-muted-foreground">—</div>
-                }
-                <div className="text-[10px] text-muted-foreground">
-                  IGP {p.igp}
-                </div>
-              </div>
-            </div>
-          );
-        })}
-      </div>
-
-      <Button className="w-full gap-2" onClick={onBack}>
-        <ArrowLeft size={14} />
+      <Button onClick={onBack} className="w-full" variant="outline">
+        <ArrowLeft size={14} className="mr-1.5" />
         Voltar aos Lobbies
       </Button>
     </div>
   );
 }
 
-// ── Cartão de estatística individual ─────────────────────────────
-function StatCard({
-  label, value, icon, highlight = false,
-}: {
-  label:      string;
-  value:      string;
-  icon:       string;
-  highlight?: boolean;
-}) {
-  return (
-    <div className={`rounded-[12px] p-3 space-y-1 ${
-      highlight ? 'bg-yellow-400/10 border border-yellow-400/30' : 'bg-muted/30'
-    }`}>
-      <div className="text-[10px] text-muted-foreground flex items-center gap-1">
-        <span>{icon}</span>
-        {label}
-      </div>
-      <div className={`text-[16px] font-black tabular-nums ${
-        highlight ? 'text-yellow-400' : 'text-foreground'
-      }`}>
-        {value}
-      </div>
-    </div>
-  );
-}
-
 // ══════════════════════════════════════════════════════════════════
-// Create / Join views
+// CreateLobbyView — Criar novo racha
 // ══════════════════════════════════════════════════════════════════
-
-function CreateLobbyView({
-  carsInGarage, gameState, onConfirm, onBack,
-}: {
+interface CreateLobbyViewProps {
   carsInGarage: OwnedCar[];
   gameState:    GameState;
   onConfirm:    (car: OwnedCar, bet: number, maxPlayers: number) => void;
   onBack:       () => void;
-}) {
-  const [selectedCar, setSelectedCar] = useState<OwnedCar>(carsInGarage[0]!);
-  const [bet,         setBet]         = useState(1_000);
-  const [customBet,   setCustomBet]   = useState(false);
-  const [betInput,    setBetInput]    = useState('');
+}
+
+function CreateLobbyView({ carsInGarage, gameState, onConfirm, onBack }: CreateLobbyViewProps) {
+  const [selectedCar, setSelectedCar] = useState<OwnedCar | null>(carsInGarage[0] ?? null);
+  const [bet,         setBet]         = useState(BET_PRESETS[1]);
   const [maxPlayers,  setMaxPlayers]  = useState(2);
 
-  const canCreate = selectedCar && bet > 0 && bet <= gameState.money;
+  const pot = Math.round(bet * maxPlayers * 0.95);
 
   return (
-    <div className="space-y-5">
-      <div className="flex items-center gap-3">
-        <button
-          onClick={onBack}
-          className="w-9 h-9 rounded-full bg-muted flex items-center justify-center active:scale-95 shrink-0"
-        >
-          <ArrowLeft size={18} className="text-foreground" />
+    <div className="space-y-4">
+      <div className="flex items-center gap-2">
+        <button onClick={onBack} className="p-1.5 rounded-full hover:bg-muted/50">
+          <ArrowLeft size={18} className="text-muted-foreground" />
         </button>
-        <div className="flex-1">
-          <h2 className="font-bold text-[17px] text-foreground">🏁 Criar Racha</h2>
-          <p className="text-[11px] text-muted-foreground">
-            {LAPS} voltas · {LAP_METERS * LAPS}m · Lobby aberto até lotar
-          </p>
-        </div>
-        <span className="text-[12px] text-muted-foreground tabular-nums">
-          {fmt(gameState.money)}
-        </span>
+        <h2 className="font-game-title text-lg font-bold">Criar Racha</h2>
       </div>
 
-      {/* Carro */}
-      <div>
-        <div className="text-[11px] uppercase tracking-wider text-muted-foreground font-semibold mb-2">
-          Escolha o Carro
+      {/* Seleção de carro */}
+      <div className="space-y-2">
+        <div className="text-[11px] uppercase tracking-wider text-muted-foreground font-semibold px-1">
+          Seu Carro
         </div>
-        <div className="space-y-2">
+        <div className="space-y-1.5 max-h-48 overflow-y-auto">
           {carsInGarage.map(car => {
-            const perf = getFullPerformance(car);
-            const sel  = selectedCar?.instanceId === car.instanceId;
+            const isSelected = car.instanceId === selectedCar?.instanceId;
             return (
               <button
                 key={car.instanceId}
                 onClick={() => setSelectedCar(car)}
-                className={`w-full flex items-center gap-3 p-3.5 rounded-[14px] text-left transition-all active:scale-[0.98] ${
-                  sel
-                    ? 'bg-primary/10 border border-primary/40'
-                    : 'ios-surface border border-transparent'
+                className={`w-full flex items-center gap-3 px-3 py-2.5 rounded-[12px] ios-surface text-left transition-all ${
+                  isSelected ? 'border border-primary/40 bg-primary/5' : 'border border-transparent'
                 }`}
               >
-                <span className="text-3xl">{car.icon}</span>
+                <span className="text-xl">{car.icon}</span>
                 <div className="flex-1 min-w-0">
-                  <p className="text-[13px] font-semibold text-foreground truncate">{car.fullName}</p>
-                  <p className="text-[11px] text-muted-foreground">{car.year}</p>
+                  <div className="text-[13px] font-semibold text-foreground truncate">{car.fullName}</div>
+                  <div className="text-[10px] text-muted-foreground">
+                    Cond. {car.condition}% · {car.year}
+                  </div>
                 </div>
-                <span className={`px-2 py-1 rounded-full text-[11px] font-black border ${igpClass(perf.igp)}`}>
-                  IGP {perf.igp}
-                </span>
+                {isSelected && (
+                  <span className="text-[10px] text-primary font-bold bg-primary/10 px-1.5 rounded-full">
+                    ✓
+                  </span>
+                )}
               </button>
             );
           })}
         </div>
       </div>
 
-      {/* Máx. jogadores */}
-      <div>
-        <div className="text-[11px] uppercase tracking-wider text-muted-foreground font-semibold mb-2">
-          Máx. Jogadores
+      {/* Aposta */}
+      <div className="space-y-2">
+        <div className="text-[11px] uppercase tracking-wider text-muted-foreground font-semibold px-1">
+          Aposta por Piloto
         </div>
-        <div className="flex gap-2">
+        <div className="flex gap-1.5 flex-wrap">
+          {BET_PRESETS.map(b => (
+            <button
+              key={b}
+              onClick={() => setBet(b)}
+              className={`flex-1 py-2 text-[12px] font-semibold rounded-[10px] transition-all ${
+                bet === b
+                  ? 'bg-primary text-primary-foreground'
+                  : 'ios-surface text-muted-foreground hover:text-foreground'
+              }`}
+            >
+              {fmt(b)}
+            </button>
+          ))}
+        </div>
+        <div className="text-center text-[11px] text-muted-foreground">
+          Pot total (3% de taxa): <span className="text-emerald-400 font-semibold">{fmt(pot)}</span> para o 1º lugar
+        </div>
+      </div>
+
+      {/* Número de jogadores */}
+      <div className="space-y-2">
+        <div className="text-[11px] uppercase tracking-wider text-muted-foreground font-semibold px-1">
+          Jogadores
+        </div>
+        <div className="flex gap-1.5">
           {[2, 3, 4].map(n => (
             <button
               key={n}
               onClick={() => setMaxPlayers(n)}
-              className={`flex-1 py-3 rounded-[12px] text-[15px] font-bold transition-all active:scale-95 ${
-                maxPlayers === n ? 'bg-primary text-primary-foreground' : 'ios-surface text-foreground'
+              className={`flex-1 py-2 text-[13px] font-semibold rounded-[10px] transition-all flex items-center justify-center gap-1 ${
+                maxPlayers === n
+                  ? 'bg-primary text-primary-foreground'
+                  : 'ios-surface text-muted-foreground hover:text-foreground'
               }`}
             >
+              <Users size={12} />
               {n}
             </button>
           ))}
         </div>
       </div>
 
-      {/* Aposta */}
-      <div>
-        <div className="text-[11px] uppercase tracking-wider text-muted-foreground font-semibold mb-2">
-          Aposta
-        </div>
-        <div className="flex flex-wrap gap-2 mb-3">
-          {BET_PRESETS.map(p => (
-            <button
-              key={p}
-              onClick={() => { setBet(p); setCustomBet(false); setBetInput(''); }}
-              className={`px-3 py-2 rounded-[10px] text-[12px] font-bold transition-all active:scale-95 ${
-                !customBet && bet === p ? 'bg-primary text-primary-foreground' : 'ios-surface text-foreground'
-              }`}
-            >
-              {fmt(p)}
-            </button>
-          ))}
-          <button
-            onClick={() => setCustomBet(v => !v)}
-            className={`px-3 py-2 rounded-[10px] text-[12px] font-bold transition-all active:scale-95 ${
-              customBet ? 'bg-primary text-primary-foreground' : 'ios-surface text-foreground'
-            }`}
-          >
-            Outro
-          </button>
-        </div>
-        {customBet && (
-          <input
-            type="number"
-            inputMode="numeric"
-            value={betInput}
-            onChange={e => {
-              setBetInput(e.target.value);
-              const v = parseFloat(e.target.value);
-              if (!isNaN(v) && v > 0) setBet(Math.round(v));
-            }}
-            placeholder="Valor personalizado"
-            className="w-full ios-surface rounded-[12px] px-4 py-3 text-[14px] text-foreground border border-border focus:outline-none focus:ring-2 focus:ring-primary mb-3"
-          />
-        )}
-        <div className="ios-surface rounded-[14px] p-4 space-y-2.5">
-          <div className="flex justify-between text-[13px]">
-            <span className="text-muted-foreground">Pot total</span>
-            <span className="font-bold text-foreground">{fmt(bet * maxPlayers)}</span>
-          </div>
-          <div className="flex justify-between text-[13px]">
-            <span className="text-muted-foreground">🥇 1º lugar recebe</span>
-            <span className="font-bold text-emerald-400">{fmt(Math.round(bet * maxPlayers * 0.95))}</span>
-          </div>
-          <div className="border-t border-border/40 pt-2 flex justify-between text-[11px] text-muted-foreground">
-            <span>Taxa do sistema</span>
-            <span>5%</span>
-          </div>
-        </div>
-        {bet > gameState.money && (
-          <p className="text-[13px] text-red-400 mt-2 font-semibold">⚠️ Saldo insuficiente</p>
-        )}
+      {/* Saldo */}
+      <div className="flex items-center justify-between px-1 text-[12px]">
+        <span className="text-muted-foreground">Seu saldo</span>
+        <span className={gameState.money >= bet ? 'text-emerald-400 font-semibold' : 'text-red-400 font-semibold'}>
+          {fmt(gameState.money)}
+        </span>
       </div>
 
       <Button
-        className="w-full h-12 text-[15px] font-bold gap-2"
-        disabled={!canCreate}
-        onClick={() => onConfirm(selectedCar!, bet, maxPlayers)}
+        className="w-full"
+        disabled={!selectedCar || gameState.money < bet}
+        onClick={() => selectedCar && onConfirm(selectedCar, bet, maxPlayers)}
       >
-        <Zap size={16} />
+        <Flag size={14} className="mr-1.5" />
         Criar Racha · {fmt(bet)}
       </Button>
     </div>
   );
 }
 
-function JoinLobbyView({
-  lobby, carsInGarage, gameState, myName, onConfirm, onBack,
-}: {
+// ══════════════════════════════════════════════════════════════════
+// JoinLobbyView — Entrar em racha existente
+// ══════════════════════════════════════════════════════════════════
+interface JoinLobbyViewProps {
   lobby:        OpenLobby;
   carsInGarage: OwnedCar[];
   gameState:    GameState;
   myName:       string;
   onConfirm:    (car: OwnedCar) => void;
   onBack:       () => void;
-}) {
-  const [selectedCar, setSelectedCar] = useState<OwnedCar>(carsInGarage[0]!);
-  const canJoin = gameState.money >= lobby.bet;
+}
 
-  // Calcula vantagem relativa vs o melhor IGP do lobby
-  const myPerf    = selectedCar ? getFullPerformance(selectedCar) : null;
-  const myIgp     = myPerf?.igp ?? 0;
-  const bestIgp   = Math.max(...lobby.players.map(p => p.igp), 0);
-  const igpDelta  = myIgp - bestIgp;
-  const advantage =
-    igpDelta > 5  ? 'advantage' :
-    igpDelta < -5 ? 'disadvantage' :
-    'even';
-
-  const advantageLabel = {
-    advantage:    { text: `Você está em vantagem (+${igpDelta} IGP)`, color: 'text-emerald-400' },
-    disadvantage: { text: `Você está em desvantagem (${igpDelta} IGP)`, color: 'text-red-400' },
-    even:         { text: 'Corrida equilibrada', color: 'text-amber-400' },
-  }[advantage];
+function JoinLobbyView({ lobby, carsInGarage, gameState, onConfirm, onBack }: JoinLobbyViewProps) {
+  const [selectedCar, setSelectedCar] = useState<OwnedCar | null>(carsInGarage[0] ?? null);
+  const pot = Math.round(lobby.bet * lobby.maxPlayers * 0.95);
 
   return (
-    <div className="space-y-5">
-      <div className="flex items-center gap-3">
-        <button
-          onClick={onBack}
-          className="w-9 h-9 rounded-full bg-muted flex items-center justify-center active:scale-95 shrink-0"
-        >
-          <ArrowLeft size={18} className="text-foreground" />
+    <div className="space-y-4">
+      <div className="flex items-center gap-2">
+        <button onClick={onBack} className="p-1.5 rounded-full hover:bg-muted/50">
+          <ArrowLeft size={18} className="text-muted-foreground" />
         </button>
-        <h2 className="font-bold text-[17px] text-foreground flex-1">⚡ Entrar no Racha</h2>
+        <h2 className="font-game-title text-lg font-bold">Entrar no Racha</h2>
       </div>
 
-      <div className="ios-surface rounded-[16px] p-4 space-y-3">
-        <div className="flex justify-between text-[13px]">
-          <span className="text-muted-foreground">Host</span>
+      {/* Info do lobby */}
+      <div className="ios-surface rounded-[14px] p-3 space-y-1.5">
+        <div className="flex items-center justify-between text-[13px]">
+          <span className="text-muted-foreground">Organizador</span>
           <span className="font-semibold text-foreground">{lobby.hostName}</span>
         </div>
-        <div className="flex justify-between text-[13px]">
-          <span className="text-muted-foreground">Vagas</span>
+        <div className="flex items-center justify-between text-[13px]">
+          <span className="text-muted-foreground">Aposta</span>
+          <span className="font-semibold text-emerald-400">{fmt(lobby.bet)}</span>
+        </div>
+        <div className="flex items-center justify-between text-[13px]">
+          <span className="text-muted-foreground">Prêmio (só 1º)</span>
+          <span className="font-semibold text-emerald-400">{fmt(pot)}</span>
+        </div>
+        <div className="flex items-center justify-between text-[13px]">
+          <span className="text-muted-foreground">Pilotos</span>
           <span className="font-semibold text-foreground">
             {lobby.players.length}/{lobby.maxPlayers}
-            {lobby.maxPlayers - lobby.players.length === 1 && (
-              <span className="ml-1.5 text-[11px] text-amber-400 font-bold">— última vaga!</span>
-            )}
           </span>
-        </div>
-        <div className="flex justify-between text-[13px]">
-          <span className="text-muted-foreground">Aposta</span>
-          <span className="font-bold text-emerald-400">{fmt(lobby.bet)}</span>
-        </div>
-        <div className="flex justify-between text-[13px]">
-          <span className="text-muted-foreground">🥇 1º lugar recebe</span>
-          <span className="font-bold text-yellow-400">{fmt(Math.round(lobby.bet * lobby.maxPlayers * 0.95))}</span>
-        </div>
-        <div className="border-t border-border/40 pt-2 text-[11px] text-muted-foreground flex items-center gap-1">
-          <Flag size={9} />
-          Circuito {LAPS} voltas · {LAP_METERS * LAPS}m — resultado quando lotar
         </div>
       </div>
 
-      {/* Pilotos no lobby */}
-      {lobby.players.length > 0 && (
-        <div>
-          <div className="text-[11px] uppercase tracking-wider text-muted-foreground font-semibold mb-2">
-            No lobby
-          </div>
-          <div className="space-y-2">
-            {lobby.players.map(p => (
-              <div key={p.userId} className="ios-surface flex items-center gap-3 rounded-[12px] px-3 py-2.5">
-                <span className="text-2xl">{p.carIcon}</span>
-                <div className="flex-1 min-w-0">
-                  <p className="text-[13px] font-semibold text-foreground truncate">{p.name}</p>
-                  <p className="text-[11px] text-muted-foreground truncate">{p.carName}</p>
-                </div>
-                <span className={`px-2 py-0.5 rounded-full text-[11px] font-bold border ${igpClass(p.igp)}`}>
-                  IGP {p.igp}
-                </span>
-              </div>
-            ))}
-          </div>
-        </div>
-      )}
-
-      {/* Escolha do carro */}
-      <div>
-        <div className="text-[11px] uppercase tracking-wider text-muted-foreground font-semibold mb-2">
+      {/* Seleção de carro */}
+      <div className="space-y-2">
+        <div className="text-[11px] uppercase tracking-wider text-muted-foreground font-semibold px-1">
           Seu Carro
         </div>
-        <div className="space-y-2">
+        <div className="space-y-1.5 max-h-52 overflow-y-auto">
           {carsInGarage.map(car => {
-            const perf = getFullPerformance(car);
-            const sel  = selectedCar?.instanceId === car.instanceId;
+            const isSelected = car.instanceId === selectedCar?.instanceId;
             return (
               <button
                 key={car.instanceId}
                 onClick={() => setSelectedCar(car)}
-                className={`w-full flex items-center gap-3 p-3.5 rounded-[14px] text-left transition-all active:scale-[0.98] ${
-                  sel
-                    ? 'bg-primary/10 border border-primary/40'
-                    : 'ios-surface border border-transparent'
+                className={`w-full flex items-center gap-3 px-3 py-2.5 rounded-[12px] ios-surface text-left transition-all ${
+                  isSelected ? 'border border-primary/40 bg-primary/5' : 'border border-transparent'
                 }`}
               >
-                <span className="text-3xl">{car.icon}</span>
+                <span className="text-xl">{car.icon}</span>
                 <div className="flex-1 min-w-0">
-                  <p className="text-[13px] font-semibold text-foreground truncate">{car.fullName}</p>
-                  <p className="text-[11px] text-muted-foreground">{car.year}</p>
+                  <div className="text-[13px] font-semibold text-foreground truncate">{car.fullName}</div>
+                  <div className="text-[10px] text-muted-foreground">
+                    Cond. {car.condition}% · {car.year}
+                  </div>
                 </div>
-                <span className={`px-2 py-1 rounded-full text-[11px] font-black border ${igpClass(perf.igp)}`}>
-                  IGP {perf.igp}
-                </span>
+                {isSelected && (
+                  <span className="text-[10px] text-primary font-bold bg-primary/10 px-1.5 rounded-full">✓</span>
+                )}
               </button>
             );
           })}
         </div>
-
-        {/* Indicador de vantagem */}
-        {myPerf && lobby.players.length > 0 && (
-          <div className={`mt-2 text-[12px] font-semibold px-3 py-2 rounded-[10px] bg-muted/30 ${advantageLabel.color}`}>
-            {advantageLabel.text}
-            {' · '}{myName} · IGP {myIgp}
-          </div>
-        )}
       </div>
 
-      {!canJoin && (
-        <p className="text-[13px] text-red-400 font-semibold">⚠️ Saldo insuficiente para esta aposta</p>
-      )}
+      <div className="flex items-center justify-between px-1 text-[12px]">
+        <span className="text-muted-foreground">Seu saldo</span>
+        <span className={gameState.money >= lobby.bet ? 'text-emerald-400 font-semibold' : 'text-red-400 font-semibold'}>
+          {fmt(gameState.money)}
+        </span>
+      </div>
 
       <Button
-        className="w-full h-12 text-[15px] font-bold gap-2"
-        disabled={!canJoin || !selectedCar}
-        onClick={() => onConfirm(selectedCar!)}
+        className="w-full"
+        disabled={!selectedCar || gameState.money < lobby.bet}
+        onClick={() => selectedCar && onConfirm(selectedCar)}
       >
-        <Zap size={16} />
-        Confirmar · {fmt(lobby.bet)}
+        <Zap size={14} className="mr-1.5" />
+        Entrar · {fmt(lobby.bet)}
       </Button>
-    </div>
-  );
-}
-
-// ══════════════════════════════════════════════════════════════════
-// Histórico completo (sub-aba)
-// ══════════════════════════════════════════════════════════════════
-function RaceHistoryTab({ history }: { history: RaceRecord[] }) {
-  if (history.length === 0) {
-    return (
-      <div className="text-center py-14 space-y-2">
-        <div className="text-5xl">🏁</div>
-        <div className="text-[14px] font-semibold text-muted-foreground">Sem corridas ainda</div>
-        <div className="text-[11px] text-muted-foreground">
-          Participe de um racha para ver seu histórico aqui
-        </div>
-      </div>
-    );
-  }
-
-  const wins   = history.filter(r => r.won || r.myPosition === 1).length;
-  const total  = history.length;
-  const winPct = total > 0 ? Math.round((wins / total) * 100) : 0;
-  const totalEarned = history.reduce((s, r) => s + (r.payout > 0 ? r.payout - r.bet : -r.bet), 0);
-
-  return (
-    <div className="space-y-4">
-      {/* Resumo geral */}
-      <div className="ios-surface rounded-[16px] p-4">
-        <div className="text-[11px] uppercase tracking-wider text-muted-foreground font-semibold mb-3 flex items-center gap-1.5">
-          <Trophy size={11} />
-          Resumo Geral
-        </div>
-        <div className="grid grid-cols-3 gap-3 text-center">
-          <div>
-            <div className="text-[20px] font-black text-foreground">{total}</div>
-            <div className="text-[10px] text-muted-foreground">Corridas</div>
-          </div>
-          <div>
-            <div className="text-[20px] font-black text-yellow-400">{wins}</div>
-            <div className="text-[10px] text-muted-foreground">Vitórias</div>
-          </div>
-          <div>
-            <div className="text-[20px] font-black text-emerald-400">{winPct}%</div>
-            <div className="text-[10px] text-muted-foreground">Win rate</div>
-          </div>
-        </div>
-        {/* Saldo líquido */}
-        <div className={`mt-3 pt-3 border-t border-border/40 text-center text-[13px] font-bold ${
-          totalEarned >= 0 ? 'text-emerald-400' : 'text-red-400'
-        }`}>
-          {totalEarned >= 0 ? '+' : ''}{fmt(totalEarned)} líquido
-        </div>
-      </div>
-
-      {/* Lista de corridas */}
-      <div className="space-y-2">
-        <div className="text-[11px] uppercase tracking-wider text-muted-foreground font-semibold px-1">
-          Corridas ({total})
-        </div>
-        {history.map(r => {
-          const pos       = r.myPosition ?? (r.won ? 1 : 2);
-          const netResult = r.payout > 0 ? r.payout - r.bet : -r.bet;
-          // Usa myIgp para estimar o tempo (score real não está no RaceRecord) — 3 voltas
-          const myTimeSec = calcRaceTimeSec(r.myIgp) * LAPS;
-
-          return (
-            <div key={r.id} className="ios-surface rounded-[14px] p-3.5 space-y-2">
-              {/* Linha principal */}
-              <div className="flex items-center gap-3">
-                <span className="text-[22px]">{positionMedal(pos)}</span>
-                <div className="flex-1 min-w-0">
-                  <div className="text-[13px] font-semibold text-foreground">
-                    {r.participants
-                      ? `${r.totalPlayers ?? '?'} pilotos · ${pos}º lugar`
-                      : `vs. ${r.opponentName}`}
-                  </div>
-                  <div className="text-[11px] text-muted-foreground flex items-center gap-1">
-                    <Clock size={9} />
-                    {new Date(r.createdAt).toLocaleDateString('pt-BR', {
-                      day: '2-digit', month: '2-digit', year: '2-digit',
-                      hour: '2-digit', minute: '2-digit',
-                    })}
-                  </div>
-                </div>
-                <div className={`text-[14px] font-black tabular-nums ${
-                  netResult >= 0 ? 'text-emerald-400' : 'text-red-400'
-                }`}>
-                  {netResult >= 0 ? '+' : ''}{fmt(netResult)}
-                </div>
-              </div>
-
-              {/* Sub-info */}
-              <div className="flex items-center gap-3 text-[10px] text-muted-foreground border-t border-border/20 pt-2">
-                <span>Aposta {fmt(r.bet)}</span>
-                {r.myIgp > 0 && (
-                  <span>· IGP {r.myIgp} · ~{myTimeSec.toFixed(1)}s</span>
-                )}
-                {r.payout > 0 && (
-                  <span className="text-emerald-400 font-semibold">· Prêmio {fmt(r.payout)}</span>
-                )}
-              </div>
-
-              {/* Participantes */}
-              {r.participants && r.participants.length > 0 && (
-                <div className="flex flex-wrap gap-1.5 pt-0.5">
-                  {r.participants.map(p => {
-                    const pTimeSec = calcRaceTimeSec(p.igp) * LAPS;
-                    return (
-                      <div
-                        key={p.userId}
-                        className={`flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] ${
-                          p.position === 1
-                            ? 'bg-yellow-400/15 text-yellow-400 border border-yellow-400/30'
-                            : 'bg-muted/40 text-muted-foreground'
-                        }`}
-                      >
-                        <span>{positionMedal(p.position)}</span>
-                        <span className="truncate max-w-[80px]">{p.name}</span>
-                        <ChevronRight size={8} className="shrink-0 opacity-50" />
-                        <span className="font-mono">~{pTimeSec.toFixed(1)}s</span>
-                      </div>
-                    );
-                  })}
-                </div>
-              )}
-            </div>
-          );
-        })}
-      </div>
     </div>
   );
 }
