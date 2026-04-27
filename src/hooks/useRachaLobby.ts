@@ -85,8 +85,9 @@ type RankEntry = {
 };
 
 function lobbyResultsToPlayers(lobby: OpenLobby, myUserId: string | null): RacePlayerAnim[] {
-  const rankings =
-    ((lobby.results as Record<string, unknown>)?.['rankings'] as RankEntry[]) ?? [];
+  const raw =
+    ((lobby.results as Record<string, unknown> | null)?.['rankings']);
+  const rankings: RankEntry[] = Array.isArray(raw) ? (raw as RankEntry[]) : [];
   const maxScore = Math.max(...rankings.map(r => r.score), 1);
 
   return rankings.map(r => ({
@@ -436,7 +437,20 @@ export function useRachaLobby({ onSpendMoney, onAddMoney, onRaceWon }: UseRachaL
       if (listChannelRef.current) void (supabase as any).removeChannel(listChannelRef.current);
       if (successTimerRef.current) clearTimeout(successTimerRef.current);
       if (subDebounceRef.current)  clearTimeout(subDebounceRef.current);
+
+      // Garante prêmio mesmo se usuário navegar durante a animação de 20s.
+      // O lobby já está marcado como coletado no localStorage, então não há
+      // risco de dupla-coleta — apenas aplicamos o crédito pendente.
+      if (pendingPayoutRef.current > 0) {
+        onAddMoneyRef.current(pendingPayoutRef.current);
+        pendingPayoutRef.current = 0;
+      }
+      if (pendingIsWinRef.current) {
+        onRaceWonRef.current?.();
+        pendingIsWinRef.current = false;
+      }
     };
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   return {

@@ -153,6 +153,7 @@ export function useGlobalMarketplace() {
         if (!result.claimed) {
           // Outro jogador esta fazendo o refresh -- aguarda 1.5s e tenta buscar
           await new Promise(res => setTimeout(res, 1_500));
+          if (!mountedRef.current) return; // componente desmontou durante o await
         }
       }
 
