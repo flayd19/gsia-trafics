@@ -6,18 +6,27 @@
 import { useState, useRef, useCallback, useEffect } from 'react';
 import { supabase } from '@/integrations/supabase/client';
 import type { OwnedCar } from '@/types/game';
-import type { RaceRecord, RaceParticipant } from '@/types/performance';
+import type { RaceRecord, RaceParticipant, PerformanceStats } from '@/types/performance';
 import { getFullPerformance } from '@/lib/performanceEngine';
+import { simulateRace, type RaceEventLog, type RaceSector } from '@/lib/raceEngine';
 
 // ── Tipos públicos ────────────────────────────────────────────────
 export type RachaState = 'idle' | 'racing' | 'result';
 
 export interface LobbyPlayer {
-  userId:  string;
-  name:    string;
-  carName: string;
-  carIcon: string;
-  igp:     number;
+  userId:    string;
+  name:      string;
+  carName:   string;
+  carIcon:   string;
+  igp:       number;
+  /**
+   * Stats setoriais completos do carro. Usado pelo motor de simulação
+   * (raceEngine) para calcular o resultado da corrida com base em desempenho
+   * real. Opcional para retrocompatibilidade com lobbies antigos.
+   */
+  stats?:    PerformanceStats;
+  /** Condição mecânica do carro 0-100. Default 100. */
+  condition?: number;
 }
 
 export interface OpenLobby {
@@ -40,6 +49,14 @@ export interface RacePlayerAnim extends LobbyPlayer {
   position: number;
   payout:   number;
   isMe:     boolean;
+  /** Tempo total da corrida em segundos (vindo do motor; opcional para legacy). */
+  totalTimeSec?: number;
+  /** Volta mais rápida em segundos. */
+  bestLapSec?:   number;
+  /** Score por setor (0-100) — usado no relatório detalhado. */
+  sectorScores?: Record<RaceSector, number>;
+  /** Eventos da corrida (largada, erros, volta mais rápida) — usado no relatório. */
+  events?:       RaceEventLog[];
 }
 
 // ── Tipo interno do servidor ──────────────────────────────────────
@@ -106,19 +123,64 @@ function rowToLobby(row: Record<string, unknown>): OpenLobby {
   };
 }
 
-// ── Map lobby.results.rankings → RacePlayerAnim[] ─────────────────
+// ── Map lobby → RacePlayerAnim[] ──────────────────────────────────
+//
+// Estratégia híbrida (compat. retroativa):
+//   1. Se TODOS os players têm `stats` setoriais embutidos → simula a corrida
+//      localmente com `simulateRace`, usando `lobby.id` como seed determinístico
+//      (todos os clientes vêem o mesmo resultado).
+//   2. Senão (lobby antigo, criado antes desta migração) → usa o ranking que
+//      o servidor calculou e armazenou em `lobby.results.rankings`.
 function lobbyResultsToPlayers(lobby: OpenLobby, myUserId: string | null): RacePlayerAnim[] {
-  const raw = (lobby.results as Record<string, unknown> | null)?.['rankings'];
+  const players = lobby.players ?? [];
+  if (players.length === 0) return [];
 
-  // Valida cada entrada com type guard — descarta silhouetteadas malformadas
+  // ── Caminho novo: simulação client-side determinística ──────────
+  const allHaveStats = players.every(p => p.stats);
+  if (allHaveStats) {
+    const results = simulateRace(
+      players.map(p => ({
+        userId:    p.userId,
+        igp:       p.igp,
+        stats:     p.stats,
+        condition: p.condition,
+      })),
+      { seed: lobby.id, luckAmplitude: 0.05 },
+    );
+
+    const pot           = lobby.bet * players.length;
+    const winnerPayout  = Math.round(pot * 0.95);
+    const maxScore      = Math.max(...results.map(r => r.score), 1);
+
+    return results.map(r => {
+      const player = players.find(p => p.userId === r.userId);
+      if (!player) {
+        // Não deveria acontecer; guarda defensiva.
+        return null as unknown as RacePlayerAnim;
+      }
+      return {
+        ...player,
+        score:        r.score,
+        finalPct:     Math.round((r.score / maxScore) * 100),
+        position:     r.position,
+        payout:       r.position === 1 ? winnerPayout : 0,
+        isMe:         player.userId === myUserId,
+        totalTimeSec: r.totalTimeSec,
+        bestLapSec:   r.bestLapSec,
+        sectorScores: r.sectorScores,
+        events:       r.events,
+      } satisfies RacePlayerAnim;
+    }).filter(Boolean) as RacePlayerAnim[];
+  }
+
+  // ── Caminho legacy: usa rankings vindos do servidor ─────────────
+  const raw = (lobby.results as Record<string, unknown> | null)?.['rankings'];
   const rankings: RankEntry[] = Array.isArray(raw)
     ? raw.filter(isValidRankEntry)
     : [];
-
   if (rankings.length === 0) return [];
 
   const maxScore = Math.max(...rankings.map(r => r.score), 1);
-
   return rankings.map(r => ({
     userId:   r.userId,
     name:     r.name,
@@ -378,11 +440,13 @@ export function useRachaLobby({ onSpendMoney, onAddMoney, onRaceWon }: UseRachaL
     try {
       const perf     = getFullPerformance(car);
       const mePlayer: LobbyPlayer = {
-        userId:  uid,
+        userId:    uid,
         name,
-        carName: car.fullName,
-        carIcon: car.icon,
-        igp:     perf.igp,
+        carName:   car.fullName,
+        carIcon:   car.icon,
+        igp:       perf.igp,
+        stats:     perf,
+        condition: car.condition ?? 100,
       };
 
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -422,11 +486,13 @@ export function useRachaLobby({ onSpendMoney, onAddMoney, onRaceWon }: UseRachaL
     try {
       const perf     = getFullPerformance(car);
       const mePlayer: LobbyPlayer = {
-        userId:  uid,
+        userId:    uid,
         name,
-        carName: car.fullName,
-        carIcon: car.icon,
-        igp:     perf.igp,
+        carName:   car.fullName,
+        carIcon:   car.icon,
+        igp:       perf.igp,
+        stats:     perf,
+        condition: car.condition ?? 100,
       };
 
       // eslint-disable-next-line @typescript-eslint/no-explicit-any

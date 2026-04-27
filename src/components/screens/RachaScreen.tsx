@@ -888,17 +888,31 @@ function RacingView({ players, myUserId, onFinish }: RacingViewProps) {
   const rafRef     = useRef<number | null>(null);
   const finishedRef = useRef(false);
 
+  // BUG FIX: refs estáveis para `players`, `DURATION_MS` e `onFinish`. Sem isso,
+  // o useEffect re-rodava toda vez que o pai re-renderizava (subscription do
+  // Supabase, polling, etc.), recriando a animação e fazendo a corrida parecer
+  // "mais rápida" para alguns jogadores. O array de dependências agora é vazio:
+  // a animação é montada exatamente uma vez por instância do componente.
+  const playersRef    = useRef(players);
+  const durationRef   = useRef(DURATION_MS);
+  const onFinishRef   = useRef(onFinish);
+  useEffect(() => { playersRef.current  = players; });
+  useEffect(() => { durationRef.current = DURATION_MS; });
+  useEffect(() => { onFinishRef.current = onFinish; });
+
   useEffect(() => {
-    const maxScore = Math.max(...players.map(p => p.score), 1);
+    const playersSnapshot = playersRef.current;
+    const duration = durationRef.current;
+    const maxScore = Math.max(...playersSnapshot.map(p => p.score), 1);
 
     const tick = (now: number) => {
       if (startRef.current === null) startRef.current = now;
       const elapsed = now - startRef.current;
-      const t       = Math.min(1, elapsed / DURATION_MS);
+      const t       = Math.min(1, elapsed / duration);
       const eased   = t < 0.5 ? 2 * t * t : -1 + (4 - 2 * t) * t;
 
       const newProgs: Record<string, number> = {};
-      players.forEach((p, idx) => {
+      playersSnapshot.forEach((p, idx) => {
         const speed = 0.85 + (p.score / maxScore) * 0.15;
         const noise = racingNoise(t, idx * 7.3 + 1.1);
         const amp   = Math.max(0.01, 0.06 - Math.abs(p.score / maxScore - 0.5) * 0.04);
@@ -907,14 +921,14 @@ function RacingView({ players, myUserId, onFinish }: RacingViewProps) {
       setLapProgs(newProgs);
 
       // Recalcular posições em tempo real pelo progresso na volta
-      const sorted = [...players].sort((a, b) =>
+      const sorted = [...playersSnapshot].sort((a, b) =>
         (newProgs[b.userId] ?? 0) - (newProgs[a.userId] ?? 0)
       );
       const newPos: Record<string, number> = {};
       sorted.forEach((p, i) => { newPos[p.userId] = i + 1; });
       setPosMaps(newPos);
 
-      setTimeLeft(Math.max(0, Math.ceil((DURATION_MS - elapsed) / 1000)));
+      setTimeLeft(Math.max(0, Math.ceil((duration - elapsed) / 1000)));
 
       if (t < 1) {
         rafRef.current = requestAnimationFrame(tick);
@@ -922,13 +936,13 @@ function RacingView({ players, myUserId, onFinish }: RacingViewProps) {
         finishedRef.current = true;
         // Fixar posições finais (baseado em score real, não animação)
         const finalPos: Record<string, number> = {};
-        players.forEach(p => { finalPos[p.userId] = p.position; });
+        playersSnapshot.forEach(p => { finalPos[p.userId] = p.position; });
         setPosMaps(finalPos);
         // Fixar lapProgs em LAPS para todos
         const finalProgs: Record<string, number> = {};
-        players.forEach(p => { finalProgs[p.userId] = LAPS; });
+        playersSnapshot.forEach(p => { finalProgs[p.userId] = LAPS; });
         setLapProgs(finalProgs);
-        setTimeout(onFinish, 600);
+        setTimeout(() => onFinishRef.current(), 600);
       }
     };
 
@@ -936,10 +950,9 @@ function RacingView({ players, myUserId, onFinish }: RacingViewProps) {
     return () => {
       if (rafRef.current) cancelAnimationFrame(rafRef.current);
     };
-  // BUG FIX: declarar dependências reais do effect para evitar stale closure
-  // se o componente re-renderizar com nova lista de jogadores ou onFinish.
+  // Intencionalmente vazio: animação roda uma vez por mount, lê valores via ref.
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [players, DURATION_MS, onFinish]);
+  }, []);
 
   return (
     <div className="space-y-3">
@@ -1012,11 +1025,31 @@ interface ResultViewProps {
 }
 
 function ResultView({ players, myUserId, onBack }: ResultViewProps) {
-  const sorted  = [...players].sort((a, b) => a.position - b.position);
-  const me      = players.find(p => p.isMe || p.userId === myUserId);
-  const myPos   = me?.position ?? 0;
-  const won     = myPos === 1;
-  const pot     = players.reduce((s, p) => s + p.payout, 0); // soma dos payouts
+  const sorted   = [...players].sort((a, b) => a.position - b.position);
+  const me       = players.find(p => p.isMe || p.userId === myUserId);
+  const myPos    = me?.position ?? 0;
+  const won      = myPos === 1;
+  const pot      = players.reduce((s, p) => s + p.payout, 0);
+  const winner   = sorted[0];
+  const totalDistanceKm = (LAPS * LAP_METERS) / 1000;
+
+  // Helpers — preferem tempos reais do motor (totalTimeSec/bestLapSec) quando
+  // disponíveis (lobbies novos), senão derivam do score (lobbies legacy).
+  const getTimeSec = (p: typeof players[number]) =>
+    p.totalTimeSec ?? calcRaceTimeSec(p.score);
+  const getBestLap = (p: typeof players[number]) =>
+    p.bestLapSec ?? calcRaceTimeSec(p.score) / LAPS;
+
+  // Tempo do líder (referência para cálculo de gaps)
+  const leaderTime = winner ? getTimeSec(winner) : 0;
+  // Volta mais rápida — usa bestLapSec real quando disponível
+  const fastestLap = sorted.reduce(
+    (best, p) => {
+      const lap = getBestLap(p);
+      return lap < best.time ? { time: lap, name: p.name, carIcon: p.carIcon } : best;
+    },
+    { time: Infinity, name: '', carIcon: '' },
+  );
 
   return (
     <div className="space-y-4">
@@ -1049,63 +1082,314 @@ function ResultView({ players, myUserId, onBack }: ResultViewProps) {
         )}
       </div>
 
-      {/* Classificação final */}
+      {/* ── Resumo da corrida ───────────────────────────────────── */}
+      <div className="ios-surface rounded-[14px] p-3">
+        <div className="text-[11px] uppercase tracking-wider text-muted-foreground font-semibold mb-2">
+          📊 Resumo da Corrida
+        </div>
+        <div className="grid grid-cols-2 gap-x-3 gap-y-2 text-[12px]">
+          <div className="flex justify-between">
+            <span className="text-muted-foreground">Pilotos</span>
+            <span className="font-semibold text-foreground">{players.length}</span>
+          </div>
+          <div className="flex justify-between">
+            <span className="text-muted-foreground">Distância</span>
+            <span className="font-semibold text-foreground">{totalDistanceKm} km</span>
+          </div>
+          <div className="flex justify-between">
+            <span className="text-muted-foreground">Voltas</span>
+            <span className="font-semibold text-foreground">{LAPS}</span>
+          </div>
+          <div className="flex justify-between">
+            <span className="text-muted-foreground">Pot total</span>
+            <span className="font-semibold text-emerald-400">{fmt(pot)}</span>
+          </div>
+          <div className="flex justify-between col-span-2 pt-1.5 mt-0.5 border-t border-border/30">
+            <span className="text-muted-foreground flex items-center gap-1">⚡ Volta mais rápida</span>
+            <span className="font-mono font-semibold text-amber-400">
+              {fastestLap.carIcon} {fmtTimer(fastestLap.time)} <span className="text-muted-foreground font-normal">— {fastestLap.name}</span>
+            </span>
+          </div>
+        </div>
+      </div>
+
+      {/* ── Classificação final com stats completas ─────────────── */}
       <div className="space-y-1.5">
         <div className="text-[11px] uppercase tracking-wider text-muted-foreground font-semibold px-1">
           Classificação Final
         </div>
         {sorted.map(p => {
-          const isMe  = p.isMe || p.userId === myUserId;
-          const color = PLAYER_COLORS[players.indexOf(p)] ?? '#94a3b8';
-          const timeSec = calcRaceTimeSec(p.score);
+          const isMe       = p.isMe || p.userId === myUserId;
+          const color      = PLAYER_COLORS[players.indexOf(p)] ?? '#94a3b8';
+          const timeSec    = getTimeSec(p);
+          const gap        = p.position === 1 ? 0 : timeSec - leaderTime;
+          const topSpeed   = calcTopSpeed(timeSec);
+          const avgSpeed   = calcAvgSpeed(timeSec);
+          const lapTime    = getBestLap(p);
           return (
             <div key={p.userId}
-              className={`flex items-center gap-2.5 px-3 py-2.5 rounded-[12px] ios-surface ${
+              className={`px-3 py-2.5 rounded-[12px] ios-surface ${
                 isMe ? 'border border-primary/30 bg-primary/5' : ''
               }`}
             >
-              <span className="text-xl w-7 text-center">{positionMedal(p.position)}</span>
-              <span className="text-lg">{p.carIcon}</span>
-              <div className="flex-1 min-w-0">
-                <div className="flex items-center gap-1.5 flex-wrap">
-                  <span className={`text-[13px] font-semibold ${isMe ? 'text-foreground' : 'text-muted-foreground'}`}>
-                    {p.name}
-                  </span>
-                  {isMe && <span className="text-[9px] text-primary font-bold bg-primary/10 px-1 rounded">você</span>}
-                </div>
-                <div className="text-[10px] text-muted-foreground">{p.carName} · IGP {p.igp}</div>
-              </div>
-              <div className="text-right space-y-0.5">
-                <div className="text-[11px] font-mono text-muted-foreground">
-                  {calcTopSpeed(timeSec).toFixed(0)} km/h
-                </div>
-                {p.position === 1 && p.payout > 0 ? (
-                  <div className="text-[12px] font-bold text-emerald-400">
-                    +{fmt(p.payout)}
+              {/* Linha principal: pos + nome + payout */}
+              <div className="flex items-center gap-2.5">
+                <span className="text-xl w-7 text-center">{positionMedal(p.position)}</span>
+                <span className="text-lg">{p.carIcon}</span>
+                <div className="flex-1 min-w-0">
+                  <div className="flex items-center gap-1.5 flex-wrap">
+                    <span className={`text-[13px] font-semibold ${isMe ? 'text-foreground' : 'text-muted-foreground'}`}>
+                      {p.name}
+                    </span>
+                    {isMe && <span className="text-[9px] text-primary font-bold bg-primary/10 px-1 rounded">você</span>}
+                    <span className="text-[10px] text-muted-foreground">· IGP {p.igp}</span>
                   </div>
-                ) : p.position === 1 ? null : (
-                  <div className="text-[11px] text-muted-foreground">sem prêmio</div>
-                )}
+                  <div className="text-[10px] text-muted-foreground truncate">{p.carName}</div>
+                </div>
+                <div className="text-right">
+                  {p.position === 1 && p.payout > 0 ? (
+                    <div className="text-[12px] font-bold text-emerald-400">+{fmt(p.payout)}</div>
+                  ) : (
+                    <div className="text-[10px] text-muted-foreground">sem prêmio</div>
+                  )}
+                </div>
+              </div>
+
+              {/* Linha de stats: tempo, gap, vel. máx, vel. média, volta */}
+              <div className="grid grid-cols-5 gap-1.5 mt-2 pt-2 border-t border-border/30">
+                <div className="text-center">
+                  <div className="text-[9px] uppercase tracking-wide text-muted-foreground">Tempo</div>
+                  <div className="text-[11px] font-mono font-semibold" style={{ color }}>
+                    {fmtTimer(timeSec)}
+                  </div>
+                </div>
+                <div className="text-center">
+                  <div className="text-[9px] uppercase tracking-wide text-muted-foreground">Gap</div>
+                  <div className={`text-[11px] font-mono font-semibold ${gap === 0 ? 'text-amber-400' : 'text-muted-foreground'}`}>
+                    {gap === 0 ? '—' : `+${gap.toFixed(1)}s`}
+                  </div>
+                </div>
+                <div className="text-center">
+                  <div className="text-[9px] uppercase tracking-wide text-muted-foreground">Vel. Máx</div>
+                  <div className="text-[11px] font-mono font-semibold text-foreground">
+                    {topSpeed} <span className="text-muted-foreground font-normal text-[9px]">km/h</span>
+                  </div>
+                </div>
+                <div className="text-center">
+                  <div className="text-[9px] uppercase tracking-wide text-muted-foreground">Vel. Méd</div>
+                  <div className="text-[11px] font-mono font-semibold text-foreground">
+                    {avgSpeed} <span className="text-muted-foreground font-normal text-[9px]">km/h</span>
+                  </div>
+                </div>
+                <div className="text-center">
+                  <div className="text-[9px] uppercase tracking-wide text-muted-foreground">Volta</div>
+                  <div className="text-[11px] font-mono font-semibold text-foreground">
+                    {fmtTimer(lapTime)}
+                  </div>
+                </div>
               </div>
             </div>
           );
         })}
       </div>
 
-      {/* Estatísticas */}
+      {/* ── Highlights da corrida (eventos narrativos do motor) ── */}
+      {(() => {
+        // Coleta todos os eventos não-triviais e ordena por volta + tipo
+        const highlights = sorted.flatMap(p =>
+          (p.events ?? [])
+            .filter(ev => ev.type !== 'fastest_lap') // já mostrado no resumo
+            .map(ev => ({ ...ev, player: p })),
+        );
+        if (highlights.length === 0) return null;
+        // Limita a 6 highlights mais relevantes (largadas + maiores impactos)
+        const ranked = [...highlights]
+          .sort((a, b) => {
+            // Largadas primeiro, depois por volta crescente, depois por |timeImpact| desc
+            const startBoost = (e: typeof a) =>
+              e.type === 'great_start' || e.type === 'poor_start' ? 0 : 1;
+            const sb = startBoost(a) - startBoost(b);
+            if (sb !== 0) return sb;
+            const lapDiff = (a.lap ?? 99) - (b.lap ?? 99);
+            if (lapDiff !== 0) return lapDiff;
+            return Math.abs(b.timeImpact) - Math.abs(a.timeImpact);
+          })
+          .slice(0, 6);
+        return (
+          <div className="ios-surface rounded-[14px] p-3 space-y-2">
+            <div className="text-[11px] uppercase tracking-wider text-muted-foreground font-semibold">
+              🎬 Highlights da Corrida
+            </div>
+            <div className="space-y-1.5">
+              {ranked.map((h, i) => {
+                const isMeRow = h.player.isMe || h.player.userId === myUserId;
+                const positive = h.timeImpact < 0;
+                return (
+                  <div
+                    key={`${h.player.userId}_${i}`}
+                    className={`flex items-center gap-2 px-2.5 py-1.5 rounded-[10px] text-[11px] ${
+                      isMeRow ? 'bg-primary/5 border border-primary/20' : 'bg-muted/30'
+                    }`}
+                  >
+                    <span className="text-base shrink-0">
+                      {h.type === 'great_start'    ? '🚀' :
+                       h.type === 'poor_start'     ? '😬' :
+                       h.type === 'consistent_pace' ? '🎯' :
+                       h.type === 'minor_mistake'  ? '⚠️' : '⏱️'}
+                    </span>
+                    <span className="text-base shrink-0">{h.player.carIcon}</span>
+                    <div className="flex-1 min-w-0">
+                      <div className={`font-semibold truncate ${isMeRow ? 'text-foreground' : 'text-muted-foreground'}`}>
+                        {h.player.name}
+                        {isMeRow && <span className="text-[9px] text-primary font-bold bg-primary/10 px-1 ml-1 rounded">você</span>}
+                      </div>
+                      <div className="text-muted-foreground text-[10px]">
+                        {h.description}
+                        {h.lap && <span className="opacity-70"> · Volta {h.lap}</span>}
+                      </div>
+                    </div>
+                    <span
+                      className={`font-mono text-[11px] font-semibold shrink-0 ${
+                        positive ? 'text-emerald-400' : 'text-red-400'
+                      }`}
+                    >
+                      {positive ? '−' : '+'}{Math.abs(h.timeImpact).toFixed(1)}s
+                    </span>
+                  </div>
+                );
+              })}
+            </div>
+          </div>
+        );
+      })()}
+
+      {/* ── Comparativo: você vs vencedor ──────────────────────── */}
+      {me && winner && me.userId !== winner.userId && (
+        <div className="ios-surface rounded-[14px] p-3 space-y-2 border border-amber-500/20 bg-amber-500/5">
+          <div className="text-[11px] uppercase tracking-wider text-amber-400 font-semibold flex items-center gap-1">
+            ⚔️ Você vs {winner.name}
+          </div>
+          {(() => {
+            const myTime    = getTimeSec(me);
+            const winTime   = getTimeSec(winner);
+            const myTopV    = calcTopSpeed(myTime);
+            const winTopV   = calcTopSpeed(winTime);
+            const myAvgV    = calcAvgSpeed(myTime);
+            const winAvgV   = calcAvgSpeed(winTime);
+            const rows: Array<{ label: string; you: string; winner: string; better: boolean }> = [
+              {
+                label: 'Tempo',
+                you: fmtTimer(myTime),
+                winner: fmtTimer(winTime),
+                better: myTime < winTime,
+              },
+              {
+                label: 'Vel. Máx',
+                you: `${myTopV} km/h`,
+                winner: `${winTopV} km/h`,
+                better: myTopV > winTopV,
+              },
+              {
+                label: 'Vel. Média',
+                you: `${myAvgV} km/h`,
+                winner: `${winAvgV} km/h`,
+                better: myAvgV > winAvgV,
+              },
+              {
+                label: 'IGP do carro',
+                you: `${me.igp}`,
+                winner: `${winner.igp}`,
+                better: me.igp > winner.igp,
+              },
+            ];
+            return rows.map(r => (
+              <div key={r.label} className="grid grid-cols-3 items-center text-[12px] gap-2">
+                <span className="text-muted-foreground">{r.label}</span>
+                <span className={`text-center font-mono font-semibold ${r.better ? 'text-emerald-400' : 'text-foreground'}`}>
+                  {r.you}
+                </span>
+                <span className="text-right font-mono font-semibold text-amber-400">
+                  {r.winner}
+                </span>
+              </div>
+            ));
+          })()}
+          <div className="text-[10px] text-muted-foreground pt-1 border-t border-border/20 mt-1">
+            <span className="text-emerald-400 font-semibold">verde</span> = você está à frente nesta métrica
+          </div>
+        </div>
+      )}
+
+      {/* ── Desempenho por setor (apenas se motor disponível) ─── */}
+      {me?.sectorScores && (
+        <div className="ios-surface rounded-[14px] p-3 space-y-2">
+          <div className="text-[11px] uppercase tracking-wider text-muted-foreground font-semibold">
+            🏁 Seu Desempenho por Setor
+          </div>
+          <div className="space-y-1.5">
+            {([
+              { key: 'straight' as const, label: 'Reta principal',  hint: 'Vel. máx + potência' },
+              { key: 'accel'    as const, label: 'Aceleração',      hint: 'Saídas de curva' },
+              { key: 'chicane'  as const, label: 'Chicane',         hint: 'Aero + grip + câmbio' },
+              { key: 'hairpin'  as const, label: 'Hairpin',         hint: 'Curva fechada' },
+            ]).map(({ key, label, hint }) => {
+              const myV       = me.sectorScores![key];
+              // Compara com a média dos outros pilotos no mesmo setor
+              const others    = players.filter(p => p.userId !== me.userId && p.sectorScores);
+              const avgOthers = others.length > 0
+                ? others.reduce((s, p) => s + (p.sectorScores![key] ?? 0), 0) / others.length
+                : myV;
+              const diff      = myV - avgOthers;
+              const tone      = diff > 5  ? 'text-emerald-400' :
+                                diff < -5 ? 'text-red-400'     : 'text-muted-foreground';
+              return (
+                <div key={key} className="flex items-center gap-2">
+                  <div className="flex-1 min-w-0">
+                    <div className="flex items-center justify-between text-[11px]">
+                      <span className="font-semibold text-foreground">{label}</span>
+                      <span className="font-mono font-bold text-foreground">{myV}</span>
+                    </div>
+                    <div className="flex items-center gap-2 mt-0.5">
+                      <div className="flex-1 h-1.5 rounded-full bg-muted overflow-hidden">
+                        <div
+                          className="h-full bg-primary rounded-full"
+                          style={{ width: `${myV}%` }}
+                        />
+                      </div>
+                      <span className={`text-[10px] font-mono ${tone} shrink-0`}>
+                        {diff > 0 ? `+${diff.toFixed(0)}` : diff.toFixed(0)} vs média
+                      </span>
+                    </div>
+                    <div className="text-[9px] text-muted-foreground/70 mt-0.5">{hint}</div>
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+        </div>
+      )}
+
+      {/* ── Suas estatísticas pessoais (sempre visível) ─────────── */}
       {me && (
         <div className="ios-surface rounded-[14px] p-3 space-y-2">
           <div className="text-[11px] uppercase tracking-wider text-muted-foreground font-semibold">
-            Suas Estatísticas
+            🏁 Suas Estatísticas
           </div>
-          <div className="grid grid-cols-3 gap-2 text-center">
-            {[
-              { label: 'Tempo', value: `${calcRaceTimeSec(me.score).toFixed(1)}s` },
-              { label: 'Vel. Máx', value: `${calcTopSpeed(calcRaceTimeSec(me.score)).toFixed(0)} km/h` },
-              { label: 'IGP', value: `${me.igp}` },
-            ].map(({ label, value }) => (
-              <div key={label} className="space-y-0.5">
-                <div className="text-[11px] text-muted-foreground">{label}</div>
+          <div className="grid grid-cols-2 gap-2 text-center">
+            {(() => {
+              const myTime = getTimeSec(me);
+              const myBest = getBestLap(me);
+              return [
+                { label: 'Posição',      value: `${me.position}º de ${players.length}` },
+                { label: 'Tempo total',  value: fmtTimer(myTime) },
+                { label: 'Vel. Máx',     value: `${calcTopSpeed(myTime)} km/h` },
+                { label: 'Vel. Média',   value: `${calcAvgSpeed(myTime)} km/h` },
+                { label: 'Melhor volta', value: fmtTimer(myBest) },
+                { label: 'IGP do carro', value: `${me.igp}` },
+              ];
+            })().map(({ label, value }) => (
+              <div key={label} className="ios-surface rounded-[10px] py-2 px-2 !shadow-none bg-muted/30">
+                <div className="text-[10px] text-muted-foreground">{label}</div>
                 <div className="text-[13px] font-bold text-foreground">{value}</div>
               </div>
             ))}
