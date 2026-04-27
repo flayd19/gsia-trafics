@@ -64,8 +64,9 @@ function CarDetailSheet({
   const [offerResult, setOfferResult] = useState<OfferResult | null>(null);
   const [offerPending, setOfferPending] = useState(false);
 
-  const getImg      = useCarImages();
-  const label       = conditionLabel(car.condition);
+  const { getImgForInstance } = useCarImages();
+  const imgUrl  = getImgForInstance(car.modelId, car.id);
+  const label   = conditionLabel(car.condition);
   const colorClass  = conditionColor(car.condition);
   const fipeDiff    = car.askingPrice - car.fipePrice;
   const isBelowFipe = fipeDiff < 0;
@@ -102,9 +103,9 @@ function CarDetailSheet({
     <div className="fixed inset-0 z-[60] flex flex-col bg-background animate-fade-in">
       {/* Hero */}
       <div className="relative w-full bg-muted overflow-hidden" style={{ height: 220 }}>
-        {getImg(car.modelId) ? (
+        {imgUrl ? (
           <img
-            src={getImg(car.modelId)}
+            src={imgUrl}
             alt={`${car.brand} ${car.model}`}
             className={`w-full h-full object-cover ${isSold ? 'opacity-40' : ''}`}
             onError={(e) => {
@@ -116,7 +117,7 @@ function CarDetailSheet({
         ) : null}
         <div
           className={`w-full h-full items-center justify-center text-[88px] ${isSold ? 'opacity-40' : ''}`}
-          style={{ display: getImg(car.modelId) ? 'none' : 'flex' }}
+          style={{ display: imgUrl ? 'none' : 'flex' }}
         >
           {car.icon}
         </div>
@@ -368,8 +369,9 @@ function MarketplaceCard({
   hasGarageSpace: boolean;
   onClick: () => void;
 }) {
-  const getImg      = useCarImages();
-  const fipeDiff    = car.askingPrice - car.fipePrice;
+  const { getImgForInstance } = useCarImages();
+  const cardImgUrl = getImgForInstance(car.modelId, car.id);
+  const fipeDiff   = car.askingPrice - car.fipePrice;
   const isBelowFipe = fipeDiff < 0;
   const diffPct     = Math.abs(Math.round((fipeDiff / car.fipePrice) * 100));
   const isSold      = car.status === 'sold';
@@ -381,9 +383,9 @@ function MarketplaceCard({
     >
       {/* Thumbnail */}
       <div className="relative w-full bg-muted flex items-center justify-center overflow-hidden" style={{ height: 110 }}>
-        {getImg(car.modelId) ? (
+        {cardImgUrl ? (
           <img
-            src={getImg(car.modelId)}
+            src={cardImgUrl}
             alt={`${car.brand} ${car.model}`}
             className={`w-full h-full object-cover ${isSold ? 'opacity-30' : ''}`}
             onError={(e) => {
@@ -395,7 +397,7 @@ function MarketplaceCard({
         ) : null}
         <span
           className={`text-[52px] items-center justify-center ${isSold ? 'opacity-30' : ''}`}
-          style={{ display: getImg(car.modelId) ? 'none' : 'flex' }}
+          style={{ display: cardImgUrl ? 'none' : 'flex' }}
         >{car.icon}</span>
 
         {/* FIPE badge — só quando disponível */}

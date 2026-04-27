@@ -241,7 +241,7 @@ function BuyerCard({
   onResolveCounterOffer: (accept: boolean) => void;
   onDismiss: () => void;
 }) {
-  const getImg         = useCarImages();
+  const { getImgForInstance } = useCarImages();
   const compatibleCars = filterCompatibleCars(carsInGarage, buyer);
 
   const [selectedCarId, setSelectedCarId]       = useState<string>(compatibleCars[0]?.instanceId ?? '');
@@ -547,9 +547,9 @@ function BuyerCard({
                     isSelected ? 'border-primary/40 bg-primary/5' : 'border-border bg-muted/20'
                   }`}
                 >
-                  {getImg(car.modelId) ? (
+                  {getImgForInstance(car.modelId, car.instanceId) ? (
                     <img
-                      src={getImg(car.modelId)}
+                      src={getImgForInstance(car.modelId, car.instanceId)}
                       alt={`${car.brand} ${car.model}`}
                       className="w-10 h-10 object-cover rounded-[8px] shrink-0"
                       onError={(e) => {
@@ -561,7 +561,7 @@ function BuyerCard({
                   ) : null}
                   <span
                     className="text-2xl shrink-0"
-                    style={{ display: getImg(car.modelId) ? 'none' : 'inline' }}
+                    style={{ display: getImgForInstance(car.modelId, car.instanceId) ? 'none' : 'inline' }}
                   >{car.icon}</span>
                   <div className="flex-1 min-w-0">
                     <div className="font-semibold text-[13px] truncate">{car.brand} {car.model}</div>

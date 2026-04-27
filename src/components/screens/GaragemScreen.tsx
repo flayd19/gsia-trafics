@@ -24,37 +24,31 @@ function CarCard({ car, slotId, onRepair }: { car: OwnedCar; slotId: number; onR
   const colorClass = conditionColor(car.condition);
   const totalCost = car.purchasePrice + (car.totalRepairCost ?? 0);
 
-  const getImg = useCarImages();
-  const imgUrl = car.modelId ? getImg(car.modelId) : undefined;
+  const { getImgForInstance } = useCarImages();
+  const imgUrl = car.modelId ? getImgForInstance(car.modelId, car.instanceId) : undefined;
 
   return (
     <div className="ios-surface rounded-[16px] overflow-hidden space-y-0">
-      {/* Imagem do carro — sempre visível, fallback para emoji */}
+      {/* Imagem do carro — cada instância recebe uma foto diferente do pool */}
       <div className="relative w-full overflow-hidden" style={{ height: 140 }}>
         {imgUrl ? (
-          <>
-            <img
-              src={imgUrl}
-              alt={`${car.brand} ${car.model}`}
-              className="w-full h-full object-cover"
-              onError={(e) => {
-                e.currentTarget.style.display = 'none';
-                const fb = e.currentTarget.nextElementSibling as HTMLElement | null;
-                if (fb) fb.style.display = 'flex';
-              }}
-            />
-            <div
-              className="w-full h-full bg-gradient-to-br from-muted to-muted/50 items-center justify-center"
-              style={{ display: 'none' }}
-            >
-              <span className="text-6xl">{car.icon}</span>
-            </div>
-          </>
-        ) : (
-          <div className="w-full h-full bg-gradient-to-br from-muted to-muted/50 flex items-center justify-center">
-            <span className="text-6xl">{car.icon}</span>
-          </div>
-        )}
+          <img
+            src={imgUrl}
+            alt={`${car.brand} ${car.model}`}
+            className="w-full h-full object-cover"
+            onError={(e) => {
+              e.currentTarget.style.display = 'none';
+              const fb = e.currentTarget.nextElementSibling as HTMLElement | null;
+              if (fb) fb.style.display = 'flex';
+            }}
+          />
+        ) : null}
+        <div
+          className="w-full h-full bg-gradient-to-br from-muted to-muted/50 items-center justify-center"
+          style={{ display: imgUrl ? 'none' : 'flex' }}
+        >
+          <span className="text-6xl">{car.icon}</span>
+        </div>
         <div className={`absolute top-2 right-2 px-2 py-0.5 rounded-full text-[10px] font-bold text-white shadow ${
           car.condition >= 75 ? 'bg-emerald-500'
           : car.condition >= 50 ? 'bg-amber-500'

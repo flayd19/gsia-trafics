@@ -1,20 +1,17 @@
 /**
- * carImageService — busca imagens reais de carros em 3 estágios em cascata:
+ * carImageService — busca MÚLTIPLAS imagens reais por carro em 4 estágios:
  *
- *  1. pt.wikipedia.org  — melhor cobertura para carros brasileiros
- *  2. en.wikipedia.org  — bom para carros internacionais / premium
- *  3. Wikimedia Commons search — busca de imagens para os que ainda faltam
+ *  1. pt.wikipedia.org  — thumbnail do artigo (batch de 50)
+ *  2. en.wikipedia.org  — thumbnail do artigo (batch de 50, para os que faltam)
+ *  3. Wikidata P18      — imagem canônica via QID (Wikipedia → Wikidata → Commons)
+ *  4. Wikimedia Commons — busca por texto, retorna até 3 fotos extras
  *
- * Cada modelo tem até 3 chances de conseguir uma foto real.
- * Só é marcado como null depois de esgotar todos os estágios.
+ * Cache armazena string[] (array de URLs) por modelId.
+ * getCachedUrl()  → primeira URL (compat. retroativa)
+ * getCachedUrls() → todas as URLs disponíveis para carrossel
  */
 
 // ── Títulos dos artigos ───────────────────────────────────────────────────────
-//
-// Chave: modelId do jogo.
-// Valor: [ título_pt, título_en ]  (null = sem artigo nesse idioma)
-//
-// Estratégia: pt.wikipedia.org → en.wikipedia.org → Commons search
 
 type WikiEntry = [pt: string | null, en: string | null];
 
@@ -203,8 +200,8 @@ const MODEL_WIKI: Record<string, WikiEntry> = {
 
 // ── Cache e estado ────────────────────────────────────────────────────────────
 
-/** modelId → URL da imagem (null = sem foto após todas as tentativas) */
-const imageCache = new Map<string, string | null>();
+/** modelId → lista de URLs de imagens (array vazio = sem foto após todas as tentativas) */
+const imageCache = new Map<string, string[]>();
 
 type Listener = () => void;
 const listeners = new Set<Listener>();
@@ -213,9 +210,30 @@ let fetchState: 'idle' | 'running' | 'done' = 'idle';
 
 // ── API pública ───────────────────────────────────────────────────────────────
 
+/** Retorna todas as URLs encontradas para o modelo (para carrossel). */
+export function getCachedUrls(modelId: string): string[] {
+  return imageCache.get(modelId) ?? [];
+}
+
+/** Retorna a primeira URL disponível (compatibilidade retroativa). */
 export function getCachedUrl(modelId: string): string | undefined {
-  const val = imageCache.get(modelId);
-  return val ?? undefined;          // null → undefined (sem foto), undefined → não carregado ainda
+  return imageCache.get(modelId)?.[0];
+}
+
+/**
+ * Retorna uma foto determinística para uma instância específica do carro.
+ * Carros do mesmo modelo (ex: 3 Gols) recebem fotos diferentes entre si.
+ * O mesmo instanceId sempre devolve a mesma foto (estável entre renders).
+ */
+export function getImageForInstance(modelId: string, instanceId: string): string | undefined {
+  const urls = imageCache.get(modelId);
+  if (!urls || urls.length === 0) return undefined;
+  // Hash simples e rápido baseado nos caracteres do instanceId
+  let hash = 0;
+  for (let i = 0; i < instanceId.length; i++) {
+    hash = (hash * 31 + instanceId.charCodeAt(i)) & 0xffff;
+  }
+  return urls[hash % urls.length];
 }
 
 export function subscribeToImageUpdates(listener: Listener): () => void {
@@ -225,72 +243,192 @@ export function subscribeToImageUpdates(listener: Listener): () => void {
 
 function notify(): void { listeners.forEach(fn => fn()); }
 
-// ── Helpers de fetch ──────────────────────────────────────────────────────────
+/** Adiciona URL ao array do modelo sem duplicar. */
+function pushUnique(modelId: string, url: string): void {
+  if (!url) return;
+  const arr = imageCache.get(modelId) ?? [];
+  if (!arr.includes(url)) {
+    arr.push(url);
+    imageCache.set(modelId, arr);
+  }
+}
+
+// ── Tipos internos ────────────────────────────────────────────────────────────
+
+interface WikiThumbPage {
+  title?: string;
+  thumbnail?: { source?: string };
+}
+interface WikiPropsPage {
+  title?: string;
+  pageprops?: { wikibase_item?: string };
+}
+interface WikidataEntity {
+  claims?: {
+    P18?: Array<{ mainsnak?: { datavalue?: { value?: string } } }>;
+  };
+}
+interface CommonsImagePage {
+  title?: string;
+  imageinfo?: Array<{ url?: string }>;
+}
+
+// ── Estágio 1 & 2: Wikipedia thumbnails (batch) ───────────────────────────────
 
 async function wikiThumbBatch(
   base: 'https://pt.wikipedia.org' | 'https://en.wikipedia.org',
   titles: string[],
 ): Promise<Map<string, string>> {
-  /** título → URL da miniatura */
   const result = new Map<string, string>();
-
   const encoded = titles.map(t => encodeURIComponent(t)).join('|');
   const url =
     `${base}/w/api.php?action=query&titles=${encoded}` +
-    `&prop=pageimages&format=json&pithumbsize=600&origin=*`;
+    `&prop=pageimages&format=json&pithumbsize=640&origin=*`;
 
-  const res = await fetch(url);
-  if (!res.ok) return result;
-
-  const data = (await res.json()) as {
-    query?: { pages?: Record<string, { title?: string; thumbnail?: { source?: string } }> };
-  };
-
-  for (const page of Object.values(data.query?.pages ?? {})) {
-    if (page.title && page.thumbnail?.source) {
-      result.set(page.title, page.thumbnail.source);
+  try {
+    const res = await fetch(url);
+    if (!res.ok) return result;
+    const data = (await res.json()) as {
+      query?: { pages?: Record<string, WikiThumbPage> };
+    };
+    for (const page of Object.values(data.query?.pages ?? {})) {
+      if (page.title && page.thumbnail?.source) {
+        result.set(page.title, page.thumbnail.source);
+      }
     }
-  }
+  } catch { /* rede indisponível */ }
+
   return result;
 }
 
-async function commonsSearch(query: string): Promise<string | null> {
-  /** Busca na Wikimedia Commons e retorna URL da primeira imagem de carro encontrada. */
-  const url =
-    `https://commons.wikimedia.org/w/api.php?action=query` +
-    `&generator=search&gsrsearch=${encodeURIComponent(query + ' car automobile')}` +
-    `&gsrnamespace=6&prop=imageinfo&iiprop=url&iiurlwidth=600` +
-    `&format=json&origin=*&gsrlimit=8`;
+// ── Estágio 3: Wikidata P18 ───────────────────────────────────────────────────
 
-  const res = await fetch(url);
-  if (!res.ok) return null;
+/** Passo 3a: Wikipedia enTitle → Wikidata QID */
+async function fetchWikidataQIDs(
+  enTitles: string[],
+): Promise<Map<string, string>> {
+  const result = new Map<string, string>();
+  const BATCH = 50;
 
-  const data = (await res.json()) as {
-    query?: {
-      pages?: Record<string, {
-        title?: string;
-        imageinfo?: Array<{ url?: string }>;
-      }>;
-    };
-  };
+  for (let i = 0; i < enTitles.length; i += BATCH) {
+    const batch = enTitles.slice(i, i + BATCH);
+    const encoded = batch.map(t => encodeURIComponent(t)).join('|');
+    const url =
+      `https://en.wikipedia.org/w/api.php?action=query&titles=${encoded}` +
+      `&prop=pageprops&ppprop=wikibase_item&format=json&origin=*`;
 
-  const pages = Object.values(data.query?.pages ?? {});
-
-  for (const page of pages) {
-    const title = (page.title ?? '').toLowerCase();
-    const imgUrl = page.imageinfo?.[0]?.url ?? '';
-
-    // Rejeita logos, ícones e imagens não relacionadas
-    const isLogo  = /logo|icon|badge|emblem|shield|flag|map/i.test(title);
-    const isPhoto = /\.(jpg|jpeg|png|webp)/i.test(imgUrl);
-
-    if (!isLogo && isPhoto && imgUrl) return imgUrl;
+    try {
+      const res = await fetch(url);
+      if (!res.ok) continue;
+      const data = (await res.json()) as {
+        query?: { pages?: Record<string, WikiPropsPage> };
+      };
+      for (const page of Object.values(data.query?.pages ?? {})) {
+        const qid = page.pageprops?.wikibase_item;
+        if (page.title && qid) result.set(page.title, qid);
+      }
+    } catch { /* skip */ }
   }
 
-  return null;
+  return result;
 }
 
-// ── Orquestrador em 3 estágios ────────────────────────────────────────────────
+/** Passo 3b: QIDs → filenames de imagem P18 no Wikidata */
+async function fetchWikidataP18(
+  qids: string[],
+): Promise<Map<string, string>> {
+  const result = new Map<string, string>();
+  const BATCH = 50;
+
+  for (let i = 0; i < qids.length; i += BATCH) {
+    const batch = qids.slice(i, i + BATCH);
+    const url =
+      `https://www.wikidata.org/w/api.php?action=wbgetentities` +
+      `&ids=${batch.join('|')}&props=claims&format=json&origin=*`;
+
+    try {
+      const res = await fetch(url);
+      if (!res.ok) continue;
+      const data = (await res.json()) as {
+        entities?: Record<string, WikidataEntity>;
+      };
+      for (const [qid, entity] of Object.entries(data.entities ?? {})) {
+        const filename = entity.claims?.P18?.[0]?.mainsnak?.datavalue?.value;
+        if (filename) result.set(qid, filename);
+      }
+    } catch { /* skip */ }
+  }
+
+  return result;
+}
+
+/** Passo 3c: filenames Commons → URLs diretas */
+async function resolveCommonsFiles(
+  filenames: string[],
+): Promise<Map<string, string>> {
+  const result = new Map<string, string>();
+  const BATCH = 50;
+
+  for (let i = 0; i < filenames.length; i += BATCH) {
+    const batch = filenames.slice(i, i + BATCH);
+    const titles = batch
+      .map(f => encodeURIComponent(`File:${f}`))
+      .join('|');
+    const url =
+      `https://commons.wikimedia.org/w/api.php?action=query` +
+      `&titles=${titles}&prop=imageinfo&iiprop=url&iiurlwidth=640` +
+      `&format=json&origin=*`;
+
+    try {
+      const res = await fetch(url);
+      if (!res.ok) continue;
+      const data = (await res.json()) as {
+        query?: { pages?: Record<string, CommonsImagePage> };
+      };
+      for (const page of Object.values(data.query?.pages ?? {})) {
+        const filename = page.title?.replace('File:', '');
+        const imgUrl   = page.imageinfo?.[0]?.url;
+        if (filename && imgUrl) result.set(filename, imgUrl);
+      }
+    } catch { /* skip */ }
+  }
+
+  return result;
+}
+
+// ── Estágio 4: Commons multi-resultado ───────────────────────────────────────
+
+const JUNK_PATTERN = /logo|icon|badge|emblem|shield|flag|map|diagram|schematic|template/i;
+
+async function commonsSearchMulti(query: string, limit = 3): Promise<string[]> {
+  const url =
+    `https://commons.wikimedia.org/w/api.php?action=query` +
+    `&generator=search&gsrsearch=${encodeURIComponent(query)}` +
+    `&gsrnamespace=6&prop=imageinfo&iiprop=url&iiurlwidth=640` +
+    `&format=json&origin=*&gsrlimit=25`;
+
+  try {
+    const res = await fetch(url);
+    if (!res.ok) return [];
+    const data = (await res.json()) as {
+      query?: { pages?: Record<string, CommonsImagePage> };
+    };
+    const results: string[] = [];
+    for (const page of Object.values(data.query?.pages ?? {})) {
+      const title  = (page.title ?? '').toLowerCase();
+      const imgUrl = page.imageinfo?.[0]?.url ?? '';
+      if (!JUNK_PATTERN.test(title) && /\.(jpg|jpeg|png|webp)/i.test(imgUrl) && imgUrl) {
+        results.push(imgUrl);
+        if (results.length >= limit) break;
+      }
+    }
+    return results;
+  } catch {
+    return [];
+  }
+}
+
+// ── Orquestrador em 4 estágios ────────────────────────────────────────────────
 
 export async function prefetchAllCarImages(): Promise<void> {
   if (fetchState !== 'idle') return;
@@ -299,7 +437,7 @@ export async function prefetchAllCarImages(): Promise<void> {
   const allIds = Object.keys(MODEL_WIKI);
   const BATCH  = 50;
 
-  // ── Estágio 1: pt.wikipedia.org ──────────────────────────────────
+  // ── Estágio 1: pt.wikipedia.org (thumbnails) ─────────────────────────
   {
     const titleToIds = new Map<string, string[]>();
     for (const id of allIds) {
@@ -311,22 +449,18 @@ export async function prefetchAllCarImages(): Promise<void> {
 
     const uniqueTitles = [...titleToIds.keys()];
     for (let i = 0; i < uniqueTitles.length; i += BATCH) {
-      const batch   = uniqueTitles.slice(i, i + BATCH);
-      const thumbs  = await wikiThumbBatch('https://pt.wikipedia.org', batch).catch(() => new Map());
-
+      const batch  = uniqueTitles.slice(i, i + BATCH);
+      const thumbs = await wikiThumbBatch('https://pt.wikipedia.org', batch);
       for (const [title, url] of thumbs) {
-        for (const id of titleToIds.get(title) ?? []) {
-          imageCache.set(id, url);
-        }
+        for (const id of titleToIds.get(title) ?? []) pushUnique(id, url);
       }
       notify();
     }
   }
 
-  // ── Estágio 2: en.wikipedia.org (só os que ainda não têm imagem) ──
+  // ── Estágio 2: en.wikipedia.org (thumbnails para os que faltam) ───────
   {
-    const missing = allIds.filter(id => !imageCache.has(id) || imageCache.get(id) === null);
-
+    const missing = allIds.filter(id => (imageCache.get(id) ?? []).length === 0);
     const titleToIds = new Map<string, string[]>();
     for (const id of missing) {
       const enTitle = MODEL_WIKI[id][1];
@@ -338,45 +472,103 @@ export async function prefetchAllCarImages(): Promise<void> {
     const uniqueTitles = [...titleToIds.keys()];
     for (let i = 0; i < uniqueTitles.length; i += BATCH) {
       const batch  = uniqueTitles.slice(i, i + BATCH);
-      const thumbs = await wikiThumbBatch('https://en.wikipedia.org', batch).catch(() => new Map());
-
+      const thumbs = await wikiThumbBatch('https://en.wikipedia.org', batch);
       for (const [title, url] of thumbs) {
-        for (const id of titleToIds.get(title) ?? []) {
-          if (!imageCache.get(id)) imageCache.set(id, url);
-        }
+        for (const id of titleToIds.get(title) ?? []) pushUnique(id, url);
       }
       notify();
     }
   }
 
-  // ── Estágio 3: Wikimedia Commons search (restantes) ──────────────
+  // ── Estágio 3: Wikidata P18 (imagem canônica via QID) ────────────────
+  //    Funciona para TODOS os modelos com título EN, independente de já
+  //    terem foto do Wikipedia — adiciona como segunda opção no carrossel.
   {
-    const stillMissing = allIds.filter(
-      id => !imageCache.has(id) || imageCache.get(id) === null
-    );
-
-    // Monta termo de busca a partir dos títulos disponíveis
-    const searchTermFor = (id: string): string => {
-      return MODEL_WIKI[id][1] ?? MODEL_WIKI[id][0] ?? id.replace(/_/g, ' ');
-    };
-
-    // Processa em paralelo com concorrência limitada (4 ao mesmo tempo)
-    const CONCURRENCY = 4;
-    for (let i = 0; i < stillMissing.length; i += CONCURRENCY) {
-      const chunk = stillMissing.slice(i, i + CONCURRENCY);
-      await Promise.all(
-        chunk.map(async id => {
-          const url = await commonsSearch(searchTermFor(id)).catch(() => null);
-          imageCache.set(id, url);
-        })
-      );
-      notify();
+    // Coleta todos os títulos EN únicos
+    const enTitleToIds = new Map<string, string[]>();
+    for (const id of allIds) {
+      const enTitle = MODEL_WIKI[id][1];
+      if (!enTitle) continue;
+      if (!enTitleToIds.has(enTitle)) enTitleToIds.set(enTitle, []);
+      enTitleToIds.get(enTitle)!.push(id);
     }
+
+    // 3a: títulos EN → QIDs
+    const enTitles = [...enTitleToIds.keys()];
+    const titleToQID = await fetchWikidataQIDs(enTitles).catch(() => new Map<string, string>());
+
+    // 3b: QIDs → filenames P18
+    const allQIDs = [...new Set([...titleToQID.values()])];
+    const qidToFilename = allQIDs.length > 0
+      ? await fetchWikidataP18(allQIDs).catch(() => new Map<string, string>())
+      : new Map<string, string>();
+
+    // 3c: filenames → URLs reais
+    const filenames = [...new Set([...qidToFilename.values()])];
+    const filenameToUrl = filenames.length > 0
+      ? await resolveCommonsFiles(filenames).catch(() => new Map<string, string>())
+      : new Map<string, string>();
+
+    // Mapeia de volta para modelIds
+    for (const [enTitle, qid] of titleToQID) {
+      const filename = qidToFilename.get(qid);
+      if (!filename) continue;
+      const imgUrl = filenameToUrl.get(filename);
+      if (!imgUrl) continue;
+      for (const id of enTitleToIds.get(enTitle) ?? []) {
+        pushUnique(id, imgUrl);
+      }
+    }
+    notify();
   }
 
-  // ── Marca como null os que não encontraram nada ───────────────────
-  for (const id of allIds) {
-    if (!imageCache.has(id)) imageCache.set(id, null);
+  // ── Estágio 4: Commons multi-busca (até 3 fotos extras) ───────────────
+  //    Prioriza carros com menos imagens. Usa 2 queries: PT e EN.
+  //    Limita a 5 buscas paralelas para não sobrecarregar.
+  {
+    // Ordena: menos imagens primeiro
+    const byCount = [...allIds].sort(
+      (a, b) => (imageCache.get(a)?.length ?? 0) - (imageCache.get(b)?.length ?? 0),
+    );
+
+    const CONCURRENCY = 5;
+    for (let i = 0; i < byCount.length; i += CONCURRENCY) {
+      const chunk = byCount.slice(i, i + CONCURRENCY);
+      await Promise.all(chunk.map(async id => {
+        const [ptTitle, enTitle] = MODEL_WIKI[id];
+        const existing = imageCache.get(id)?.length ?? 0;
+
+        // Query 1 (EN ou PT)
+        const q1 = enTitle ?? ptTitle;
+        if (q1) {
+          const urls = await commonsSearchMulti(`${q1} automobile`, 2);
+          for (const u of urls) pushUnique(id, u);
+        }
+
+        // Query 2 (PT, se diferente do EN e ainda < 3 imagens)
+        const q2 = ptTitle && ptTitle !== enTitle ? ptTitle : null;
+        const afterQ1 = imageCache.get(id)?.length ?? 0;
+        if (q2 && afterQ1 < 3) {
+          const urls = await commonsSearchMulti(`${q2} automóvel`, 2);
+          for (const u of urls) pushUnique(id, u);
+        }
+
+        // Se ainda não tem nenhuma, tenta busca genérica pelo modelId
+        const afterQ2 = imageCache.get(id)?.length ?? 0;
+        if (afterQ2 === 0) {
+          const fallback = id.replace(/_/g, ' ');
+          const urls = await commonsSearchMulti(fallback, 2);
+          for (const u of urls) pushUnique(id, u);
+        }
+
+        // Garante entrada no cache mesmo se vazio
+        if (!imageCache.has(id)) imageCache.set(id, []);
+
+        // Descarta para não bloquear notify
+        void existing;
+      }));
+      notify();
+    }
   }
 
   notify();
