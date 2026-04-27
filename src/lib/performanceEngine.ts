@@ -345,6 +345,19 @@ const TUNE_BONUS_PER_LEVEL: Partial<Record<TuneType, number>> = {
   carbon_parts:    4.0,
 };
 
+// ── calcTuneCost — Custo de upgrade por nível ────────────────────────
+// Fórmula: baseCost × 1.8^(level-1)  → Lv1×1, Lv2×1.8, Lv3×3.24, Lv4×5.83, Lv5×10.5
+// O terceiro parâmetro (baseStat) é reservado para extensões futuras (ex: escalar
+// pelo IGP do carro). Por ora não afeta o cálculo.
+export function calcTuneCost(
+  type: TuneType,
+  level: number,
+  _baseStat: PerformanceStats,
+): number {
+  const meta = TUNE_META[type];
+  return Math.round(meta.baseCost * Math.pow(1.8, level - 1));
+}
+
 // ── applyTuneUpgrades ────────────────────────────────────────────────
 export function applyTuneUpgrades(
   base: PerformanceStats,
