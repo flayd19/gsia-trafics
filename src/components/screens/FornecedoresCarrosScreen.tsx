@@ -11,7 +11,7 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import type { GameState, OwnedCar } from '@/types/game';
 import type { GlobalCar } from '@/hooks/useGlobalMarketplace';
-import { conditionLabel, conditionColor, conditionValueFactor, fmtKm, type CarCategory } from '@/data/cars';
+import { conditionLabel, conditionColor, fmtKm, type CarCategory } from '@/data/cars';
 import { CAR_IMAGES } from '@/data/carImages';
 import { generateBasePerformance } from '@/lib/performanceEngine';
 
@@ -69,7 +69,6 @@ function CarDetailSheet({
   const fipeDiff    = car.askingPrice - car.fipePrice;
   const isBelowFipe = fipeDiff < 0;
   const diffPct     = Math.abs(Math.round((fipeDiff / car.fipePrice) * 100));
-  const marketValue = Math.round(car.fipePrice * conditionValueFactor(car.condition));
   const isSold      = car.status === 'sold';
 
   const handleBuy = async () => {
@@ -189,7 +188,7 @@ function CarDetailSheet({
               {isBelowFipe ? `${diffPct}% abaixo da FIPE` : `${diffPct}% acima da FIPE`}
             </div>
             <div className="text-[11px] text-muted-foreground">
-              FIPE: {fmt(car.fipePrice)} · Valor de mercado: {fmt(marketValue)}
+              FIPE: {fmt(car.fipePrice)}
             </div>
           </div>
         </div>

@@ -535,7 +535,6 @@ function BuyerCard({
           ) : (
             compatibleCars.map(car => {
               const isSelected = car.instanceId === selectedCarId;
-              const mv = Math.round(car.fipePrice * conditionValueFactor(car.condition));
               return (
                 <button
                   key={car.instanceId}
@@ -565,7 +564,7 @@ function BuyerCard({
                     <div className="text-[10px] text-muted-foreground">{car.trim}</div>
                   </div>
                   <div className="text-right">
-                    <div className="text-[12px] font-bold">{fmt(mv)}</div>
+                    <div className="text-[12px] font-bold">{fmt(car.fipePrice)}</div>
                     <div className={`text-[10px] font-medium ${conditionColor(car.condition)}`}>
                       {conditionLabel(car.condition)}
                     </div>
@@ -582,12 +581,7 @@ function BuyerCard({
               </div>
               <div className="bg-muted/30 rounded-[10px] px-3 py-2 text-[11px] text-muted-foreground space-y-0.5">
                 <div>FIPE: <strong className="text-foreground">{fmt(selectedCar.fipePrice)}</strong></div>
-                <div>
-                  Valor de mercado:{' '}
-                  <strong className="text-foreground">
-                    {fmt(Math.round(selectedCar.fipePrice * conditionValueFactor(selectedCar.condition)))}
-                  </strong>
-                </div>
+                <div>Condição: <strong className={conditionColor(selectedCar.condition)}>{conditionLabel(selectedCar.condition)} ({selectedCar.condition}%)</strong></div>
                 <div className="text-[10px] text-primary mt-1">
                   💡 Compradores pagam até 25% acima dependendo da sorte
                 </div>
