@@ -115,10 +115,20 @@ function serializeForSave(state: GameState): object {
   // em todas as operações subsequentes.
   const safeMoneyValue =
     typeof state.money === 'number' && Number.isFinite(state.money) ? state.money : 15_000;
+
+  // FIX: persistir o marketplaceCars enquanto a janela de 24h ainda
+  // não fechou. Se já passou, esvaziamos para que o load regenere.
+  // Isso garante que recarregar o app NÃO troca o mercado — só o tempo
+  // (cycle de 24h) regenera. Sem isso, todo reload gerava lista nova.
+  const now = Date.now();
+  const refreshAge = now - (state.marketplaceLastRefresh ?? 0);
+  const cycleStillFresh = refreshAge < MARKETPLACE_REFRESH_MS;
+  const persistedMarket = cycleStillFresh ? state.marketplaceCars : [];
+
   return {
     ...state,
     money: safeMoneyValue,
-    marketplaceCars: [],  // regenerado no load
+    marketplaceCars: persistedMarket,
     carBuyers: state.carBuyers.filter(
       b => b.state === 'waiting' || b.state === 'thinking' || b.state === 'countering'
     ),
@@ -134,7 +144,12 @@ function serializeForSave(state: GameState): object {
 //   v2 — fórmula de XP reduzida em 75% (xpRequiredForLevel: 10×2^(N-2) → 2.5×2^(N-2)).
 //        Com a fórmula nova, o mesmo totalXp produz nível maior, então
 //        recalculamos o nível para todos os jogadores no próximo load.
-const REPUTATION_MIGRATION_VERSION = 2;
+//   v3 — redução adicional de 35% no XP do Lv 5+. Recalculamos para
+//        jogadores que estavam travados em Lv 5–10 ganharem boost.
+//   v4 — plateau de 104 XP fixo a partir do Lv 8 (até Lv 100). Jogadores
+//        que tinham totalXp alto e estavam travados em níveis intermediários
+//        sobem múltiplos níveis automaticamente.
+const REPUTATION_MIGRATION_VERSION = 4;
 
 /**
  * Migração automática da reputação. Roda uma vez por jogador por versão
@@ -169,10 +184,24 @@ function applyLoadedSave(raw: unknown): GameState {
   // Migração automática de reputação (corrige saves bugados de versões antigas)
   saved = migrateReputationIfNeeded(saved);
 
-  // Regenera marketplace se vazio
-  if (!saved.marketplaceCars || saved.marketplaceCars.length === 0) {
+  // Regenera marketplace SOMENTE quando passou 24h desde o último refresh.
+  // Caso contrário, mantém a lista persistida para que recarregar o app não
+  // produza um mercado diferente dentro da mesma janela de 24h.
+  const now = Date.now();
+  const cycleExpired =
+    !saved.marketplaceLastRefresh ||
+    now - saved.marketplaceLastRefresh >= MARKETPLACE_REFRESH_MS;
+  const marketEmpty =
+    !saved.marketplaceCars || saved.marketplaceCars.length === 0;
+
+  if (marketEmpty && cycleExpired) {
     saved.marketplaceCars        = buildMarketplaceInventory();
-    saved.marketplaceLastRefresh = Date.now();
+    saved.marketplaceLastRefresh = now;
+  } else if (marketEmpty) {
+    // Edge case: lista vazia mas dentro do ciclo (save inconsistente).
+    // Regenera mas mantém o marketplaceLastRefresh existente para não
+    // resetar a contagem do próximo ciclo.
+    saved.marketplaceCars = buildMarketplaceInventory();
   }
 
   // Regenera compradores apenas se o ciclo já encerrou (comparação por timestamp absoluto)
@@ -514,8 +543,9 @@ export function useCarGameLogic() {
 
         next = { ...next, carBuyers: buyersFinal };
 
-        // Atualiza marketplace a cada 24h
-        if (now - next.marketplaceLastRefresh > MARKETPLACE_REFRESH_MS) {
+        // Atualiza marketplace SOMENTE quando passa 24h desde o último refresh.
+        // Esse é o ÚNICO ponto onde `marketplaceCars` é regenerado em runtime.
+        if (now - next.marketplaceLastRefresh >= MARKETPLACE_REFRESH_MS) {
           next = { ...next, marketplaceCars: buildMarketplaceInventory(), marketplaceLastRefresh: now };
         }
 
@@ -1070,11 +1100,19 @@ export function useCarGameLogic() {
   }, []);
 
   const refreshMarketplace = useCallback(() => {
-    setGameState(prev => ({
-      ...prev,
-      marketplaceCars:        buildMarketplaceInventory(),
-      marketplaceLastRefresh: Date.now(),
-    }));
+    // RESPEITA o intervalo de 24h. Se a janela ainda não fechou, é no-op.
+    setGameState(prev => {
+      const now = Date.now();
+      const lastRefresh = prev.marketplaceLastRefresh ?? 0;
+      if (now - lastRefresh < MARKETPLACE_REFRESH_MS) {
+        return prev;
+      }
+      return {
+        ...prev,
+        marketplaceCars:        buildMarketplaceInventory(),
+        marketplaceLastRefresh: now,
+      };
+    });
   }, []);
 
   const addMoney = useCallback((amount: number) => {

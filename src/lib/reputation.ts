@@ -47,17 +47,33 @@ export const INITIAL_REPUTATION: Reputation = {
 };
 
 /**
+ * XP fixo (plateau) para subir de qualquer nível ≥ 8 até `MAX_LEVEL`.
+ * Valor calibrado para evitar grind impossível em níveis altos — sem isso,
+ * a fórmula exponencial pediria milhões de XP no Lv 30+.
+ */
+const XP_PLATEAU_FROM_LV_8 = 104;
+
+/**
  * XP necessário para subir de `level-1` pra `level`.
  *
- * Fórmula: 2.5 × 2^(level-2) — ainda dobra a cada nível, mas reduzida em
- * 75% em relação à versão anterior (era 10 × 2^(level-2)) para tornar
- * a progressão mais ágil:
- *   • Lv 2 = 3   (era 10)
- *   • Lv 3 = 5   (era 20)
- *   • Lv 4 = 10  (era 40)
- *   • Lv 5 = 20  (era 80)
- *   • Lv 6 = 40  (era 160)
- *   • Lv 10 = 640 (era 2.560)
+ * Fórmula:
+ *   • Lv 2-4:  2.5 × 2^(level-2)              — dobra a cada nível.
+ *   • Lv 5-7:  2.5 × 2^(level-2) × 0.65       — redução de 35% (anti-grind).
+ *   • Lv 8+:   104 XP fixo                     — plateau até Lv 100.
+ *
+ *   • Lv 2  = 3
+ *   • Lv 3  = 5
+ *   • Lv 4  = 10
+ *   • Lv 5  = 13   (20 × 0.65)
+ *   • Lv 6  = 26   (40 × 0.65)
+ *   • Lv 7  = 52   (80 × 0.65)
+ *   • Lv 8  = 104   ← plateau começa aqui
+ *   • Lv 9  = 104
+ *   • Lv 10 = 104
+ *   • ...
+ *   • Lv 100 = 104
+ *
+ * Total para chegar no Lv 100: 3+5+10+13+26+52 + 93×104 = 9.781 XP.
  *
  * Pra level <= 1 retorna 0 (não existe "subir pro level 1").
  * Pra level > MAX_LEVEL retorna Infinity.
@@ -65,12 +81,13 @@ export const INITIAL_REPUTATION: Reputation = {
 export function xpRequiredForLevel(level: number): number {
   if (level <= 1) return 0;
   if (level > MAX_LEVEL) return Infinity;
-  const raw = 2.5 * Math.pow(2, level - 2);
-  // Proteção contra overflow em níveis absurdos (>50)
-  if (!Number.isFinite(raw) || raw > Number.MAX_SAFE_INTEGER) {
-    return Number.MAX_SAFE_INTEGER;
+  // Plateau a partir do Lv 8.
+  if (level >= 8) return XP_PLATEAU_FROM_LV_8;
+  let raw = 2.5 * Math.pow(2, level - 2);
+  // Redução de 35% nos níveis 5-7 (entre a curva exponencial e o plateau)
+  if (level >= 5) {
+    raw *= 0.65;
   }
-  // Mínimo de 1 XP — garante progresso mesmo com arredondamento.
   return Math.max(1, Math.round(raw));
 }
 

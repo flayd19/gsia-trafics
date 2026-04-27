@@ -2169,6 +2169,751 @@ export const CAR_MODELS: CarModel[] = [
       { id: 'ford_gt_mkiv',     trim: '3.5 EcoBoost V6 MkIV',  year: 2022, fipePrice: 4_250_000 },
     ],
   },
+
+  // ══════════════════════════════════════════════════════════════════
+  // PORSCHE — linha completa
+  // ══════════════════════════════════════════════════════════════════
+  {
+    id: 'porsche_718_cayman',
+    brand: 'Porsche',
+    model: '718 Cayman',
+    icon: '🏎️',
+    category: 'esportivo',
+    variants: [
+      { id: 'p718_cay_20',      trim: '2.0 Turbo',              year: 2023, fipePrice:   615_000 },
+      { id: 'p718_cay_s',       trim: '2.5 S',                  year: 2023, fipePrice:   745_000 },
+      { id: 'p718_cay_gts_40',  trim: '4.0 GTS Flat-6',         year: 2023, fipePrice:   895_000 },
+    ],
+  },
+  {
+    id: 'porsche_718_boxster',
+    brand: 'Porsche',
+    model: '718 Boxster',
+    icon: '🏎️',
+    category: 'esportivo',
+    variants: [
+      { id: 'p718_box_20',      trim: '2.0 Turbo Cabrio',       year: 2023, fipePrice:   645_000 },
+      { id: 'p718_box_gts_40',  trim: '4.0 GTS Flat-6',         year: 2023, fipePrice:   925_000 },
+    ],
+  },
+  {
+    id: 'porsche_911_gt3_rs',
+    brand: 'Porsche',
+    model: '911 GT3 RS',
+    icon: '🏎️',
+    category: 'supercar',
+    variants: [
+      { id: 'p911_gt3_rs_40',   trim: '4.0 Flat-6 NA RS',       year: 2023, fipePrice: 2_295_000 },
+      { id: 'p911_gt3_rs_wp',   trim: '4.0 RS Weissach Pack',   year: 2023, fipePrice: 2_585_000 },
+    ],
+  },
+  {
+    id: 'porsche_911_gt2_rs',
+    brand: 'Porsche',
+    model: '911 GT2 RS',
+    icon: '🏎️',
+    category: 'supercar',
+    variants: [
+      { id: 'p911_gt2_rs_38',   trim: '3.8 Biturbo GT2 RS',     year: 2019, fipePrice: 2_650_000 },
+    ],
+  },
+  {
+    id: 'porsche_911_carrera',
+    brand: 'Porsche',
+    model: '911 Carrera',
+    icon: '🏎️',
+    category: 'esportivo',
+    variants: [
+      { id: 'p911_carrera',     trim: '3.0 Carrera',            year: 2023, fipePrice:   985_000 },
+      { id: 'p911_carrera_s',   trim: '3.0 Carrera S',          year: 2023, fipePrice: 1_185_000 },
+      { id: 'p911_carrera_gts', trim: '3.0 Carrera GTS',        year: 2023, fipePrice: 1_385_000 },
+    ],
+  },
+  {
+    id: 'porsche_911_targa',
+    brand: 'Porsche',
+    model: '911 Targa 4',
+    icon: '🏎️',
+    category: 'esportivo',
+    variants: [
+      { id: 'p911_targa_4',     trim: '3.0 Targa 4',            year: 2023, fipePrice: 1_295_000 },
+      { id: 'p911_targa_4s',    trim: '3.0 Targa 4S',           year: 2023, fipePrice: 1_485_000 },
+    ],
+  },
+  {
+    id: 'porsche_911_sport_classic',
+    brand: 'Porsche',
+    model: '911 Sport Classic',
+    icon: '🏎️',
+    category: 'supercar',
+    variants: [
+      { id: 'p911_sp_classic',  trim: '3.7 Biturbo Sport Classic', year: 2023, fipePrice: 2_185_000 },
+    ],
+  },
+  {
+    id: 'porsche_911_dakar',
+    brand: 'Porsche',
+    model: '911 Dakar',
+    icon: '🏜️',
+    category: 'supercar',
+    variants: [
+      { id: 'p911_dakar',       trim: '3.0 Biturbo Dakar Off-Road', year: 2023, fipePrice: 1_785_000 },
+    ],
+  },
+  {
+    id: 'porsche_taycan',
+    brand: 'Porsche',
+    model: 'Taycan',
+    icon: '⚡',
+    category: 'eletrico',
+    variants: [
+      { id: 'taycan_4s',        trim: '4S Performance Plus',    year: 2023, fipePrice: 1_195_000 },
+      { id: 'taycan_turbo',     trim: 'Turbo',                  year: 2023, fipePrice: 1_485_000 },
+      { id: 'taycan_turbo_s',   trim: 'Turbo S',                year: 2023, fipePrice: 1_785_000 },
+    ],
+  },
+  {
+    id: 'porsche_panamera',
+    brand: 'Porsche',
+    model: 'Panamera',
+    icon: '🚗',
+    category: 'luxo',
+    variants: [
+      { id: 'panamera_4s',      trim: '4S 2.9 Biturbo V6',      year: 2023, fipePrice:   985_000 },
+      { id: 'panamera_turbo_s', trim: 'Turbo S 4.0 Biturbo V8', year: 2023, fipePrice: 1_585_000 },
+    ],
+  },
+  {
+    id: 'porsche_cayenne_coupe',
+    brand: 'Porsche',
+    model: 'Cayenne Coupe',
+    icon: '🚙',
+    category: 'suv',
+    variants: [
+      { id: 'cayenne_coupe_turbo', trim: 'Turbo GT 4.0 V8',    year: 2023, fipePrice: 1_385_000 },
+    ],
+  },
+
+  // ══════════════════════════════════════════════════════════════════
+  // LAMBORGHINI
+  // ══════════════════════════════════════════════════════════════════
+  {
+    id: 'lambo_revuelto',
+    brand: 'Lamborghini',
+    model: 'Revuelto',
+    icon: '🏎️',
+    category: 'supercar',
+    variants: [
+      { id: 'revuelto_v12',     trim: '6.5 V12 HPEV Hybrid',    year: 2024, fipePrice: 4_950_000 },
+    ],
+  },
+  {
+    id: 'lambo_urus_performante',
+    brand: 'Lamborghini',
+    model: 'Urus',
+    icon: '🚙',
+    category: 'suv',
+    variants: [
+      { id: 'urus_performante', trim: 'Performante 4.0 V8 Biturbo', year: 2023, fipePrice: 2_650_000 },
+      { id: 'urus_se',          trim: 'SE Hybrid Plug-in',      year: 2024, fipePrice: 2_985_000 },
+    ],
+  },
+  {
+    id: 'lambo_sian',
+    brand: 'Lamborghini',
+    model: 'Sián FKP 37',
+    icon: '🏎️',
+    category: 'supercar',
+    variants: [
+      { id: 'sian_fkp37',       trim: 'FKP 37 V12 Hybrid',      year: 2021, fipePrice: 19_500_000 },
+    ],
+  },
+  {
+    id: 'lambo_countach_lpi',
+    brand: 'Lamborghini',
+    model: 'Countach LPI 800-4',
+    icon: '🏎️',
+    category: 'supercar',
+    variants: [
+      { id: 'countach_lpi',     trim: 'LPI 800-4 V12 Hybrid',   year: 2022, fipePrice: 14_500_000 },
+    ],
+  },
+  {
+    id: 'lambo_diablo',
+    brand: 'Lamborghini',
+    model: 'Diablo',
+    icon: '🏎️',
+    category: 'classico',
+    variants: [
+      { id: 'diablo_vt',        trim: 'VT 5.7 V12',             year: 1998, fipePrice: 3_850_000 },
+      { id: 'diablo_se30',      trim: 'SE30 Jota',              year: 1995, fipePrice: 6_250_000 },
+    ],
+  },
+  {
+    id: 'lambo_murcielago',
+    brand: 'Lamborghini',
+    model: 'Murciélago',
+    icon: '🏎️',
+    category: 'supercar',
+    variants: [
+      { id: 'murci_lp640',      trim: 'LP640 6.5 V12',          year: 2008, fipePrice: 2_950_000 },
+      { id: 'murci_sv',         trim: 'LP670-4 SuperVeloce',    year: 2010, fipePrice: 4_650_000 },
+    ],
+  },
+  {
+    id: 'lambo_gallardo',
+    brand: 'Lamborghini',
+    model: 'Gallardo',
+    icon: '🏎️',
+    category: 'supercar',
+    variants: [
+      { id: 'gallardo_lp560',   trim: 'LP560-4',                year: 2010, fipePrice: 1_385_000 },
+      { id: 'gallardo_sl',      trim: 'Superleggera',           year: 2011, fipePrice: 1_685_000 },
+    ],
+  },
+
+  // ══════════════════════════════════════════════════════════════════
+  // FERRARI
+  // ══════════════════════════════════════════════════════════════════
+  {
+    id: 'ferrari_sf90',
+    brand: 'Ferrari',
+    model: 'SF90 Stradale',
+    icon: '🏎️',
+    category: 'supercar',
+    variants: [
+      { id: 'sf90_stradale',    trim: '4.0 V8 PHEV Stradale',   year: 2023, fipePrice: 5_485_000 },
+      { id: 'sf90_xx',          trim: '4.0 V8 PHEV XX Stradale', year: 2024, fipePrice: 8_185_000 },
+    ],
+  },
+  {
+    id: 'ferrari_laferrari',
+    brand: 'Ferrari',
+    model: 'LaFerrari',
+    icon: '🏎️',
+    category: 'supercar',
+    variants: [
+      { id: 'laferrari_v12',    trim: '6.3 V12 HY-KERS',        year: 2015, fipePrice: 18_500_000 },
+      { id: 'laferrari_aperta', trim: 'Aperta Targa',           year: 2017, fipePrice: 26_500_000 },
+    ],
+  },
+  {
+    id: 'ferrari_roma',
+    brand: 'Ferrari',
+    model: 'Roma',
+    icon: '🏎️',
+    category: 'supercar',
+    variants: [
+      { id: 'roma_v8',          trim: '3.9 V8 Biturbo',         year: 2023, fipePrice: 2_485_000 },
+      { id: 'roma_spider',      trim: '3.9 V8 Spider',          year: 2024, fipePrice: 2_785_000 },
+    ],
+  },
+  {
+    id: 'ferrari_portofino_m',
+    brand: 'Ferrari',
+    model: 'Portofino M',
+    icon: '🏎️',
+    category: 'supercar',
+    variants: [
+      { id: 'portofino_m_v8',   trim: '3.9 V8 Biturbo M',       year: 2023, fipePrice: 2_185_000 },
+    ],
+  },
+  {
+    id: 'ferrari_812_superfast',
+    brand: 'Ferrari',
+    model: '812 Superfast',
+    icon: '🏎️',
+    category: 'supercar',
+    variants: [
+      { id: '812_superfast',    trim: '6.5 V12 NA',             year: 2022, fipePrice: 3_985_000 },
+    ],
+  },
+  {
+    id: 'ferrari_812_competizione',
+    brand: 'Ferrari',
+    model: '812 Competizione',
+    icon: '🏎️',
+    category: 'supercar',
+    variants: [
+      { id: '812_comp',         trim: '6.5 V12 NA Competizione', year: 2022, fipePrice: 8_985_000 },
+      { id: '812_comp_a',       trim: '6.5 V12 Competizione A',  year: 2023, fipePrice: 11_500_000 },
+    ],
+  },
+  {
+    id: 'ferrari_daytona_sp3',
+    brand: 'Ferrari',
+    model: 'Daytona SP3',
+    icon: '🏎️',
+    category: 'supercar',
+    variants: [
+      { id: 'daytona_sp3',      trim: '6.5 V12 Icona',          year: 2023, fipePrice: 18_500_000 },
+    ],
+  },
+  {
+    id: 'ferrari_monza_sp2',
+    brand: 'Ferrari',
+    model: 'Monza SP2',
+    icon: '🏎️',
+    category: 'supercar',
+    variants: [
+      { id: 'monza_sp2',        trim: '6.5 V12 Speedster',      year: 2021, fipePrice: 12_500_000 },
+    ],
+  },
+  {
+    id: 'ferrari_purosangue',
+    brand: 'Ferrari',
+    model: 'Purosangue',
+    icon: '🚙',
+    category: 'suv',
+    variants: [
+      { id: 'purosangue_v12',   trim: '6.5 V12 NA SUV',         year: 2024, fipePrice: 4_485_000 },
+    ],
+  },
+  {
+    id: 'ferrari_f12',
+    brand: 'Ferrari',
+    model: 'F12 Berlinetta',
+    icon: '🏎️',
+    category: 'supercar',
+    variants: [
+      { id: 'f12_berlinetta',   trim: '6.3 V12 NA',             year: 2017, fipePrice: 2_850_000 },
+      { id: 'f12_tdf',          trim: '6.3 V12 Tour de France', year: 2017, fipePrice: 5_650_000 },
+    ],
+  },
+  {
+    id: 'ferrari_f40',
+    brand: 'Ferrari',
+    model: 'F40',
+    icon: '🏎️',
+    category: 'classico',
+    variants: [
+      { id: 'f40_v8',           trim: '2.9 V8 Biturbo',         year: 1990, fipePrice: 12_500_000 },
+    ],
+  },
+  {
+    id: 'ferrari_f50',
+    brand: 'Ferrari',
+    model: 'F50',
+    icon: '🏎️',
+    category: 'classico',
+    variants: [
+      { id: 'f50_v12',          trim: '4.7 V12 NA',             year: 1996, fipePrice: 18_500_000 },
+    ],
+  },
+  {
+    id: 'ferrari_enzo',
+    brand: 'Ferrari',
+    model: 'Enzo',
+    icon: '🏎️',
+    category: 'supercar',
+    variants: [
+      { id: 'enzo_v12',         trim: '6.0 V12 NA',             year: 2004, fipePrice: 22_500_000 },
+    ],
+  },
+
+  // ══════════════════════════════════════════════════════════════════
+  // McLAREN
+  // ══════════════════════════════════════════════════════════════════
+  {
+    id: 'mclaren_artura',
+    brand: 'McLaren',
+    model: 'Artura',
+    icon: '🏎️',
+    category: 'supercar',
+    variants: [
+      { id: 'artura_v6',        trim: '3.0 V6 PHEV',            year: 2023, fipePrice: 2_185_000 },
+      { id: 'artura_spider',    trim: '3.0 V6 PHEV Spider',     year: 2024, fipePrice: 2_385_000 },
+    ],
+  },
+  {
+    id: 'mclaren_765lt',
+    brand: 'McLaren',
+    model: '765LT',
+    icon: '🏎️',
+    category: 'supercar',
+    variants: [
+      { id: '765lt_coupe',      trim: '4.0 V8 Biturbo',         year: 2022, fipePrice: 3_485_000 },
+      { id: '765lt_spider',     trim: '4.0 V8 Spider',          year: 2022, fipePrice: 3_685_000 },
+    ],
+  },
+  {
+    id: 'mclaren_senna',
+    brand: 'McLaren',
+    model: 'Senna',
+    icon: '🏎️',
+    category: 'supercar',
+    variants: [
+      { id: 'senna_v8',         trim: '4.0 V8 Biturbo',         year: 2020, fipePrice: 8_985_000 },
+      { id: 'senna_gtr',        trim: '4.0 V8 GTR Track',       year: 2020, fipePrice: 12_500_000 },
+    ],
+  },
+  {
+    id: 'mclaren_p1',
+    brand: 'McLaren',
+    model: 'P1',
+    icon: '🏎️',
+    category: 'supercar',
+    variants: [
+      { id: 'p1_hybrid',        trim: '3.8 V8 Hybrid',          year: 2015, fipePrice: 14_500_000 },
+      { id: 'p1_gtr',           trim: '3.8 V8 GTR Track-Only',  year: 2016, fipePrice: 22_500_000 },
+    ],
+  },
+  {
+    id: 'mclaren_speedtail',
+    brand: 'McLaren',
+    model: 'Speedtail',
+    icon: '🏎️',
+    category: 'supercar',
+    variants: [
+      { id: 'speedtail_hyper',  trim: '4.0 V8 Hybrid 3-Seater', year: 2021, fipePrice: 19_500_000 },
+    ],
+  },
+  {
+    id: 'mclaren_gt',
+    brand: 'McLaren',
+    model: 'GT',
+    icon: '🏎️',
+    category: 'supercar',
+    variants: [
+      { id: 'mclaren_gt_v8',    trim: '4.0 V8 Biturbo GT',      year: 2022, fipePrice: 1_985_000 },
+    ],
+  },
+  {
+    id: 'mclaren_elva',
+    brand: 'McLaren',
+    model: 'Elva',
+    icon: '🏎️',
+    category: 'supercar',
+    variants: [
+      { id: 'elva_roadster',    trim: '4.0 V8 Speedster',       year: 2021, fipePrice: 11_500_000 },
+    ],
+  },
+
+  // ══════════════════════════════════════════════════════════════════
+  // ASTON MARTIN
+  // ══════════════════════════════════════════════════════════════════
+  {
+    id: 'aston_vantage',
+    brand: 'Aston Martin',
+    model: 'Vantage',
+    icon: '🏎️',
+    category: 'supercar',
+    variants: [
+      { id: 'vantage_v8',       trim: '4.0 V8 Biturbo',         year: 2023, fipePrice: 1_985_000 },
+      { id: 'vantage_f1',       trim: '4.0 V8 F1 Edition',      year: 2023, fipePrice: 2_285_000 },
+    ],
+  },
+  {
+    id: 'aston_db12',
+    brand: 'Aston Martin',
+    model: 'DB12',
+    icon: '🏎️',
+    category: 'supercar',
+    variants: [
+      { id: 'db12_v8',          trim: '4.0 V8 Biturbo',         year: 2024, fipePrice: 2_385_000 },
+      { id: 'db12_volante',     trim: '4.0 V8 Volante',         year: 2024, fipePrice: 2_585_000 },
+    ],
+  },
+  {
+    id: 'aston_dbs',
+    brand: 'Aston Martin',
+    model: 'DBS Superleggera',
+    icon: '🏎️',
+    category: 'supercar',
+    variants: [
+      { id: 'dbs_superleggera', trim: '5.2 V12 Biturbo',        year: 2023, fipePrice: 3_485_000 },
+    ],
+  },
+  {
+    id: 'aston_valhalla',
+    brand: 'Aston Martin',
+    model: 'Valhalla',
+    icon: '🏎️',
+    category: 'supercar',
+    variants: [
+      { id: 'valhalla_phev',    trim: '4.0 V8 PHEV Mid-engine', year: 2024, fipePrice: 5_985_000 },
+    ],
+  },
+  {
+    id: 'aston_valkyrie',
+    brand: 'Aston Martin',
+    model: 'Valkyrie',
+    icon: '🏎️',
+    category: 'supercar',
+    variants: [
+      { id: 'valkyrie_v12',     trim: '6.5 V12 Hybrid Hyper',   year: 2022, fipePrice: 24_500_000 },
+      { id: 'valkyrie_amr',     trim: '6.5 V12 AMR Pro Track',  year: 2023, fipePrice: 38_000_000 },
+    ],
+  },
+  {
+    id: 'aston_dbx707',
+    brand: 'Aston Martin',
+    model: 'DBX707',
+    icon: '🚙',
+    category: 'suv',
+    variants: [
+      { id: 'dbx707_v8',        trim: '4.0 V8 Biturbo 707',     year: 2023, fipePrice: 1_985_000 },
+    ],
+  },
+
+  // ══════════════════════════════════════════════════════════════════
+  // BUGATTI
+  // ══════════════════════════════════════════════════════════════════
+  {
+    id: 'bugatti_chiron',
+    brand: 'Bugatti',
+    model: 'Chiron',
+    icon: '🏎️',
+    category: 'supercar',
+    variants: [
+      { id: 'chiron_w16',       trim: '8.0 W16 Quad Turbo',     year: 2022, fipePrice: 22_500_000 },
+      { id: 'chiron_super_sport', trim: '8.0 W16 Super Sport 300+', year: 2023, fipePrice: 32_000_000 },
+      { id: 'chiron_pur_sport', trim: '8.0 W16 Pur Sport',      year: 2022, fipePrice: 28_500_000 },
+    ],
+  },
+  {
+    id: 'bugatti_bolide',
+    brand: 'Bugatti',
+    model: 'Bolide',
+    icon: '🏎️',
+    category: 'supercar',
+    variants: [
+      { id: 'bolide_w16',       trim: '8.0 W16 Track-Only',     year: 2024, fipePrice: 38_000_000 },
+    ],
+  },
+  {
+    id: 'bugatti_veyron_ss',
+    brand: 'Bugatti',
+    model: 'Veyron Super Sport',
+    icon: '🏎️',
+    category: 'supercar',
+    variants: [
+      { id: 'veyron_ss',        trim: '8.0 W16 Super Sport',    year: 2012, fipePrice: 18_500_000 },
+      { id: 'veyron_grandsport', trim: '8.0 W16 Grand Sport',   year: 2013, fipePrice: 14_500_000 },
+    ],
+  },
+  {
+    id: 'bugatti_centodieci',
+    brand: 'Bugatti',
+    model: 'Centodieci',
+    icon: '🏎️',
+    category: 'supercar',
+    variants: [
+      { id: 'centodieci_w16',   trim: '8.0 W16 EB110 Tribute',  year: 2022, fipePrice: 45_000_000 },
+    ],
+  },
+
+  // ══════════════════════════════════════════════════════════════════
+  // KOENIGSEGG
+  // ══════════════════════════════════════════════════════════════════
+  {
+    id: 'koenigsegg_jesko',
+    brand: 'Koenigsegg',
+    model: 'Jesko',
+    icon: '🏎️',
+    category: 'supercar',
+    variants: [
+      { id: 'jesko_v8',         trim: '5.0 V8 Twin Turbo',      year: 2023, fipePrice: 18_500_000 },
+      { id: 'jesko_absolut',    trim: '5.0 V8 Absolut Top Speed', year: 2023, fipePrice: 24_500_000 },
+    ],
+  },
+  {
+    id: 'koenigsegg_regera',
+    brand: 'Koenigsegg',
+    model: 'Regera',
+    icon: '🏎️',
+    category: 'supercar',
+    variants: [
+      { id: 'regera_phev',      trim: '5.0 V8 PHEV Direct Drive', year: 2022, fipePrice: 14_500_000 },
+    ],
+  },
+  {
+    id: 'koenigsegg_gemera',
+    brand: 'Koenigsegg',
+    model: 'Gemera',
+    icon: '🏎️',
+    category: 'supercar',
+    variants: [
+      { id: 'gemera_v8',        trim: '5.0 V8 Hybrid 4-Seater', year: 2024, fipePrice: 16_500_000 },
+    ],
+  },
+  {
+    id: 'koenigsegg_agera_rs',
+    brand: 'Koenigsegg',
+    model: 'Agera RS',
+    icon: '🏎️',
+    category: 'supercar',
+    variants: [
+      { id: 'agera_rs_v8',      trim: '5.0 V8 Twin Turbo RS',   year: 2017, fipePrice: 12_500_000 },
+    ],
+  },
+
+  // ══════════════════════════════════════════════════════════════════
+  // PAGANI
+  // ══════════════════════════════════════════════════════════════════
+  {
+    id: 'pagani_huayra',
+    brand: 'Pagani',
+    model: 'Huayra',
+    icon: '🏎️',
+    category: 'supercar',
+    variants: [
+      { id: 'huayra_bc',        trim: '6.0 V12 BC Biturbo',     year: 2018, fipePrice: 18_500_000 },
+      { id: 'huayra_r',         trim: '6.0 V12 R Track-Only',   year: 2022, fipePrice: 24_500_000 },
+    ],
+  },
+  {
+    id: 'pagani_utopia',
+    brand: 'Pagani',
+    model: 'Utopia',
+    icon: '🏎️',
+    category: 'supercar',
+    variants: [
+      { id: 'utopia_v12',       trim: '6.0 V12 Biturbo Manual', year: 2024, fipePrice: 22_500_000 },
+    ],
+  },
+  {
+    id: 'pagani_zonda',
+    brand: 'Pagani',
+    model: 'Zonda Cinque',
+    icon: '🏎️',
+    category: 'classico',
+    variants: [
+      { id: 'zonda_cinque',     trim: '7.3 V12 NA Cinque',      year: 2010, fipePrice: 14_500_000 },
+      { id: 'zonda_revolucion', trim: '6.0 V12 Revolución',     year: 2013, fipePrice: 22_000_000 },
+    ],
+  },
+
+  // ══════════════════════════════════════════════════════════════════
+  // LOTUS
+  // ══════════════════════════════════════════════════════════════════
+  {
+    id: 'lotus_evija',
+    brand: 'Lotus',
+    model: 'Evija',
+    icon: '⚡',
+    category: 'eletrico',
+    variants: [
+      { id: 'evija_ev',         trim: 'EV Hyper-GT 2000hp',     year: 2023, fipePrice: 12_500_000 },
+    ],
+  },
+  {
+    id: 'lotus_emira',
+    brand: 'Lotus',
+    model: 'Emira',
+    icon: '🏎️',
+    category: 'esportivo',
+    variants: [
+      { id: 'emira_i4',         trim: '2.0 i4 Turbo',           year: 2023, fipePrice:   685_000 },
+      { id: 'emira_v6',         trim: '3.5 V6 Supercharged',    year: 2023, fipePrice:   885_000 },
+    ],
+  },
+
+  // ══════════════════════════════════════════════════════════════════
+  // MASERATI / RIMAC / CZINGER / AMG / BMW / AUDI
+  // ══════════════════════════════════════════════════════════════════
+  {
+    id: 'maserati_mc20',
+    brand: 'Maserati',
+    model: 'MC20',
+    icon: '🏎️',
+    category: 'supercar',
+    variants: [
+      { id: 'mc20_nettuno',     trim: '3.0 V6 Nettuno Biturbo', year: 2023, fipePrice: 2_185_000 },
+      { id: 'mc20_cielo',       trim: '3.0 V6 Cielo Spyder',    year: 2024, fipePrice: 2_485_000 },
+    ],
+  },
+  {
+    id: 'rimac_nevera',
+    brand: 'Rimac',
+    model: 'Nevera',
+    icon: '⚡',
+    category: 'eletrico',
+    variants: [
+      { id: 'nevera_ev',        trim: 'EV Quad Motor 1914hp',   year: 2024, fipePrice: 14_500_000 },
+    ],
+  },
+  {
+    id: 'czinger_21c',
+    brand: 'Czinger',
+    model: '21C',
+    icon: '🏎️',
+    category: 'supercar',
+    variants: [
+      { id: 'czinger_21c',      trim: '2.88 V8 Hybrid Tandem',  year: 2024, fipePrice: 16_500_000 },
+    ],
+  },
+  {
+    id: 'amg_one',
+    brand: 'Mercedes-AMG',
+    model: 'ONE',
+    icon: '🏎️',
+    category: 'supercar',
+    variants: [
+      { id: 'amg_one_f1',       trim: '1.6 V6 F1 Hybrid',       year: 2023, fipePrice: 18_500_000 },
+    ],
+  },
+  {
+    id: 'amg_gt_black_series',
+    brand: 'Mercedes-AMG',
+    model: 'GT Black Series',
+    icon: '🏎️',
+    category: 'supercar',
+    variants: [
+      { id: 'amg_gt_bs',        trim: '4.0 V8 Biturbo Black',   year: 2022, fipePrice: 3_985_000 },
+    ],
+  },
+  {
+    id: 'amg_sl63',
+    brand: 'Mercedes-AMG',
+    model: 'SL 63',
+    icon: '🏎️',
+    category: 'esportivo',
+    variants: [
+      { id: 'sl63_v8',          trim: '4.0 V8 Biturbo 4MATIC+', year: 2023, fipePrice: 1_485_000 },
+    ],
+  },
+  {
+    id: 'bmw_m5_cs',
+    brand: 'BMW',
+    model: 'M5 CS',
+    icon: '🏎️',
+    category: 'esportivo',
+    variants: [
+      { id: 'm5_cs_v8',         trim: '4.4 V8 Biturbo CS',      year: 2022, fipePrice: 1_185_000 },
+    ],
+  },
+  {
+    id: 'bmw_m8_competition',
+    brand: 'BMW',
+    model: 'M8 Competition',
+    icon: '🏎️',
+    category: 'esportivo',
+    variants: [
+      { id: 'm8_comp_coupe',    trim: '4.4 V8 Biturbo Comp.',   year: 2023, fipePrice: 1_385_000 },
+      { id: 'm8_comp_grand',    trim: '4.4 V8 Gran Coupe Comp.', year: 2023, fipePrice: 1_485_000 },
+    ],
+  },
+  {
+    id: 'audi_rsq8',
+    brand: 'Audi',
+    model: 'RS Q8',
+    icon: '🚙',
+    category: 'suv',
+    variants: [
+      { id: 'rsq8_v8',          trim: '4.0 V8 Biturbo Performance', year: 2023, fipePrice: 1_385_000 },
+    ],
+  },
+  {
+    id: 'audi_rs_etron_gt',
+    brand: 'Audi',
+    model: 'RS e-tron GT',
+    icon: '⚡',
+    category: 'eletrico',
+    variants: [
+      { id: 'rs_etron_gt',      trim: 'RS Performance EV',      year: 2023, fipePrice: 1_185_000 },
+    ],
+  },
 ];
 
 // ── HELPERS ──────────────────────────────────────────────────────

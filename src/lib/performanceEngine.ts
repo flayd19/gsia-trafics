@@ -177,6 +177,91 @@ const MODEL_OVERRIDES: Record<string, ModelOverride> = {
   audi_r8:              { hp: 610,  torqueNm: 560,  weightKg: 1650, time0to100: 3.1,  topSpeedKmh: 333, hasTurbo: false, engineType: '5.2 V10 NA' },
   honda_nsx_type_s:     { hp: 600,  torqueNm: 667,  weightKg: 1725, time0to100: 3.0,  topSpeedKmh: 308, hasTurbo: true,  engineType: 'V6 Hybrid AWD' },
   ford_gt_mk4:          { hp: 800,  torqueNm: 850,  weightKg: 1250, time0to100: 2.8,  topSpeedKmh: 350, hasTurbo: true,  engineType: '3.5 EcoBoost V6 Turbo' },
+
+  // ── Porsche extras ─────────────────────────────────────────────────
+  porsche_718_cayman:    { hp: 350,  torqueNm: 420,  weightKg: 1405, time0to100: 4.4,  topSpeedKmh: 290, hasTurbo: true,  engineType: '2.5 Flat-4 Turbo' },
+  porsche_718_boxster:   { hp: 350,  torqueNm: 420,  weightKg: 1430, time0to100: 4.5,  topSpeedKmh: 285, hasTurbo: true,  engineType: '2.5 Flat-4 Turbo' },
+  porsche_911_gt3_rs:    { hp: 525,  torqueNm: 465,  weightKg: 1450, time0to100: 3.2,  topSpeedKmh: 296, hasTurbo: false, engineType: '4.0 Flat-6 NA RS' },
+  porsche_911_gt2_rs:    { hp: 700,  torqueNm: 750,  weightKg: 1470, time0to100: 2.8,  topSpeedKmh: 340, hasTurbo: true,  engineType: '3.8 Biturbo Flat-6' },
+  porsche_911_carrera:   { hp: 450,  torqueNm: 530,  weightKg: 1505, time0to100: 3.4,  topSpeedKmh: 308, hasTurbo: true,  engineType: '3.0 Biturbo Flat-6' },
+  porsche_911_targa:     { hp: 450,  torqueNm: 530,  weightKg: 1675, time0to100: 3.6,  topSpeedKmh: 304, hasTurbo: true,  engineType: '3.0 Biturbo Flat-6' },
+  porsche_911_sport_classic: { hp: 550, torqueNm: 600, weightKg: 1570, time0to100: 3.4, topSpeedKmh: 315, hasTurbo: true, engineType: '3.7 Biturbo Flat-6' },
+  porsche_911_dakar:     { hp: 480,  torqueNm: 570,  weightKg: 1605, time0to100: 3.4,  topSpeedKmh: 240, hasTurbo: true,  engineType: '3.0 Biturbo Off-Road' },
+  porsche_taycan:        { hp: 760,  torqueNm: 1050, weightKg: 2295, time0to100: 2.4,  topSpeedKmh: 260, hasTurbo: false, engineType: 'EV Dual Motor' },
+  porsche_panamera:      { hp: 630,  torqueNm: 820,  weightKg: 2090, time0to100: 3.1,  topSpeedKmh: 315, hasTurbo: true,  engineType: '4.0 Biturbo V8' },
+  porsche_cayenne_coupe: { hp: 640,  torqueNm: 850,  weightKg: 2235, time0to100: 3.3,  topSpeedKmh: 300, hasTurbo: true,  engineType: '4.0 Biturbo V8' },
+
+  // ── Lamborghini extras ────────────────────────────────────────────
+  lambo_revuelto:        { hp: 1015, torqueNm: 850,  weightKg: 1772, time0to100: 2.5,  topSpeedKmh: 350, hasTurbo: false, engineType: '6.5 V12 PHEV' },
+  lambo_urus_performante:{ hp: 666,  torqueNm: 850,  weightKg: 2150, time0to100: 3.3,  topSpeedKmh: 306, hasTurbo: true,  engineType: '4.0 V8 Biturbo' },
+  lambo_sian:            { hp: 819,  torqueNm: 720,  weightKg: 1560, time0to100: 2.8,  topSpeedKmh: 350, hasTurbo: false, engineType: '6.5 V12 Hybrid' },
+  lambo_countach_lpi:    { hp: 803,  torqueNm: 720,  weightKg: 1595, time0to100: 2.8,  topSpeedKmh: 355, hasTurbo: false, engineType: '6.5 V12 Hybrid' },
+  lambo_diablo:          { hp: 530,  torqueNm: 605,  weightKg: 1576, time0to100: 4.0,  topSpeedKmh: 335, hasTurbo: false, engineType: '5.7 V12 NA' },
+  lambo_murcielago:      { hp: 670,  torqueNm: 660,  weightKg: 1665, time0to100: 3.2,  topSpeedKmh: 340, hasTurbo: false, engineType: '6.5 V12 NA' },
+  lambo_gallardo:        { hp: 570,  torqueNm: 540,  weightKg: 1500, time0to100: 3.4,  topSpeedKmh: 325, hasTurbo: false, engineType: '5.2 V10 NA' },
+
+  // ── Ferrari extras ────────────────────────────────────────────────
+  ferrari_sf90:          { hp: 986,  torqueNm: 800,  weightKg: 1570, time0to100: 2.5,  topSpeedKmh: 340, hasTurbo: true,  engineType: '4.0 V8 PHEV' },
+  ferrari_laferrari:     { hp: 950,  torqueNm: 900,  weightKg: 1255, time0to100: 2.6,  topSpeedKmh: 350, hasTurbo: false, engineType: '6.3 V12 HY-KERS' },
+  ferrari_roma:          { hp: 612,  torqueNm: 760,  weightKg: 1570, time0to100: 3.4,  topSpeedKmh: 320, hasTurbo: true,  engineType: '3.9 V8 Biturbo' },
+  ferrari_portofino_m:   { hp: 612,  torqueNm: 760,  weightKg: 1664, time0to100: 3.5,  topSpeedKmh: 320, hasTurbo: true,  engineType: '3.9 V8 Biturbo' },
+  ferrari_812_superfast: { hp: 800,  torqueNm: 718,  weightKg: 1525, time0to100: 2.9,  topSpeedKmh: 340, hasTurbo: false, engineType: '6.5 V12 NA' },
+  ferrari_812_competizione: { hp: 830, torqueNm: 692, weightKg: 1487, time0to100: 2.8, topSpeedKmh: 340, hasTurbo: false, engineType: '6.5 V12 NA Comp.' },
+  ferrari_daytona_sp3:   { hp: 840,  torqueNm: 697,  weightKg: 1475, time0to100: 2.8,  topSpeedKmh: 340, hasTurbo: false, engineType: '6.5 V12 NA Icona' },
+  ferrari_monza_sp2:     { hp: 810,  torqueNm: 719,  weightKg: 1500, time0to100: 2.9,  topSpeedKmh: 300, hasTurbo: false, engineType: '6.5 V12 NA Speedster' },
+  ferrari_purosangue:    { hp: 725,  torqueNm: 716,  weightKg: 2033, time0to100: 3.3,  topSpeedKmh: 310, hasTurbo: false, engineType: '6.5 V12 NA SUV' },
+  ferrari_f12:           { hp: 740,  torqueNm: 690,  weightKg: 1525, time0to100: 3.1,  topSpeedKmh: 340, hasTurbo: false, engineType: '6.3 V12 NA' },
+  ferrari_f40:           { hp: 478,  torqueNm: 577,  weightKg: 1100, time0to100: 4.1,  topSpeedKmh: 324, hasTurbo: true,  engineType: '2.9 V8 Biturbo' },
+  ferrari_f50:           { hp: 520,  torqueNm: 471,  weightKg: 1230, time0to100: 3.7,  topSpeedKmh: 325, hasTurbo: false, engineType: '4.7 V12 NA' },
+  ferrari_enzo:          { hp: 660,  torqueNm: 657,  weightKg: 1365, time0to100: 3.1,  topSpeedKmh: 350, hasTurbo: false, engineType: '6.0 V12 NA' },
+
+  // ── McLaren extras ────────────────────────────────────────────────
+  mclaren_artura:        { hp: 680,  torqueNm: 720,  weightKg: 1498, time0to100: 3.0,  topSpeedKmh: 330, hasTurbo: true,  engineType: '3.0 V6 PHEV' },
+  mclaren_765lt:         { hp: 765,  torqueNm: 800,  weightKg: 1339, time0to100: 2.7,  topSpeedKmh: 330, hasTurbo: true,  engineType: '4.0 V8 Biturbo' },
+  mclaren_senna:         { hp: 800,  torqueNm: 800,  weightKg: 1198, time0to100: 2.8,  topSpeedKmh: 335, hasTurbo: true,  engineType: '4.0 V8 Biturbo' },
+  mclaren_p1:            { hp: 916,  torqueNm: 900,  weightKg: 1395, time0to100: 2.8,  topSpeedKmh: 350, hasTurbo: true,  engineType: '3.8 V8 Hybrid' },
+  mclaren_speedtail:     { hp: 1055, torqueNm: 848,  weightKg: 1430, time0to100: 2.6,  topSpeedKmh: 403, hasTurbo: true,  engineType: '4.0 V8 Hybrid' },
+  mclaren_gt:            { hp: 620,  torqueNm: 630,  weightKg: 1466, time0to100: 3.2,  topSpeedKmh: 326, hasTurbo: true,  engineType: '4.0 V8 Biturbo' },
+  mclaren_elva:          { hp: 815,  torqueNm: 800,  weightKg: 1269, time0to100: 2.8,  topSpeedKmh: 330, hasTurbo: true,  engineType: '4.0 V8 Speedster' },
+
+  // ── Aston Martin ──────────────────────────────────────────────────
+  aston_vantage:         { hp: 656,  torqueNm: 800,  weightKg: 1605, time0to100: 3.4,  topSpeedKmh: 325, hasTurbo: true,  engineType: '4.0 V8 Biturbo' },
+  aston_db12:            { hp: 680,  torqueNm: 800,  weightKg: 1685, time0to100: 3.5,  topSpeedKmh: 325, hasTurbo: true,  engineType: '4.0 V8 Biturbo' },
+  aston_dbs:             { hp: 715,  torqueNm: 900,  weightKg: 1693, time0to100: 3.4,  topSpeedKmh: 340, hasTurbo: true,  engineType: '5.2 V12 Biturbo' },
+  aston_valhalla:        { hp: 998,  torqueNm: 950,  weightKg: 1550, time0to100: 2.5,  topSpeedKmh: 350, hasTurbo: true,  engineType: '4.0 V8 PHEV' },
+  aston_valkyrie:        { hp: 1160, torqueNm: 900,  weightKg: 1030, time0to100: 2.5,  topSpeedKmh: 400, hasTurbo: false, engineType: '6.5 V12 Hybrid' },
+  aston_dbx707:          { hp: 707,  torqueNm: 900,  weightKg: 2245, time0to100: 3.3,  topSpeedKmh: 310, hasTurbo: true,  engineType: '4.0 V8 Biturbo' },
+
+  // ── Bugatti ───────────────────────────────────────────────────────
+  bugatti_chiron:        { hp: 1500, torqueNm: 1600, weightKg: 1996, time0to100: 2.4,  topSpeedKmh: 420, hasTurbo: true,  engineType: '8.0 W16 Quad Turbo' },
+  bugatti_bolide:        { hp: 1850, torqueNm: 1850, weightKg: 1240, time0to100: 2.2,  topSpeedKmh: 500, hasTurbo: true,  engineType: '8.0 W16 Track' },
+  bugatti_veyron_ss:     { hp: 1200, torqueNm: 1500, weightKg: 1888, time0to100: 2.5,  topSpeedKmh: 431, hasTurbo: true,  engineType: '8.0 W16 SS' },
+  bugatti_centodieci:    { hp: 1600, torqueNm: 1600, weightKg: 1976, time0to100: 2.4,  topSpeedKmh: 380, hasTurbo: true,  engineType: '8.0 W16' },
+
+  // ── Koenigsegg ────────────────────────────────────────────────────
+  koenigsegg_jesko:      { hp: 1600, torqueNm: 1500, weightKg: 1420, time0to100: 2.5,  topSpeedKmh: 480, hasTurbo: true,  engineType: '5.0 V8 Twin Turbo' },
+  koenigsegg_regera:     { hp: 1500, torqueNm: 2000, weightKg: 1590, time0to100: 2.5,  topSpeedKmh: 410, hasTurbo: true,  engineType: '5.0 V8 PHEV' },
+  koenigsegg_gemera:     { hp: 1700, torqueNm: 3500, weightKg: 1850, time0to100: 1.9,  topSpeedKmh: 400, hasTurbo: true,  engineType: '5.0 V8 Hybrid 4S' },
+  koenigsegg_agera_rs:   { hp: 1160, torqueNm: 1280, weightKg: 1395, time0to100: 2.6,  topSpeedKmh: 447, hasTurbo: true,  engineType: '5.0 V8 Twin Turbo' },
+
+  // ── Pagani ────────────────────────────────────────────────────────
+  pagani_huayra:         { hp: 802,  torqueNm: 1100, weightKg: 1268, time0to100: 2.8,  topSpeedKmh: 383, hasTurbo: true,  engineType: '6.0 V12 Biturbo' },
+  pagani_utopia:         { hp: 864,  torqueNm: 1100, weightKg: 1280, time0to100: 2.7,  topSpeedKmh: 380, hasTurbo: true,  engineType: '6.0 V12 Biturbo' },
+  pagani_zonda:          { hp: 678,  torqueNm: 780,  weightKg: 1210, time0to100: 3.4,  topSpeedKmh: 350, hasTurbo: false, engineType: '7.3 V12 NA' },
+
+  // ── Lotus / Maserati / Outros ─────────────────────────────────────
+  lotus_evija:           { hp: 2011, torqueNm: 1700, weightKg: 1680, time0to100: 2.0,  topSpeedKmh: 350, hasTurbo: false, engineType: 'EV Quad Motor' },
+  lotus_emira:           { hp: 405,  torqueNm: 430,  weightKg: 1405, time0to100: 4.2,  topSpeedKmh: 290, hasTurbo: true,  engineType: '3.5 V6 Supercharged' },
+  maserati_mc20:         { hp: 630,  torqueNm: 730,  weightKg: 1500, time0to100: 2.9,  topSpeedKmh: 325, hasTurbo: true,  engineType: '3.0 V6 Nettuno' },
+  rimac_nevera:          { hp: 1914, torqueNm: 2360, weightKg: 2300, time0to100: 1.9,  topSpeedKmh: 412, hasTurbo: false, engineType: 'EV Quad Motor' },
+  czinger_21c:           { hp: 1350, torqueNm: 1342, weightKg: 1240, time0to100: 1.9,  topSpeedKmh: 452, hasTurbo: true,  engineType: '2.88 V8 Hybrid' },
+  amg_one:               { hp: 1063, torqueNm: 720,  weightKg: 1695, time0to100: 2.9,  topSpeedKmh: 352, hasTurbo: true,  engineType: '1.6 V6 F1 Hybrid' },
+  amg_gt_black_series:   { hp: 730,  torqueNm: 800,  weightKg: 1615, time0to100: 3.2,  topSpeedKmh: 325, hasTurbo: true,  engineType: '4.0 V8 Biturbo' },
+  amg_sl63:              { hp: 585,  torqueNm: 800,  weightKg: 1970, time0to100: 3.6,  topSpeedKmh: 315, hasTurbo: true,  engineType: '4.0 V8 Biturbo' },
+  bmw_m5_cs:             { hp: 635,  torqueNm: 750,  weightKg: 1870, time0to100: 3.0,  topSpeedKmh: 305, hasTurbo: true,  engineType: '4.4 V8 Biturbo CS' },
+  bmw_m8_competition:    { hp: 625,  torqueNm: 750,  weightKg: 1885, time0to100: 3.2,  topSpeedKmh: 305, hasTurbo: true,  engineType: '4.4 V8 Biturbo' },
+  audi_rsq8:             { hp: 600,  torqueNm: 800,  weightKg: 2315, time0to100: 3.8,  topSpeedKmh: 305, hasTurbo: true,  engineType: '4.0 V8 Biturbo' },
+  audi_rs_etron_gt:      { hp: 637,  torqueNm: 830,  weightKg: 2347, time0to100: 3.3,  topSpeedKmh: 250, hasTurbo: false, engineType: 'EV Dual Motor' },
 };
 
 // ── Determinismo por instanceId ──────────────────────────────────
