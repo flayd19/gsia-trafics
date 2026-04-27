@@ -8,6 +8,7 @@ import { Badge } from '@/components/ui/badge';
 import { Progress } from '@/components/ui/progress';
 import type { GameState, OwnedCar, GarageSlot } from '@/types/game';
 import { GARAGE_SLOTS, conditionLabel, conditionColor, garageSlotDailyCost, fmtKm } from '@/data/cars';
+import { CAR_IMAGES } from '@/data/carImages';
 
 interface GaragemScreenProps {
   gameState: GameState;
@@ -23,12 +24,36 @@ function CarCard({ car, slotId, onRepair }: { car: OwnedCar; slotId: number; onR
   const colorClass = conditionColor(car.condition);
   const totalCost = car.purchasePrice + (car.totalRepairCost ?? 0);
 
+  const imgUrl = car.modelId ? CAR_IMAGES[car.modelId] : undefined;
+
   return (
-    <div className="ios-surface rounded-[16px] p-4 space-y-3">
+    <div className="ios-surface rounded-[16px] overflow-hidden space-y-0">
+      {/* Imagem do carro */}
+      {imgUrl && (
+        <div className="relative w-full bg-muted overflow-hidden" style={{ height: 140 }}>
+          <img
+            src={imgUrl}
+            alt={`${car.brand} ${car.model}`}
+            className="w-full h-full object-cover"
+            onError={(e) => {
+              (e.currentTarget.parentElement as HTMLElement).style.display = 'none';
+            }}
+          />
+          <div className={`absolute top-2 right-2 px-2 py-0.5 rounded-full text-[10px] font-bold text-white shadow ${
+            car.condition >= 75 ? 'bg-emerald-500'
+            : car.condition >= 50 ? 'bg-amber-500'
+            : car.condition >= 30 ? 'bg-orange-500'
+            : 'bg-red-500'
+          }`}>
+            {label} {car.condition}%
+          </div>
+        </div>
+      )}
+      <div className="p-4 space-y-3">
       {/* Header */}
       <div className="flex items-start justify-between gap-2">
         <div className="flex items-center gap-2">
-          <span className="text-3xl">{car.icon}</span>
+          {!imgUrl && <span className="text-3xl">{car.icon}</span>}
           <div>
             <div className="font-bold text-foreground text-[15px] leading-tight">
               {car.brand} {car.model}
@@ -134,6 +159,7 @@ function CarCard({ car, slotId, onRepair }: { car: OwnedCar; slotId: number; onR
           Levar à Oficina
         </Button>
       )}
+      </div>
     </div>
   );
 }

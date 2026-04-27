@@ -7,6 +7,7 @@ import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import type { GameState, CarBuyerNPC, OwnedCar } from '@/types/game';
 import { conditionLabel, conditionColor, conditionValueFactor, CAR_MODELS } from '@/data/cars';
+import { CAR_IMAGES } from '@/data/carImages';
 import {
   maxBuyerSlots,
   currentCycleEpoch,
@@ -542,7 +543,22 @@ function BuyerCard({
                     isSelected ? 'border-primary/40 bg-primary/5' : 'border-border bg-muted/20'
                   }`}
                 >
-                  <span className="text-2xl">{car.icon}</span>
+                  {CAR_IMAGES[car.modelId] ? (
+                    <img
+                      src={CAR_IMAGES[car.modelId]}
+                      alt={`${car.brand} ${car.model}`}
+                      className="w-10 h-10 object-cover rounded-[8px] shrink-0"
+                      onError={(e) => {
+                        e.currentTarget.style.display = 'none';
+                        const fb = e.currentTarget.nextElementSibling as HTMLElement | null;
+                        if (fb) fb.style.display = 'inline';
+                      }}
+                    />
+                  ) : null}
+                  <span
+                    className="text-2xl shrink-0"
+                    style={{ display: CAR_IMAGES[car.modelId] ? 'none' : 'inline' }}
+                  >{car.icon}</span>
                   <div className="flex-1 min-w-0">
                     <div className="font-semibold text-[13px] truncate">{car.brand} {car.model}</div>
                     <div className="text-[10px] text-muted-foreground">{car.trim}</div>

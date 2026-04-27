@@ -12,6 +12,7 @@ import { Input } from '@/components/ui/input';
 import type { GameState, OwnedCar } from '@/types/game';
 import type { GlobalCar } from '@/hooks/useGlobalMarketplace';
 import { conditionLabel, conditionColor, conditionValueFactor, fmtKm, type CarCategory } from '@/data/cars';
+import { CAR_IMAGES } from '@/data/carImages';
 import { generateBasePerformance } from '@/lib/performanceEngine';
 
 interface FornecedoresCarrosScreenProps {
@@ -73,8 +74,23 @@ function CarDetailSheet({
   return (
     <div className="fixed inset-0 z-[60] flex flex-col bg-background animate-fade-in">
       {/* Hero */}
-      <div className="relative w-full bg-muted" style={{ height: 220 }}>
-        <div className={`w-full h-full flex items-center justify-center text-[88px] ${isSold ? 'opacity-40' : ''}`}>
+      <div className="relative w-full bg-muted overflow-hidden" style={{ height: 220 }}>
+        {CAR_IMAGES[car.modelId] ? (
+          <img
+            src={CAR_IMAGES[car.modelId]}
+            alt={`${car.brand} ${car.model}`}
+            className={`w-full h-full object-cover ${isSold ? 'opacity-40' : ''}`}
+            onError={(e) => {
+              e.currentTarget.style.display = 'none';
+              const fallback = e.currentTarget.nextElementSibling as HTMLElement | null;
+              if (fallback) fallback.style.display = 'flex';
+            }}
+          />
+        ) : null}
+        <div
+          className={`w-full h-full items-center justify-center text-[88px] ${isSold ? 'opacity-40' : ''}`}
+          style={{ display: CAR_IMAGES[car.modelId] ? 'none' : 'flex' }}
+        >
           {car.icon}
         </div>
         {/* Sold overlay */}
@@ -294,8 +310,23 @@ function MarketplaceCard({
       className="ios-surface rounded-[14px] overflow-hidden text-left active:scale-[0.97] transition-transform w-full relative"
     >
       {/* Thumbnail */}
-      <div className="relative w-full bg-muted flex items-center justify-center" style={{ height: 110 }}>
-        <span className={`text-[52px] ${isSold ? 'opacity-30' : ''}`}>{car.icon}</span>
+      <div className="relative w-full bg-muted flex items-center justify-center overflow-hidden" style={{ height: 110 }}>
+        {CAR_IMAGES[car.modelId] ? (
+          <img
+            src={CAR_IMAGES[car.modelId]}
+            alt={`${car.brand} ${car.model}`}
+            className={`w-full h-full object-cover ${isSold ? 'opacity-30' : ''}`}
+            onError={(e) => {
+              e.currentTarget.style.display = 'none';
+              const fallback = e.currentTarget.nextElementSibling as HTMLElement | null;
+              if (fallback) fallback.style.display = 'flex';
+            }}
+          />
+        ) : null}
+        <span
+          className={`text-[52px] items-center justify-center ${isSold ? 'opacity-30' : ''}`}
+          style={{ display: CAR_IMAGES[car.modelId] ? 'none' : 'flex' }}
+        >{car.icon}</span>
 
         {/* FIPE badge — só quando disponível */}
         {!isSold && (
