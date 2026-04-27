@@ -62,6 +62,7 @@ const Index = () => {
     dismissBuyer,
     addMoney,
     spendMoney,
+    addAsyncRaceWon,
     saveGame,
     resetGame,
 
@@ -244,6 +245,7 @@ const Index = () => {
             gameState={gameState}
             onSpendMoney={spendMoney}
             onAddMoney={addMoney}
+            onRaceWon={addAsyncRaceWon}
             onUpdateCarTunes={handleUpdateCarTunes}
           />
         );

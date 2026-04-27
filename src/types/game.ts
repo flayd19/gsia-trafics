@@ -327,6 +327,9 @@ export interface GameState {
   buyers?: unknown[];
   pending_deliveries?: unknown[];
   completed_orders?: number;
+
+  /** Vitórias em rachas assíncronos (não contadas em car.raceHistory) */
+  asyncRacesWon: number;
 }
 
 // ── Helpers de tipo ───────────────────────────────────────────────
@@ -358,5 +361,6 @@ export function ensureGameState(raw: Partial<GameState>): GameState {
     lastInterestCalculation: raw.lastInterestCalculation ?? 0,
     lastRentCharge: raw.lastRentCharge ?? 1,
     completedOrders: raw.completedOrders ?? 0,
+    asyncRacesWon:   raw.asyncRacesWon   ?? 0,
   };
 }

@@ -70,6 +70,18 @@ const CATEGORY_RANGES: Record<CarCategory, CategoryRange> = {
     aero: [60, 80], stability: [65, 85], grip: [60, 80], gearShift: [80, 95],
     hasTurboChance: 0.0,
   },
+  jdm: {
+    hp: [130, 580], torqueNm: [150, 640], weight: [900, 1600],
+    time0to100: [3.5, 10], vmax: [190, 320],
+    aero: [60, 90], stability: [60, 90], grip: [65, 92], gearShift: [60, 88],
+    hasTurboChance: 0.70,
+  },
+  supercar: {
+    hp: [480, 1200], torqueNm: [450, 1400], weight: [1050, 1900],
+    time0to100: [2.0, 4.5], vmax: [280, 420],
+    aero: [80, 98], stability: [75, 95], grip: [80, 98], gearShift: [75, 95],
+    hasTurboChance: 0.75,
+  },
 };
 
 // ── Overrides para modelos populares ────────────────────────────
@@ -101,6 +113,70 @@ const MODEL_OVERRIDES: Record<string, ModelOverride> = {
   brasilia:    { hp: 65,  torqueNm: 100, weightKg: 900,  time0to100: 17.0, topSpeedKmh: 148, hasTurbo: false, engineType: '1.4' },
   kombi:       { hp: 58,  torqueNm: 95,  weightKg: 1100, time0to100: 20.0, topSpeedKmh: 130, hasTurbo: false, engineType: '1.4' },
   del_rey:     { hp: 88,  torqueNm: 118, weightKg: 1000, time0to100: 13.5, topSpeedKmh: 172, hasTurbo: false, engineType: '1.6' },
+
+  // ── Muscle / American / Euro esportivos ──────────────────────────
+  corvette_c8:        { hp: 495,  torqueNm: 637,  weightKg: 1527, time0to100: 2.9,  topSpeedKmh: 312, hasTurbo: false, engineType: '6.2 V8' },
+  corvette_c7_z06:    { hp: 650,  torqueNm: 881,  weightKg: 1518, time0to100: 3.2,  topSpeedKmh: 306, hasTurbo: false, engineType: '6.2 SC V8' },
+  camaro_ss:          { hp: 455,  torqueNm: 617,  weightKg: 1737, time0to100: 4.2,  topSpeedKmh: 271, hasTurbo: false, engineType: '6.2 V8' },
+  camaro_zl1:         { hp: 650,  torqueNm: 881,  weightKg: 1799, time0to100: 3.5,  topSpeedKmh: 296, hasTurbo: false, engineType: '6.2 SC V8' },
+  challenger_hellcat: { hp: 717,  torqueNm: 881,  weightKg: 2041, time0to100: 3.7,  topSpeedKmh: 328, hasTurbo: false, engineType: '6.2 SC V8' },
+  charger_srt:        { hp: 485,  torqueNm: 637,  weightKg: 1977, time0to100: 4.4,  topSpeedKmh: 280, hasTurbo: false, engineType: '6.4 HEMI V8' },
+  shelby_gt500:       { hp: 760,  torqueNm: 847,  weightKg: 1847, time0to100: 3.3,  topSpeedKmh: 298, hasTurbo: false, engineType: '5.2 SC V8' },
+  bmw_m2:             { hp: 460,  torqueNm: 550,  weightKg: 1630, time0to100: 4.1,  topSpeedKmh: 285, hasTurbo: true,  engineType: '3.0 S58 Turbo' },
+  bmw_m3:             { hp: 510,  torqueNm: 650,  weightKg: 1730, time0to100: 3.5,  topSpeedKmh: 290, hasTurbo: true,  engineType: '3.0 S58 Turbo' },
+  bmw_m4:             { hp: 510,  torqueNm: 650,  weightKg: 1725, time0to100: 3.5,  topSpeedKmh: 290, hasTurbo: true,  engineType: '3.0 S58 Turbo' },
+  mercedes_amg_a45:   { hp: 421,  torqueNm: 500,  weightKg: 1565, time0to100: 3.9,  topSpeedKmh: 270, hasTurbo: true,  engineType: '2.0 Turbo' },
+  mercedes_amg_c63:   { hp: 671,  torqueNm: 1020, weightKg: 1980, time0to100: 3.4,  topSpeedKmh: 280, hasTurbo: true,  engineType: '2.0 Hybrid Turbo' },
+  mercedes_amg_gt:    { hp: 557,  torqueNm: 700,  weightKg: 1615, time0to100: 3.7,  topSpeedKmh: 316, hasTurbo: true,  engineType: '4.0 Biturbo V8' },
+  audi_rs3:           { hp: 400,  torqueNm: 500,  weightKg: 1570, time0to100: 3.8,  topSpeedKmh: 290, hasTurbo: true,  engineType: '2.5 TFSI' },
+  audi_rs6:           { hp: 630,  torqueNm: 850,  weightKg: 2100, time0to100: 3.4,  topSpeedKmh: 305, hasTurbo: true,  engineType: '4.0 TFSI Turbo' },
+  alfa_giulia_qv:     { hp: 510,  torqueNm: 600,  weightKg: 1524, time0to100: 3.9,  topSpeedKmh: 307, hasTurbo: true,  engineType: '2.9 V6 Biturbo' },
+  renault_megane_rs:  { hp: 300,  torqueNm: 420,  weightKg: 1449, time0to100: 5.4,  topSpeedKmh: 270, hasTurbo: true,  engineType: '1.8 Turbo' },
+
+  // ── JDM ──────────────────────────────────────────────────────────
+  nissan_gtr_r35:     { hp: 570,  torqueNm: 637,  weightKg: 1770, time0to100: 2.7,  topSpeedKmh: 315, hasTurbo: true,  engineType: '3.8 Twin Turbo' },
+  nissan_gtr_r34:     { hp: 280,  torqueNm: 392,  weightKg: 1540, time0to100: 5.0,  topSpeedKmh: 260, hasTurbo: true,  engineType: 'RB26DETT' },
+  nissan_gtr_r33:     { hp: 276,  torqueNm: 363,  weightKg: 1530, time0to100: 5.4,  topSpeedKmh: 250, hasTurbo: true,  engineType: 'RB26DETT' },
+  nissan_gtr_r32:     { hp: 276,  torqueNm: 368,  weightKg: 1430, time0to100: 5.6,  topSpeedKmh: 248, hasTurbo: true,  engineType: 'RB26DETT' },
+  toyota_supra_mk4:   { hp: 320,  torqueNm: 441,  weightKg: 1570, time0to100: 5.1,  topSpeedKmh: 250, hasTurbo: true,  engineType: '2JZ-GTE Twin Turbo' },
+  toyota_supra_mk5:   { hp: 387,  torqueNm: 500,  weightKg: 1570, time0to100: 4.3,  topSpeedKmh: 250, hasTurbo: true,  engineType: 'B58 3.0 Turbo' },
+  mazda_rx7_fd:       { hp: 255,  torqueNm: 294,  weightKg: 1310, time0to100: 5.3,  topSpeedKmh: 255, hasTurbo: true,  engineType: '13B-REW Twin Turbo' },
+  mazda_rx7_fc:       { hp: 185,  torqueNm: 230,  weightKg: 1270, time0to100: 7.5,  topSpeedKmh: 220, hasTurbo: true,  engineType: '13B-T Turbo' },
+  mazda_rx8:          { hp: 238,  torqueNm: 216,  weightKg: 1370, time0to100: 6.4,  topSpeedKmh: 230, hasTurbo: false, engineType: '13B-MSP RENESIS' },
+  honda_s2000:        { hp: 237,  torqueNm: 208,  weightKg: 1260, time0to100: 6.2,  topSpeedKmh: 240, hasTurbo: false, engineType: 'F20C VTEC' },
+  honda_nsx_na1:      { hp: 274,  torqueNm: 284,  weightKg: 1370, time0to100: 5.5,  topSpeedKmh: 270, hasTurbo: false, engineType: 'C30A VTEC' },
+  mitsubishi_evo9:    { hp: 280,  torqueNm: 392,  weightKg: 1420, time0to100: 4.5,  topSpeedKmh: 250, hasTurbo: true,  engineType: '4G63T Turbo AWD' },
+  mitsubishi_evo10:   { hp: 291,  torqueNm: 366,  weightKg: 1480, time0to100: 4.5,  topSpeedKmh: 250, hasTurbo: true,  engineType: '4B11T Turbo AWD' },
+  mitsubishi_evo8:    { hp: 275,  torqueNm: 380,  weightKg: 1400, time0to100: 5.0,  topSpeedKmh: 248, hasTurbo: true,  engineType: '4G63T Turbo AWD' },
+  nissan_silvia_s15:  { hp: 250,  torqueNm: 274,  weightKg: 1240, time0to100: 5.8,  topSpeedKmh: 250, hasTurbo: true,  engineType: 'SR20DET Turbo' },
+  nissan_180sx:       { hp: 205,  torqueNm: 275,  weightKg: 1195, time0to100: 6.5,  topSpeedKmh: 235, hasTurbo: true,  engineType: 'SR20DET Turbo' },
+  honda_integra_type_r: { hp: 200, torqueNm: 193, weightKg: 1100, time0to100: 6.6, topSpeedKmh: 235, hasTurbo: false, engineType: 'K20A/B18C VTEC' },
+  ae86:               { hp: 128,  torqueNm: 149,  weightKg: 940,  time0to100: 8.5,  topSpeedKmh: 195, hasTurbo: false, engineType: '4A-GE TWIN CAM' },
+  celica_gt4:         { hp: 255,  torqueNm: 324,  weightKg: 1430, time0to100: 5.5,  topSpeedKmh: 240, hasTurbo: true,  engineType: '3S-GTE Turbo AWD' },
+  subaru_brz:         { hp: 228,  torqueNm: 250,  weightKg: 1270, time0to100: 6.0,  topSpeedKmh: 226, hasTurbo: false, engineType: 'FA24 Flat-4' },
+  mazda_mx5:          { hp: 184,  torqueNm: 205,  weightKg: 1015, time0to100: 6.5,  topSpeedKmh: 219, hasTurbo: false, engineType: '2.0 Skyactiv-G' },
+  nissan_350z:        { hp: 306,  torqueNm: 363,  weightKg: 1460, time0to100: 5.4,  topSpeedKmh: 250, hasTurbo: false, engineType: 'VQ35HR' },
+  nissan_370z:        { hp: 344,  torqueNm: 374,  weightKg: 1496, time0to100: 5.2,  topSpeedKmh: 250, hasTurbo: false, engineType: 'VQ37VHR' },
+  nissan_z_rz34:      { hp: 405,  torqueNm: 475,  weightKg: 1572, time0to100: 4.5,  topSpeedKmh: 250, hasTurbo: true,  engineType: 'VR30DDTT Twin Turbo' },
+  toyota_gr_yaris:    { hp: 261,  torqueNm: 360,  weightKg: 1280, time0to100: 5.5,  topSpeedKmh: 230, hasTurbo: true,  engineType: 'G16E-GTS Turbo AWD' },
+  toyota_gr_corolla:  { hp: 300,  torqueNm: 370,  weightKg: 1320, time0to100: 5.0,  topSpeedKmh: 240, hasTurbo: true,  engineType: 'G16E-GTS Turbo AWD' },
+  hyundai_elantra_n:  { hp: 276,  torqueNm: 392,  weightKg: 1510, time0to100: 5.3,  topSpeedKmh: 250, hasTurbo: true,  engineType: '2.0 T-GDi' },
+  kia_stinger_gt:     { hp: 368,  torqueNm: 510,  weightKg: 1803, time0to100: 4.7,  topSpeedKmh: 270, hasTurbo: true,  engineType: '3.3 T-GDi V6' },
+
+  // ── Supercars ─────────────────────────────────────────────────────
+  lamborghini_huracan:  { hp: 640,  torqueNm: 600,  weightKg: 1422, time0to100: 2.9,  topSpeedKmh: 325, hasTurbo: false, engineType: '5.2 V10 NA' },
+  lamborghini_aventador:{ hp: 740,  torqueNm: 690,  weightKg: 1575, time0to100: 2.9,  topSpeedKmh: 350, hasTurbo: false, engineType: '6.5 V12 NA' },
+  ferrari_488:          { hp: 660,  torqueNm: 760,  weightKg: 1475, time0to100: 3.0,  topSpeedKmh: 330, hasTurbo: true,  engineType: '3.9 V8 Biturbo' },
+  ferrari_f8:           { hp: 720,  torqueNm: 770,  weightKg: 1435, time0to100: 2.9,  topSpeedKmh: 340, hasTurbo: true,  engineType: '3.9 V8 Biturbo' },
+  ferrari_296:          { hp: 830,  torqueNm: 740,  weightKg: 1470, time0to100: 2.9,  topSpeedKmh: 330, hasTurbo: true,  engineType: '2.9 V6 Turbo + Elétrico' },
+  mclaren_720s:         { hp: 710,  torqueNm: 770,  weightKg: 1283, time0to100: 2.8,  topSpeedKmh: 341, hasTurbo: true,  engineType: '4.0 M840T Biturbo' },
+  mclaren_570s:         { hp: 562,  torqueNm: 600,  weightKg: 1313, time0to100: 3.2,  topSpeedKmh: 328, hasTurbo: true,  engineType: '3.8 M838TE Biturbo' },
+  porsche_911_gt3:      { hp: 510,  torqueNm: 470,  weightKg: 1418, time0to100: 3.4,  topSpeedKmh: 318, hasTurbo: false, engineType: '4.0 Flat-6 NA' },
+  porsche_911_turbo_s:  { hp: 650,  torqueNm: 800,  weightKg: 1640, time0to100: 2.7,  topSpeedKmh: 330, hasTurbo: true,  engineType: '3.8 Biturbo Flat-6' },
+  porsche_cayman_gt4:   { hp: 500,  torqueNm: 450,  weightKg: 1415, time0to100: 3.4,  topSpeedKmh: 315, hasTurbo: false, engineType: '4.0 Flat-6 NA' },
+  audi_r8:              { hp: 610,  torqueNm: 560,  weightKg: 1650, time0to100: 3.1,  topSpeedKmh: 333, hasTurbo: false, engineType: '5.2 V10 NA' },
+  honda_nsx_type_s:     { hp: 600,  torqueNm: 667,  weightKg: 1725, time0to100: 3.0,  topSpeedKmh: 308, hasTurbo: true,  engineType: 'V6 Hybrid AWD' },
+  ford_gt_mk4:          { hp: 800,  torqueNm: 850,  weightKg: 1250, time0to100: 2.8,  topSpeedKmh: 350, hasTurbo: true,  engineType: '3.5 EcoBoost V6 Turbo' },
 };
 
 // ── Determinismo por instanceId ──────────────────────────────────
@@ -129,10 +205,14 @@ function interpolate(fipePrice: number, minRange: number, maxRange: number, lo: 
 // ── Tração por categoria ─────────────────────────────────────────
 function tractionFor(category: CarCategory, fipePrice: number): TractionType {
   if (category === 'eletrico') return 'AWD';
-  if (category === 'esportivo') return fipePrice > 200_000 ? 'RWD' : 'RWD';
+  if (category === 'esportivo') return 'RWD';
   if (category === 'luxo') return fipePrice > 300_000 ? 'AWD' : 'RWD';
   if (category === 'suv') return fipePrice > 200_000 ? 'AWD' : 'FWD';
   if (category === 'pickup') return 'RWD';
+  // JDM: carros baratos (roadsters, Z-cars) = RWD; premium (GT-R, Evo) = AWD
+  if (category === 'jdm') return fipePrice > 600_000 ? 'AWD' : 'RWD';
+  // Supercars: maioria RWD; top-tier (>2M) tende ao AWD (Turbo S, R8, NSX)
+  if (category === 'supercar') return fipePrice > 2_000_000 ? 'AWD' : 'RWD';
   return 'FWD'; // popular, medio, classico
 }
 
@@ -191,14 +271,16 @@ function clamp(v: number): number {
 
 // ── Faixa de FIPE por categoria (para interpolação) ──────────────
 const FIPE_RANGES: Record<CarCategory, [number, number]> = {
-  popular:   [40_000,  130_000],
-  medio:     [80_000,  250_000],
-  suv:       [90_000,  450_000],
-  pickup:    [80_000,  500_000],
-  esportivo: [150_000, 2_000_000],
-  luxo:      [200_000, 2_500_000],
-  classico:  [20_000,  200_000],
-  eletrico:  [150_000, 1_500_000],
+  popular:   [40_000,   130_000],
+  medio:     [80_000,   250_000],
+  suv:       [90_000,   450_000],
+  pickup:    [80_000,   500_000],
+  esportivo: [150_000,  2_000_000],
+  luxo:      [200_000,  2_500_000],
+  classico:  [20_000,   200_000],
+  eletrico:  [150_000,  1_500_000],
+  jdm:       [75_000,   4_000_000],
+  supercar:  [1_000_000, 15_000_000],
 };
 
 // ── Geração base ─────────────────────────────────────────────────
@@ -246,16 +328,24 @@ export function generateBasePerformance(car: OwnedCar): PerformanceStats {
 
   const traction = tractionFor(category, car.fipePrice);
 
+  // ── Variação de performance por instância (±15%) ─────────────────
+  // Dois carros do mesmo modelo podem ter até 30% de diferença de desempenho.
+  // O seed usa instanceId independente do modelId para garantir determinismo.
+  const varRng = seededRng(car.instanceId + '_var');
+  const variation = 0.85 + varRng() * 0.30; // 0.85 → 1.15
+
+  const vary = (v: number) => clamp(Math.round(v * variation));
+
   const stats: Omit<PerformanceStats, 'igp'> = {
-    topSpeed:     rawToTopSpeed(topSpeedKmh),
-    acceleration: rawToAcceleration(time0to100),
-    power:        rawToPower(hp),
-    torque:       rawToTorque(torqueNm),
-    weight:       rawToWeight(weightKg),
-    aerodynamics: aero,
-    stability,
-    grip,
-    gearShift,
+    topSpeed:     vary(rawToTopSpeed(topSpeedKmh)),
+    acceleration: vary(rawToAcceleration(time0to100)),
+    power:        vary(rawToPower(hp)),
+    torque:       vary(rawToTorque(torqueNm)),
+    weight:       rawToWeight(weightKg), // peso é propriedade física — não varia
+    aerodynamics: vary(aero),
+    stability:    vary(stability),
+    grip:         vary(grip),
+    gearShift:    vary(gearShift),
     traction,
     _hp: Math.round(hp),
     _torqueNm: Math.round(torqueNm),

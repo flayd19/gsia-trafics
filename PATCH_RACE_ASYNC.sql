@@ -5,6 +5,9 @@
 -- Aplicar no Supabase → SQL Editor
 -- =====================================================================
 
+-- ── Remove função sync antiga (não usada no sistema assíncrono) ──
+DROP FUNCTION IF EXISTS public.finish_race_lobby(uuid, jsonb);
+
 -- ── Garante que race_lobbies existe ─────────────────────────────
 CREATE TABLE IF NOT EXISTS public.race_lobbies (
   id            uuid         PRIMARY KEY DEFAULT gen_random_uuid(),
@@ -22,6 +25,23 @@ CREATE TABLE IF NOT EXISTS public.race_lobbies (
 
 ALTER TABLE public.race_lobbies ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.race_lobbies REPLICA IDENTITY FULL;
+
+-- ── Migração: remove 'racing' do CHECK se vier do PATCH_COMPLETO ──
+DO $$
+DECLARE v_con text;
+BEGIN
+  SELECT conname INTO v_con
+  FROM pg_constraint
+  WHERE conrelid = 'public.race_lobbies'::regclass
+    AND contype = 'c'
+    AND pg_get_constraintdef(oid) LIKE '%racing%';
+  IF v_con IS NOT NULL THEN
+    EXECUTE format('ALTER TABLE public.race_lobbies DROP CONSTRAINT %I', v_con);
+    ALTER TABLE public.race_lobbies
+      ADD CONSTRAINT race_lobbies_status_check
+      CHECK (status IN ('waiting','finished','cancelled'));
+  END IF;
+END $$;
 
 DO $$
 BEGIN

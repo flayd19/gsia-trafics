@@ -10,7 +10,7 @@ import type { RaceRecord, RaceParticipant } from '@/types/performance';
 import { getFullPerformance } from '@/lib/performanceEngine';
 
 // ── Tipos públicos ────────────────────────────────────────────────
-export type RachaState = 'idle' | 'result';
+export type RachaState = 'idle' | 'racing' | 'result';
 
 export interface LobbyPlayer {
   userId:  string;
@@ -108,9 +108,10 @@ function lobbyResultsToPlayers(lobby: OpenLobby, myUserId: string | null): RaceP
 interface UseRachaLobbyOptions {
   onSpendMoney: (amount: number) => boolean;
   onAddMoney:   (amount: number) => void;
+  onRaceWon?:   () => void;
 }
 
-export function useRachaLobby({ onSpendMoney, onAddMoney }: UseRachaLobbyOptions) {
+export function useRachaLobby({ onSpendMoney, onAddMoney, onRaceWon }: UseRachaLobbyOptions) {
   const [state,                setState]                = useState<RachaState>('idle');
   const [openLobbies,          setOpenLobbies]          = useState<OpenLobby[]>([]);
   const [pendingResults,       setPendingResults]       = useState<OpenLobby[]>([]);
@@ -126,11 +127,14 @@ export function useRachaLobby({ onSpendMoney, onAddMoney }: UseRachaLobbyOptions
   const myNameRef       = useRef<string>('Jogador');
   const onAddMoneyRef   = useRef(onAddMoney);
   const onSpendMoneyRef = useRef(onSpendMoney);
+  const onRaceWonRef    = useRef(onRaceWon);
   const listChannelRef  = useRef<unknown>(null);
   const successTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const subDebounceRef  = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   useEffect(() => { onAddMoneyRef.current   = onAddMoney;   }, [onAddMoney]);
   useEffect(() => { onSpendMoneyRef.current = onSpendMoney; }, [onSpendMoney]);
+  useEffect(() => { onRaceWonRef.current    = onRaceWon;    }, [onRaceWon]);
 
   // ── Mensagem de sucesso (desaparece em 4s) ────────────────────
   const showSuccess = useCallback((msg: string) => {
@@ -223,7 +227,14 @@ export function useRachaLobby({ onSpendMoney, onAddMoney }: UseRachaLobbyOptions
       .on(
         'postgres_changes',
         { event: '*', schema: 'public', table: 'race_lobbies' },
-        () => { void fetchLobbies(); void checkPendingResults(); },
+        () => {
+          // Debounce: agrupa rafagas de mudanças em 300ms
+          if (subDebounceRef.current) clearTimeout(subDebounceRef.current);
+          subDebounceRef.current = setTimeout(() => {
+            void fetchLobbies();
+            void checkPendingResults();
+          }, 300);
+        },
       )
       .subscribe();
     listChannelRef.current = ch;
@@ -241,20 +252,28 @@ export function useRachaLobby({ onSpendMoney, onAddMoney }: UseRachaLobbyOptions
     const uid = myUserIdRef.current;
     if (!uid) return;
 
+    // Guarda contra dupla-coleta (race condition click / subscription)
+    if (isCollected(uid, lobby.id)) return;
+
     const players  = lobbyResultsToPlayers(lobby, uid);
     const myEntry  = players.find(p => p.isMe);
+
+    // Marca como coletado ANTES de aplicar o prêmio (evita re-entrada)
+    markCollected(uid, lobby.id);
 
     // Aplica prêmio
     if (myEntry && myEntry.payout > 0) {
       onAddMoneyRef.current(myEntry.payout);
     }
 
-    // Marca como coletado
-    markCollected(uid, lobby.id);
+    // Notifica vitória para rastrear races_won no perfil
+    const myPos = myEntry?.position ?? 0;
+    if (myPos === 1) {
+      onRaceWonRef.current?.();
+    }
     setPendingResults(prev => prev.filter(l => l.id !== lobby.id));
 
     // Histórico local
-    const myPos = myEntry?.position ?? 0;
     const record: RaceRecord = {
       id:           `race_${lobby.id}`,
       opponentName: `${lobby.players.length} jogadores`,
@@ -279,8 +298,13 @@ export function useRachaLobby({ onSpendMoney, onAddMoney }: UseRachaLobbyOptions
     };
     setRaceHistory(prev => [record, ...prev].slice(0, 50));
 
-    // Mostra tela de resultado
+    // Inicia animação de corrida (tela de resultado aparece após 20s)
     setCurrentResultPlayers(players);
+    setState('racing');
+  }, []);
+
+  // ── Transição racing → result (chamado pelo componente após 20s) ──
+  const finishRace = useCallback(() => {
     setState('result');
   }, []);
 
@@ -403,6 +427,7 @@ export function useRachaLobby({ onSpendMoney, onAddMoney }: UseRachaLobbyOptions
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
       if (listChannelRef.current) void (supabase as any).removeChannel(listChannelRef.current);
       if (successTimerRef.current) clearTimeout(successTimerRef.current);
+      if (subDebounceRef.current)  clearTimeout(subDebounceRef.current);
     };
   }, []);
 
@@ -421,6 +446,7 @@ export function useRachaLobby({ onSpendMoney, onAddMoney }: UseRachaLobbyOptions
     joinLobby,
     leaveLobby,
     collectResult,
+    finishRace,
     dismissResult,
     refetchLobbies: fetchLobbies,
     checkPendingResults,

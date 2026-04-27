@@ -2,7 +2,7 @@
 // BANCO DE CARROS BRASILEIROS — 50 modelos com variações e preço FIPE
 // =====================================================================
 
-export type CarCategory = 'popular' | 'medio' | 'suv' | 'pickup' | 'esportivo' | 'eletrico' | 'classico' | 'luxo';
+export type CarCategory = 'popular' | 'medio' | 'suv' | 'pickup' | 'esportivo' | 'eletrico' | 'classico' | 'luxo' | 'jdm' | 'supercar';
 export type CarConditionLabel = 'Novo' | 'Ótimo' | 'Bom' | 'Regular' | 'Ruim' | 'Sucata';
 
 export interface CarVariant {
@@ -1518,6 +1518,660 @@ export const CAR_MODELS: CarModel[] = [
       { id: 'i30n_20_performance', trim: '2.0 T-GDi N Performance', year: 2022, fipePrice: 205_000 },
     ],
   },
+
+  // ── MUSCLE / AMERICAN SPORTS ─────────────────────────────────────
+  {
+    id: 'corvette_c8',
+    brand: 'Chevrolet',
+    model: 'Corvette C8',
+    icon: '🏎️',
+    category: 'esportivo',
+    variants: [
+      { id: 'c8_stingray_3lt',  trim: 'Stingray 3LT',        year: 2023, fipePrice: 895_000 },
+      { id: 'c8_z51_3lt',       trim: 'Stingray Z51 3LT',    year: 2023, fipePrice: 985_000 },
+    ],
+  },
+  {
+    id: 'corvette_c7_z06',
+    brand: 'Chevrolet',
+    model: 'Corvette C7 Z06',
+    icon: '🏎️',
+    category: 'esportivo',
+    variants: [
+      { id: 'c7z06_62_lt4',     trim: '6.2 LT4 Supercharged', year: 2019, fipePrice: 648_000 },
+      { id: 'c7z06_62_z07',     trim: '6.2 Z07 Package',      year: 2019, fipePrice: 698_000 },
+    ],
+  },
+  {
+    id: 'camaro_ss',
+    brand: 'Chevrolet',
+    model: 'Camaro SS',
+    icon: '🏎️',
+    category: 'esportivo',
+    variants: [
+      { id: 'camaro_62_ss',     trim: '6.2 V8 SS',            year: 2023, fipePrice: 485_000 },
+      { id: 'camaro_62_ss_1le', trim: '6.2 V8 SS 1LE',        year: 2023, fipePrice: 528_000 },
+    ],
+  },
+  {
+    id: 'camaro_zl1',
+    brand: 'Chevrolet',
+    model: 'Camaro ZL1',
+    icon: '🏎️',
+    category: 'esportivo',
+    variants: [
+      { id: 'camaro_zl1_62',    trim: '6.2 LT4 ZL1',          year: 2023, fipePrice: 698_000 },
+      { id: 'camaro_zl1_le',    trim: '6.2 LT4 ZL1 1LE',      year: 2023, fipePrice: 748_000 },
+    ],
+  },
+  {
+    id: 'challenger_hellcat',
+    brand: 'Dodge',
+    model: 'Challenger SRT Hellcat',
+    icon: '🏎️',
+    category: 'esportivo',
+    variants: [
+      { id: 'hellcat_62_wd',    trim: '6.2 Widebody',          year: 2023, fipePrice: 895_000 },
+      { id: 'hellcat_62_jailbreak', trim: '6.2 Jailbreak',     year: 2023, fipePrice: 985_000 },
+    ],
+  },
+  {
+    id: 'charger_srt',
+    brand: 'Dodge',
+    model: 'Charger SRT 392',
+    icon: '🏎️',
+    category: 'esportivo',
+    variants: [
+      { id: 'charger_64_srt',   trim: '6.4 HEMI SRT 392',      year: 2023, fipePrice: 698_000 },
+    ],
+  },
+  {
+    id: 'shelby_gt500',
+    brand: 'Ford',
+    model: 'Shelby GT500',
+    icon: '🏎️',
+    category: 'esportivo',
+    variants: [
+      { id: 'gt500_52_sc',      trim: '5.2 Supercharged',       year: 2023, fipePrice: 895_000 },
+      { id: 'gt500_52_cftp',    trim: '5.2 Carbon Fiber Track', year: 2023, fipePrice: 985_000 },
+    ],
+  },
+
+  // ── BMW M ────────────────────────────────────────────────────────
+  {
+    id: 'bmw_m2',
+    brand: 'BMW',
+    model: 'M2',
+    icon: '🏎️',
+    category: 'esportivo',
+    variants: [
+      { id: 'bmwm2_30_g87',     trim: '3.0 S58 G87',           year: 2023, fipePrice: 498_000 },
+      { id: 'bmwm2_30_g87_comp',trim: '3.0 S58 Competition',   year: 2024, fipePrice: 548_000 },
+    ],
+  },
+  {
+    id: 'bmw_m3',
+    brand: 'BMW',
+    model: 'M3 Competition',
+    icon: '🏎️',
+    category: 'esportivo',
+    variants: [
+      { id: 'bmwm3_30_comp',    trim: '3.0 Competition',        year: 2023, fipePrice: 698_000 },
+      { id: 'bmwm3_30_xdrive',  trim: '3.0 xDrive Competition', year: 2023, fipePrice: 758_000 },
+    ],
+  },
+  {
+    id: 'bmw_m4',
+    brand: 'BMW',
+    model: 'M4 Competition',
+    icon: '🏎️',
+    category: 'esportivo',
+    variants: [
+      { id: 'bmwm4_30_comp',    trim: '3.0 Competition',        year: 2023, fipePrice: 758_000 },
+      { id: 'bmwm4_30_csl',     trim: '3.0 CSL',                year: 2023, fipePrice: 1_195_000 },
+    ],
+  },
+
+  // ── MERCEDES-AMG ─────────────────────────────────────────────────
+  {
+    id: 'mercedes_amg_a45',
+    brand: 'Mercedes-AMG',
+    model: 'A 45 S',
+    icon: '🏎️',
+    category: 'esportivo',
+    variants: [
+      { id: 'a45s_20_4matic',   trim: '2.0 4MATIC+',            year: 2023, fipePrice: 398_000 },
+    ],
+  },
+  {
+    id: 'mercedes_amg_c63',
+    brand: 'Mercedes-AMG',
+    model: 'C 63 S E Performance',
+    icon: '🏎️',
+    category: 'esportivo',
+    variants: [
+      { id: 'c63s_20_ephev',    trim: '2.0 Turbo E Performance', year: 2023, fipePrice: 748_000 },
+    ],
+  },
+  {
+    id: 'mercedes_amg_gt',
+    brand: 'Mercedes-AMG',
+    model: 'AMG GT',
+    icon: '🏎️',
+    category: 'esportivo',
+    variants: [
+      { id: 'amggt_40_s',       trim: '4.0 S',                  year: 2022, fipePrice: 1_195_000 },
+      { id: 'amggt_40_r',       trim: '4.0 R',                  year: 2022, fipePrice: 1_385_000 },
+    ],
+  },
+
+  // ── AUDI S/RS ────────────────────────────────────────────────────
+  {
+    id: 'audi_rs3',
+    brand: 'Audi',
+    model: 'RS3 Sportback',
+    icon: '🏎️',
+    category: 'esportivo',
+    variants: [
+      { id: 'rs3_25_tfsi',      trim: '2.5 TFSI',               year: 2023, fipePrice: 498_000 },
+      { id: 'rs3_25_performance',trim: '2.5 TFSI Performance',  year: 2023, fipePrice: 548_000 },
+    ],
+  },
+  {
+    id: 'audi_rs6',
+    brand: 'Audi',
+    model: 'RS6 Avant',
+    icon: '🏎️',
+    category: 'esportivo',
+    variants: [
+      { id: 'rs6_40_tfsi',      trim: '4.0 TFSI',               year: 2023, fipePrice: 895_000 },
+      { id: 'rs6_40_performance',trim: '4.0 TFSI Performance',  year: 2023, fipePrice: 985_000 },
+    ],
+  },
+
+  // ── ALFA ROMEO / RENAULT ─────────────────────────────────────────
+  {
+    id: 'alfa_giulia_qv',
+    brand: 'Alfa Romeo',
+    model: 'Giulia Quadrifoglio',
+    icon: '🏎️',
+    category: 'esportivo',
+    variants: [
+      { id: 'giulia_qv_29',     trim: '2.9 V6 Biturbo',         year: 2023, fipePrice: 528_000 },
+    ],
+  },
+  {
+    id: 'renault_megane_rs',
+    brand: 'Renault',
+    model: 'Mégane RS Trophy-R',
+    icon: '🏎️',
+    category: 'esportivo',
+    variants: [
+      { id: 'megane_rs_18_tr',  trim: '1.8 Turbo Trophy-R',     year: 2022, fipePrice: 298_000 },
+    ],
+  },
+
+  // ── JDM ──────────────────────────────────────────────────────────
+  {
+    id: 'nissan_gtr_r35',
+    brand: 'Nissan',
+    model: 'GT-R R35',
+    icon: '🏎️',
+    category: 'jdm',
+    variants: [
+      { id: 'gtr_r35_premium',  trim: '3.8 Premium',            year: 2023, fipePrice: 895_000 },
+      { id: 'gtr_r35_nismo',    trim: '3.8 NISMO',              year: 2022, fipePrice: 1_550_000 },
+      { id: 'gtr_r35_2017',     trim: '3.8 Premium',            year: 2017, fipePrice: 748_000 },
+    ],
+  },
+  {
+    id: 'nissan_gtr_r34',
+    brand: 'Nissan',
+    model: 'Skyline GT-R R34',
+    icon: '🏎️',
+    category: 'jdm',
+    variants: [
+      { id: 'r34_vspec',        trim: 'V-Spec II Nür',           year: 2002, fipePrice: 1_250_000 },
+      { id: 'r34_base',         trim: 'GT-R',                   year: 1999, fipePrice: 895_000 },
+    ],
+  },
+  {
+    id: 'nissan_gtr_r33',
+    brand: 'Nissan',
+    model: 'Skyline GT-R R33',
+    icon: '🏎️',
+    category: 'jdm',
+    variants: [
+      { id: 'r33_vspec',        trim: 'V-Spec',                 year: 1997, fipePrice: 545_000 },
+      { id: 'r33_base',         trim: 'GT-R',                   year: 1996, fipePrice: 385_000 },
+    ],
+  },
+  {
+    id: 'nissan_gtr_r32',
+    brand: 'Nissan',
+    model: 'Skyline GT-R R32',
+    icon: '🏎️',
+    category: 'jdm',
+    variants: [
+      { id: 'r32_vspec',        trim: 'V-Spec II',              year: 1994, fipePrice: 448_000 },
+      { id: 'r32_base',         trim: 'GT-R',                   year: 1992, fipePrice: 298_000 },
+    ],
+  },
+  {
+    id: 'toyota_supra_mk4',
+    brand: 'Toyota',
+    model: 'Supra MK4',
+    icon: '🏎️',
+    category: 'jdm',
+    variants: [
+      { id: 'supra_mk4_rz',     trim: 'RZ 3.0 Twin Turbo',     year: 1998, fipePrice: 985_000 },
+      { id: 'supra_mk4_sz_r',   trim: 'SZ-R 3.0 Non-Turbo',   year: 1997, fipePrice: 748_000 },
+    ],
+  },
+  {
+    id: 'toyota_supra_mk5',
+    brand: 'Toyota',
+    model: 'Supra MK5 A90',
+    icon: '🏎️',
+    category: 'jdm',
+    variants: [
+      { id: 'supra_mk5_30',     trim: '3.0 Turbo',             year: 2023, fipePrice: 748_000 },
+      { id: 'supra_mk5_gr',     trim: 'GR 3.0 Turbo',         year: 2023, fipePrice: 895_000 },
+    ],
+  },
+  {
+    id: 'mazda_rx7_fd',
+    brand: 'Mazda',
+    model: 'RX-7 FD',
+    icon: '🏎️',
+    category: 'jdm',
+    variants: [
+      { id: 'rx7_fd_type_r',    trim: 'Type R Bathurst',        year: 2002, fipePrice: 545_000 },
+      { id: 'rx7_fd_spirit_r',  trim: 'Spirit R',               year: 2002, fipePrice: 698_000 },
+      { id: 'rx7_fd_base',      trim: '13B-REW Turbo',          year: 1997, fipePrice: 295_000 },
+    ],
+  },
+  {
+    id: 'mazda_rx7_fc',
+    brand: 'Mazda',
+    model: 'RX-7 FC',
+    icon: '🏎️',
+    category: 'jdm',
+    variants: [
+      { id: 'rx7_fc_turbo',     trim: 'FC3S Turbo',             year: 1991, fipePrice: 148_000 },
+      { id: 'rx7_fc_na',        trim: 'FC3S NA',                year: 1989, fipePrice: 98_000 },
+    ],
+  },
+  {
+    id: 'mazda_rx8',
+    brand: 'Mazda',
+    model: 'RX-8',
+    icon: '🏎️',
+    category: 'jdm',
+    variants: [
+      { id: 'rx8_type_s',       trim: 'Type S',                 year: 2008, fipePrice: 125_000 },
+      { id: 'rx8_type_rs',      trim: 'Spirit R',               year: 2011, fipePrice: 165_000 },
+    ],
+  },
+  {
+    id: 'honda_s2000',
+    brand: 'Honda',
+    model: 'S2000',
+    icon: '🏎️',
+    category: 'jdm',
+    variants: [
+      { id: 's2000_ap1',        trim: 'AP1 F20C',               year: 2001, fipePrice: 195_000 },
+      { id: 's2000_ap2',        trim: 'AP2 F22C1',              year: 2006, fipePrice: 248_000 },
+    ],
+  },
+  {
+    id: 'honda_nsx_na1',
+    brand: 'Honda',
+    model: 'NSX NA1',
+    icon: '🏎️',
+    category: 'jdm',
+    variants: [
+      { id: 'nsx_na1_base',     trim: 'C30A VTEC',              year: 1993, fipePrice: 485_000 },
+      { id: 'nsx_na1_type_r',   trim: 'Type R',                 year: 1999, fipePrice: 895_000 },
+    ],
+  },
+  {
+    id: 'mitsubishi_evo9',
+    brand: 'Mitsubishi',
+    model: 'Lancer Evo IX',
+    icon: '🏎️',
+    category: 'jdm',
+    variants: [
+      { id: 'evo9_mr',          trim: 'MR SE',                  year: 2007, fipePrice: 215_000 },
+      { id: 'evo9_gsr',         trim: 'GSR',                    year: 2006, fipePrice: 185_000 },
+    ],
+  },
+  {
+    id: 'mitsubishi_evo10',
+    brand: 'Mitsubishi',
+    model: 'Lancer Evo X',
+    icon: '🏎️',
+    category: 'jdm',
+    variants: [
+      { id: 'evo10_final_mr',   trim: 'Final Edition MR',       year: 2015, fipePrice: 295_000 },
+      { id: 'evo10_gsr',        trim: 'GSR',                    year: 2011, fipePrice: 245_000 },
+    ],
+  },
+  {
+    id: 'mitsubishi_evo8',
+    brand: 'Mitsubishi',
+    model: 'Lancer Evo VIII',
+    icon: '🏎️',
+    category: 'jdm',
+    variants: [
+      { id: 'evo8_mr',          trim: 'MR',                     year: 2004, fipePrice: 165_000 },
+      { id: 'evo8_gsr',         trim: 'GSR',                    year: 2003, fipePrice: 148_000 },
+    ],
+  },
+  {
+    id: 'nissan_350z',
+    brand: 'Nissan',
+    model: '350Z',
+    icon: '🏎️',
+    category: 'jdm',
+    variants: [
+      { id: '350z_nismo',       trim: 'NISMO',                  year: 2008, fipePrice: 168_000 },
+      { id: '350z_track',       trim: 'Track',                  year: 2006, fipePrice: 145_000 },
+    ],
+  },
+  {
+    id: 'nissan_370z',
+    brand: 'Nissan',
+    model: '370Z',
+    icon: '🏎️',
+    category: 'jdm',
+    variants: [
+      { id: '370z_nismo',       trim: 'NISMO',                  year: 2019, fipePrice: 315_000 },
+      { id: '370z_base',        trim: 'Sport',                  year: 2019, fipePrice: 285_000 },
+    ],
+  },
+  {
+    id: 'nissan_z_rz34',
+    brand: 'Nissan',
+    model: 'Z RZ34',
+    icon: '🏎️',
+    category: 'jdm',
+    variants: [
+      { id: 'z_rz34_sport',     trim: '3.0 Sport',              year: 2024, fipePrice: 385_000 },
+      { id: 'z_rz34_nismo',     trim: '3.0 NISMO',              year: 2024, fipePrice: 545_000 },
+    ],
+  },
+  {
+    id: 'nissan_silvia_s15',
+    brand: 'Nissan',
+    model: 'Silvia S15',
+    icon: '🏎️',
+    category: 'jdm',
+    variants: [
+      { id: 's15_spec_r',       trim: 'Spec-R Autech',          year: 2001, fipePrice: 398_000 },
+      { id: 's15_spec_s',       trim: 'Spec-S',                 year: 2000, fipePrice: 295_000 },
+    ],
+  },
+  {
+    id: 'nissan_180sx',
+    brand: 'Nissan',
+    model: '180SX Type X',
+    icon: '🏎️',
+    category: 'jdm',
+    variants: [
+      { id: '180sx_type_x',     trim: 'Type X SR20DET',         year: 1995, fipePrice: 128_000 },
+      { id: '180sx_type_iii',   trim: 'Type III SR20DET',       year: 1993, fipePrice: 98_000 },
+    ],
+  },
+  {
+    id: 'honda_integra_type_r',
+    brand: 'Honda',
+    model: 'Integra Type R DC5',
+    icon: '🏎️',
+    category: 'jdm',
+    variants: [
+      { id: 'dc5_type_r',       trim: 'K20A VTEC',              year: 2004, fipePrice: 248_000 },
+      { id: 'dc2_type_r',       trim: 'DC2 B18C VTEC',          year: 1998, fipePrice: 195_000 },
+    ],
+  },
+  {
+    id: 'ae86',
+    brand: 'Toyota',
+    model: 'AE86 Trueno',
+    icon: '🏎️',
+    category: 'jdm',
+    variants: [
+      { id: 'ae86_trueno_2t',   trim: '3-door 4A-GE',           year: 1986, fipePrice: 185_000 },
+      { id: 'ae86_corolla',     trim: 'Corolla Levin GT-Apex',  year: 1985, fipePrice: 148_000 },
+    ],
+  },
+  {
+    id: 'celica_gt4',
+    brand: 'Toyota',
+    model: 'Celica GT-Four',
+    icon: '🏎️',
+    category: 'jdm',
+    variants: [
+      { id: 'celica_st205',     trim: 'ST205 Turbo AWD',        year: 1994, fipePrice: 198_000 },
+      { id: 'celica_st185',     trim: 'ST185 Carlos Sainz',     year: 1993, fipePrice: 178_000 },
+    ],
+  },
+  {
+    id: 'subaru_brz',
+    brand: 'Subaru',
+    model: 'BRZ',
+    icon: '🏎️',
+    category: 'jdm',
+    variants: [
+      { id: 'brz_24_sport',     trim: '2.4 Sport',              year: 2023, fipePrice: 285_000 },
+      { id: 'brz_24_ts',        trim: '2.4 tS',                 year: 2023, fipePrice: 318_000 },
+    ],
+  },
+  {
+    id: 'mazda_mx5',
+    brand: 'Mazda',
+    model: 'MX-5 ND',
+    icon: '🏎️',
+    category: 'jdm',
+    variants: [
+      { id: 'mx5_20_sport',     trim: '2.0 Sport',              year: 2023, fipePrice: 278_000 },
+      { id: 'mx5_20_rf',        trim: '2.0 RF GT',              year: 2023, fipePrice: 318_000 },
+    ],
+  },
+  {
+    id: 'mitsubishi_eclipse_gsx',
+    brand: 'Mitsubishi',
+    model: 'Eclipse GSX',
+    icon: '🏎️',
+    category: 'jdm',
+    variants: [
+      { id: 'eclipse_2g_gsx',   trim: '2G 4G63T AWD',          year: 1999, fipePrice: 85_000 },
+      { id: 'eclipse_3g_gt',    trim: '3G GT V6',               year: 2003, fipePrice: 68_000 },
+    ],
+  },
+  {
+    id: 'toyota_gr_yaris',
+    brand: 'Toyota',
+    model: 'GR Yaris',
+    icon: '🏎️',
+    category: 'jdm',
+    variants: [
+      { id: 'gr_yaris_circuit', trim: '1.6 Circuit Pack AWD',   year: 2023, fipePrice: 265_000 },
+      { id: 'gr_yaris_morizo',  trim: '1.6 Morizo Edition',     year: 2024, fipePrice: 395_000 },
+    ],
+  },
+  {
+    id: 'toyota_gr_corolla',
+    brand: 'Toyota',
+    model: 'GR Corolla',
+    icon: '🏎️',
+    category: 'jdm',
+    variants: [
+      { id: 'gr_corolla_core',  trim: '1.6 GR-FOUR Core',       year: 2024, fipePrice: 345_000 },
+      { id: 'gr_corolla_morizo',trim: '1.6 Morizo Edition',     year: 2024, fipePrice: 485_000 },
+    ],
+  },
+  {
+    id: 'hyundai_elantra_n',
+    brand: 'Hyundai',
+    model: 'Elantra N',
+    icon: '🏎️',
+    category: 'jdm',
+    variants: [
+      { id: 'elantra_n_20',     trim: '2.0 T-GDi DCT',         year: 2023, fipePrice: 285_000 },
+    ],
+  },
+  {
+    id: 'kia_stinger_gt',
+    brand: 'Kia',
+    model: 'Stinger GT',
+    icon: '🏎️',
+    category: 'jdm',
+    variants: [
+      { id: 'stinger_36_rwd',   trim: '3.3 T-GDi RWD',         year: 2023, fipePrice: 395_000 },
+      { id: 'stinger_36_awd',   trim: '3.3 T-GDi AWD',         year: 2023, fipePrice: 445_000 },
+    ],
+  },
+
+  // ── SUPERCAR ─────────────────────────────────────────────────────
+  {
+    id: 'lamborghini_huracan',
+    brand: 'Lamborghini',
+    model: 'Huracán EVO',
+    icon: '🏎️',
+    category: 'supercar',
+    variants: [
+      { id: 'huracan_evo_52',   trim: '5.2 V10 RWD',           year: 2023, fipePrice: 1_850_000 },
+      { id: 'huracan_evo_awd',  trim: '5.2 V10 AWD',           year: 2023, fipePrice: 2_150_000 },
+    ],
+  },
+  {
+    id: 'lamborghini_aventador',
+    brand: 'Lamborghini',
+    model: 'Aventador S',
+    icon: '🏎️',
+    category: 'supercar',
+    variants: [
+      { id: 'aventador_s_65',   trim: '6.5 V12 LP 740-4',      year: 2022, fipePrice: 2_850_000 },
+      { id: 'aventador_svj',    trim: '6.5 V12 SVJ',           year: 2022, fipePrice: 4_250_000 },
+    ],
+  },
+  {
+    id: 'ferrari_488',
+    brand: 'Ferrari',
+    model: '488 GTB',
+    icon: '🏎️',
+    category: 'supercar',
+    variants: [
+      { id: 'f488_gtb',         trim: '3.9 V8 Biturbo GTB',    year: 2019, fipePrice: 1_850_000 },
+      { id: 'f488_pista',       trim: '3.9 V8 Pista',          year: 2019, fipePrice: 2_450_000 },
+    ],
+  },
+  {
+    id: 'ferrari_f8',
+    brand: 'Ferrari',
+    model: 'F8 Tributo',
+    icon: '🏎️',
+    category: 'supercar',
+    variants: [
+      { id: 'f8_tributo',       trim: '3.9 V8 Biturbo',        year: 2023, fipePrice: 2_250_000 },
+      { id: 'f8_spider',        trim: '3.9 V8 Spider',         year: 2023, fipePrice: 2_550_000 },
+    ],
+  },
+  {
+    id: 'ferrari_296',
+    brand: 'Ferrari',
+    model: '296 GTB',
+    icon: '🏎️',
+    category: 'supercar',
+    variants: [
+      { id: 'ferrari296_gtb',   trim: '2.9 V6 Assetto Fiorano', year: 2023, fipePrice: 2_850_000 },
+    ],
+  },
+  {
+    id: 'mclaren_720s',
+    brand: 'McLaren',
+    model: '720S',
+    icon: '🏎️',
+    category: 'supercar',
+    variants: [
+      { id: 'mc720s_40',        trim: '4.0 M840T V8',           year: 2023, fipePrice: 2_550_000 },
+      { id: 'mc720s_spider',    trim: '4.0 M840T Spider',       year: 2023, fipePrice: 2_850_000 },
+    ],
+  },
+  {
+    id: 'mclaren_570s',
+    brand: 'McLaren',
+    model: '570S',
+    icon: '🏎️',
+    category: 'supercar',
+    variants: [
+      { id: 'mc570s_38',        trim: '3.8 M838TE V8',          year: 2019, fipePrice: 1_550_000 },
+    ],
+  },
+  {
+    id: 'porsche_911_gt3',
+    brand: 'Porsche',
+    model: '911 GT3 RS',
+    icon: '🏎️',
+    category: 'supercar',
+    variants: [
+      { id: 'gt3_rs_40',        trim: '4.0 Flat-6 RS',         year: 2023, fipePrice: 1_850_000 },
+      { id: 'gt3_40_touring',   trim: '4.0 GT3 Touring',       year: 2023, fipePrice: 1_550_000 },
+    ],
+  },
+  {
+    id: 'porsche_911_turbo_s',
+    brand: 'Porsche',
+    model: '911 Turbo S',
+    icon: '🏎️',
+    category: 'supercar',
+    variants: [
+      { id: 'p911_turbo_s_38',  trim: '3.8 Biturbo',            year: 2023, fipePrice: 1_985_000 },
+      { id: 'p911_turbo_s_cab', trim: '3.8 Biturbo Cabriolet',  year: 2023, fipePrice: 2_185_000 },
+    ],
+  },
+  {
+    id: 'porsche_cayman_gt4',
+    brand: 'Porsche',
+    model: '718 Cayman GT4 RS',
+    icon: '🏎️',
+    category: 'supercar',
+    variants: [
+      { id: 'gt4_rs_40',        trim: '4.0 Flat-6 GT4 RS',     year: 2023, fipePrice: 1_285_000 },
+    ],
+  },
+  {
+    id: 'audi_r8',
+    brand: 'Audi',
+    model: 'R8 V10',
+    icon: '🏎️',
+    category: 'supercar',
+    variants: [
+      { id: 'r8_v10_52',        trim: '5.2 V10 Plus',           year: 2023, fipePrice: 1_550_000 },
+      { id: 'r8_v10_perf',      trim: '5.2 V10 Performance',    year: 2023, fipePrice: 1_850_000 },
+    ],
+  },
+  {
+    id: 'honda_nsx_type_s',
+    brand: 'Honda',
+    model: 'NSX Type S',
+    icon: '🏎️',
+    category: 'supercar',
+    variants: [
+      { id: 'nsx_ts_hybrid',    trim: 'Type S Hybrid AWD',      year: 2022, fipePrice: 2_250_000 },
+    ],
+  },
+  {
+    id: 'ford_gt_mk4',
+    brand: 'Ford',
+    model: 'GT MkIV',
+    icon: '🏎️',
+    category: 'supercar',
+    variants: [
+      { id: 'ford_gt_mkiv',     trim: '3.5 EcoBoost V6 MkIV',  year: 2022, fipePrice: 4_250_000 },
+    ],
+  },
 ];
 
 // ── HELPERS ──────────────────────────────────────────────────────
@@ -1556,14 +2210,14 @@ export function carYear(modelId: string, variantId: string): number {
 }
 
 // ── Constantes de geração do mercado ────────────────────────────
-/** Mínimo de veículos gerados por ciclo de 30 min. */
-const MARKET_MIN_BATCH = 80;
-/** Máximo de veículos gerados por ciclo de 30 min. */
-const MARKET_MAX_BATCH = 110;
+/** Mínimo de veículos gerados por ciclo de 24h. */
+const MARKET_MIN_BATCH = 500;
+/** Máximo de veículos gerados por ciclo de 24h. */
+const MARKET_MAX_BATCH = 600;
 /** Proporção mínima de veículos populares no mercado. */
 const POPULAR_MIN_RATIO = 0.40;
 /** Quantas vezes o mesmo modelo pode aparecer no mesmo ciclo. */
-const MAX_SAME_MODEL = 2;
+const MAX_SAME_MODEL = 4;
 
 /**
  * Gera um único veículo aleatório a partir de um modelo.
@@ -1637,11 +2291,11 @@ function pickModels(pool: CarModel[], count: number): CarModel[] {
  * Gera o inventário do mercado global para um ciclo de 30 min.
  *
  * Distribuição por ciclo:
- *   • Total: 80–110 veículos (aleatório)
+ *   • Total: 500–600 veículos (aleatório)
  *   • ≥ 40 % populares
- *   • 1 garantido de cada outra categoria (medio / suv / pickup / esportivo / eletrico)
+ *   • 1 garantido de cada outra categoria (medio / suv / pickup / esportivo / eletrico / jdm / supercar)
  *   • Restante: preenchimento aleatório de qualquer categoria
- *   • Máximo de 2 aparições do mesmo modelo por ciclo
+ *   • Máximo de 4 aparições do mesmo modelo por ciclo
  */
 export function buildMarketplaceInventory(): MarketplaceCar[] {
   // Agrupa modelos por categoria
@@ -1653,7 +2307,7 @@ export function buildMarketplaceInventory(): MarketplaceCar[] {
   }
 
   const nonPopularCategories = (
-    ['medio', 'suv', 'pickup', 'esportivo', 'eletrico', 'classico', 'luxo'] as CarCategory[]
+    ['medio', 'suv', 'pickup', 'esportivo', 'eletrico', 'classico', 'luxo', 'jdm', 'supercar'] as CarCategory[]
   ).filter(c => byCategory.has(c));
 
   // Total do ciclo: 80–110

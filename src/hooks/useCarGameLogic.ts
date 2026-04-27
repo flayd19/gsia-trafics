@@ -31,7 +31,7 @@ import { supabase } from '@/integrations/supabase/client';
 const GAME_TICK_MS            = 1_000;
 // 1 dia real = 3 min reais = 180 ticks × 8 min/tick = 1440 min = 24h in-game
 const GAME_MINUTES_PER_TICK   = 8;
-const MARKETPLACE_REFRESH_MS  = 5 * 60_000;
+const MARKETPLACE_REFRESH_MS  = 24 * 60 * 60_000; // 24 horas reais
 const INTEREST_RATE           = 0.02;
 const AUTO_SAVE_INTERVAL_MS   = 30_000;
 const LOCAL_SAVE_KEY          = 'gsia_car_game_v1';
@@ -168,9 +168,11 @@ async function saveSupabase(userId: string, displayName: string, state: GameStat
       .reduce((sum, s) => sum + s.car!.fipePrice * conditionValueFactor(s.car!.condition), 0);
     const totalPatrimony = state.money + carValue;
 
-    const racesWon = (state.garage ?? [])
-      .filter(s => s.car?.raceHistory)
-      .reduce((sum, s) => sum + (s.car!.raceHistory!.filter(r => r.won).length), 0);
+    const racesWon =
+      (state.asyncRacesWon ?? 0) +
+      (state.garage ?? [])
+        .filter(s => s.car?.raceHistory)
+        .reduce((sum, s) => sum + (s.car!.raceHistory!.filter(r => r.won).length), 0);
 
     void (supabase as any)
       .from('player_profiles')
@@ -432,7 +434,7 @@ export function useCarGameLogic() {
 
         next = { ...next, carBuyers: buyersFinal };
 
-        // Atualiza marketplace a cada 5 min
+        // Atualiza marketplace a cada 24h
         if (now - next.marketplaceLastRefresh > MARKETPLACE_REFRESH_MS) {
           next = { ...next, marketplaceCars: buildMarketplaceInventory(), marketplaceLastRefresh: now };
         }
@@ -870,6 +872,8 @@ export function useCarGameLogic() {
         ...prev,
         money:           prev.money + finalPrice,
         garage,
+        // Remove reparos órfãos do carro vendido
+        activeRepairs:   prev.activeRepairs.filter(r => r.carInstanceId !== car.instanceId),
         carBuyers:       prev.carBuyers.map(b => b.id === buyerId ? { ...b, state: 'accepted' as const, finalPrice: buyer.playerOffer } : b),
         carSales:        [...prev.carSales, saleRecord],
         totalRevenue:    (prev.totalRevenue ?? 0) + buyer.playerOffer,
@@ -959,6 +963,8 @@ export function useCarGameLogic() {
         ...prev,
         money:           prev.money + finalPrice,
         garage,
+        // Remove reparos órfãos do carro vendido
+        activeRepairs:   prev.activeRepairs.filter(r => r.carInstanceId !== car.instanceId),
         carBuyers:       prev.carBuyers.map(b => b.id === buyerId ? { ...b, state: 'accepted' as const, finalPrice: counterPrice } : b),
         carSales:        [...prev.carSales, saleRecord],
         totalRevenue:    (prev.totalRevenue ?? 0) + counterPrice,
@@ -997,6 +1003,11 @@ export function useCarGameLogic() {
     if (state.money - amount < state.overdraftLimit) return false;
     setGameState(prev => ({ ...prev, money: prev.money - amount }));
     return true;
+  }, []);
+
+  /** Incrementa contador de vitórias em rachas assíncronos */
+  const addAsyncRaceWon = useCallback(() => {
+    setGameState(prev => ({ ...prev, asyncRacesWon: (prev.asyncRacesWon ?? 0) + 1 }));
   }, []);
 
   /**
@@ -1141,6 +1152,7 @@ export function useCarGameLogic() {
     refreshMarketplace,
     addMoney,
     spendMoney,
+    addAsyncRaceWon,
     saveGame,
     resetGame,
 
