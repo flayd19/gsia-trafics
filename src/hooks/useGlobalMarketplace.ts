@@ -40,8 +40,8 @@ interface MarketplaceRow {
   batch_id: number;
 }
 
-const REFRESH_MS = 24 * 60 * 60_000; // 24h entre refreshes de inventario
-const POLL_MS    =  5 * 60 * 1_000; // poll a cada 5 min (fallback p/ Realtime)
+const REFRESH_MS =  6 * 60 * 60_000; // 6h entre refreshes de inventário
+const POLL_MS    =  5 * 60 * 1_000;  // poll a cada 5 min (fallback p/ Realtime)
 const db = () => supabase as any;
 
 function rowToGlobalCar(row: MarketplaceRow): GlobalCar {
@@ -134,13 +134,13 @@ export function useGlobalMarketplace() {
       if (metaErr) throw metaErr;
 
       const lastMs = meta?.last_refresh ? new Date(meta.last_refresh).getTime() : 0;
+      // Cliente verifica antes de chamar a RPC para economizar round-trip,
+      // mas o servidor é a FONTE DA VERDADE: se o cliente acha que está stale
+      // mas o servidor diz que não, respeita o servidor (cooldown_active).
       const stale  = Date.now() - lastMs >= REFRESH_MS || !meta;
 
       if (stale) {
-        // Gera inventario client-side e envia para RPC SECURITY DEFINER
-        // (evita bloqueio de RLS no INSERT direto)
         const freshCars = buildMarketplaceInventory();
-        // Usa batch_id temporario 0 -- a RPC vai substituir pelo batch_id real
         const rows      = carsToRows(freshCars, 0);
 
         const { data: rpcResult, error: rpcErr } = await db()
@@ -148,12 +148,19 @@ export function useGlobalMarketplace() {
 
         if (rpcErr) throw new Error('populate_marketplace_batch: ' + rpcErr.message);
 
-        const result = rpcResult as { claimed: boolean; batch_id: number; inserted?: number };
+        const result = rpcResult as {
+          claimed:         boolean;
+          batch_id:        number;
+          inserted?:       number;
+          next_refresh_at?: string;
+          reason?:         string;
+          remaining_secs?: number;
+        };
 
         if (!result.claimed) {
-          // Outro jogador esta fazendo o refresh -- aguarda 1.5s e tenta buscar
-          await new Promise(res => setTimeout(res, 1_500));
-          if (!mountedRef.current) return; // componente desmontou durante o await
+          // Servidor rejeitou: pode ser cooldown ativo (próximo refresh ainda
+          // não disponível) OU outro cliente concorrente. Em ambos os casos
+          // apenas relê o estado atual — não tenta forçar regeneração.
         }
       }
 

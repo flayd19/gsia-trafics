@@ -31,7 +31,7 @@ import { supabase } from '@/integrations/supabase/client';
 const GAME_TICK_MS            = 1_000;
 // 1 dia real = 3 min reais = 180 ticks × 8 min/tick = 1440 min = 24h in-game
 const GAME_MINUTES_PER_TICK   = 8;
-const MARKETPLACE_REFRESH_MS  = 24 * 60 * 60_000; // 24 horas reais
+const MARKETPLACE_REFRESH_MS  =  6 * 60 * 60_000; // 6 horas reais entre refreshes
 const INTEREST_RATE           = 0.02;
 const AUTO_SAVE_INTERVAL_MS   = 30_000;
 const LOCAL_SAVE_KEY          = 'gsia_car_game_v1';
