@@ -1217,19 +1217,39 @@ function ResultView({ players, myUserId, onBack, totalLaps }: ResultViewProps) {
   const totalDistanceKm = (totalLaps * LAP_METERS) / 1000;
   const totalRaceMeters = totalLaps * LAP_METERS;
 
-  // Helpers — preferem tempos reais do motor (totalTimeSec/bestLapSec) quando
-  // disponíveis (lobbies novos), senão derivam do score escalado pelas voltas.
+  // ── Helpers de tempo e velocidade ───────────────────────────────
+  // IMPORTANTE: p.totalTimeSec vem do servidor calibrado para um número
+  // fixo de voltas (histórico: 3V). Como totalLaps é escolhido localmente
+  // e NÃO é gravado no Supabase, o servidor nunca sabe quantas voltas foram
+  // selecionadas. Usar p.totalTimeSec diretamente com totalRaceMeters dinâmico
+  // produz velocidades absurdas (ex: 580 km/h para 10V).
+  //
+  // Solução: sempre derivar tempo de calcRaceTimeSec(score, totalLaps),
+  // que escala corretamente. A velocidade é calculada POR VOLTA (independe
+  // de totalLaps) e depois convertida para km/h — isso garante consistência.
+
+  // Tempo total da corrida escalado para o totalLaps selecionado
   const getTimeSec = (p: typeof players[number]) =>
-    p.totalTimeSec ?? calcRaceTimeSec(p.score, totalLaps);
-  const getBestLap = (p: typeof players[number]) =>
+    calcRaceTimeSec(p.score, totalLaps);
+
+  // Tempo por volta — independe de totalLaps (basePer3Laps / 3 é constante)
+  const getLapTimeSec = (p: typeof players[number]) =>
     p.bestLapSec ?? calcRaceTimeSec(p.score, totalLaps) / totalLaps;
+
+  // Velocidade média em km/h derivada do tempo por volta
+  const getAvgSpeed = (p: typeof players[number]) =>
+    Math.round((LAP_METERS / getLapTimeSec(p)) * 3.6);
+
+  // Velocidade máxima estimada (~1.42× a média — picos em reta)
+  const getTopSpeed = (p: typeof players[number]) =>
+    Math.round(getAvgSpeed(p) * 1.42);
 
   // Tempo do líder (referência para cálculo de gaps)
   const leaderTime = winner ? getTimeSec(winner) : 0;
   // Volta mais rápida — usa bestLapSec real quando disponível
   const fastestLap = sorted.reduce(
     (best, p) => {
-      const lap = getBestLap(p);
+      const lap = getLapTimeSec(p);
       return lap < best.time ? { time: lap, name: p.name, carIcon: p.carIcon } : best;
     },
     { time: Infinity, name: '', carIcon: '' },
@@ -1307,11 +1327,9 @@ function ResultView({ players, myUserId, onBack, totalLaps }: ResultViewProps) {
           const color      = PLAYER_COLORS[players.indexOf(p)] ?? '#94a3b8';
           const timeSec    = getTimeSec(p);
           const gap        = p.position === 1 ? 0 : timeSec - leaderTime;
-          // Velocidade calculada sobre a corrida INTEIRA (totalLaps × LAP_METERS).
-          // Top speed é estimado como ~1.42× a média (picos em reta).
-          const topSpeed   = calcTopSpeedKmh(totalRaceMeters, timeSec);
-          const avgSpeed   = calcAvgSpeedKmh(totalRaceMeters, timeSec);
-          const lapTime    = getBestLap(p);
+          const avgSpeed   = getAvgSpeed(p);
+          const topSpeed   = getTopSpeed(p);
+          const lapTime    = getLapTimeSec(p);
           return (
             <div key={p.userId}
               className={`px-3 py-2.5 rounded-[12px] ios-surface ${
@@ -1393,21 +1411,38 @@ function ResultView({ players, myUserId, onBack, totalLaps }: ResultViewProps) {
         // Quanto MENOR o número, mais para cima aparece.
         const eventPriority = (type: string): number => {
           switch (type) {
+            // Largadas e pole — sempre o primeiro highlight
             case 'great_start':
-            case 'poor_start':       return 0;
-            case 'comeback':         return 1;
+            case 'poor_start':
+            case 'pole_advantage':    return 0;
+            // Comebacks — narrativas mais impactantes
+            case 'late_comeback':     return 1;
+            case 'comeback':          return 2;
+            case 'underdog':          return 3;
+            // Ultrapassagens
             case 'overtake':
-            case 'slipstream_pass':  return 2;
-            case 'defended_position':return 3;
+            case 'big_slipstream':    return 4;
+            case 'slipstream_pass':   return 5;
+            // Defesas
+            case 'defended_position': return 6;
+            case 'side_by_side':      return 7;
+            // Últimas voltas
             case 'last_lap_attack':
-            case 'hot_lap':          return 4;
+            case 'hot_lap':           return 8;
+            // Perdas e quedas
+            case 'position_lost':
             case 'lost_grip':
-            case 'close_battle':     return 5;
-            case 'late_brake':       return 6;
+            case 'close_battle':      return 9;
+            // Recuperações e jogadas
+            case 'redemption':        return 10;
+            case 'late_brake':        return 11;
+            // Erros e problemas
+            case 'cascading_error':   return 12;
             case 'minor_mistake':
-            case 'tire_struggle':    return 7;
-            case 'consistent_pace':  return 8;
-            default:                 return 9;
+            case 'tire_struggle':     return 13;
+            // Pace neutro
+            case 'consistent_pace':   return 14;
+            default:                  return 15;
           }
         };
         // Limita a 8 highlights mais relevantes
@@ -1439,16 +1474,24 @@ function ResultView({ players, myUserId, onBack, totalLaps }: ResultViewProps) {
                     <span className="text-base shrink-0">
                       {h.type === 'great_start'      ? '🚀' :
                        h.type === 'poor_start'       ? '😬' :
+                       h.type === 'pole_advantage'   ? '🏆' :
                        h.type === 'consistent_pace'  ? '🎯' :
                        h.type === 'minor_mistake'    ? '⚠️' :
+                       h.type === 'cascading_error'  ? '😵' :
+                       h.type === 'redemption'      ? '✨' :
                        h.type === 'overtake'         ? '⚡' :
+                       h.type === 'position_lost'    ? '⬇️' :
                        h.type === 'defended_position'? '🛡️' :
                        h.type === 'close_battle'     ? '🔥' :
+                       h.type === 'side_by_side'     ? '🤝' :
                        h.type === 'late_brake'       ? '🎯' :
                        h.type === 'slipstream_pass'  ? '💨' :
+                       h.type === 'big_slipstream'   ? '🌪️' :
                        h.type === 'tire_struggle'    ? '🛞' :
                        h.type === 'hot_lap'          ? '🔥' :
                        h.type === 'comeback'         ? '📈' :
+                       h.type === 'late_comeback'    ? '🎬' :
+                       h.type === 'underdog'         ? '🐺' :
                        h.type === 'lost_grip'        ? '💥' :
                        h.type === 'last_lap_attack'  ? '🏁' : '⏱️'}
                     </span>
@@ -1487,10 +1530,10 @@ function ResultView({ players, myUserId, onBack, totalLaps }: ResultViewProps) {
           {(() => {
             const myTime    = getTimeSec(me);
             const winTime   = getTimeSec(winner);
-            const myTopV    = calcTopSpeedKmh(totalRaceMeters, myTime);
-            const winTopV   = calcTopSpeedKmh(totalRaceMeters, winTime);
-            const myAvgV    = calcAvgSpeedKmh(totalRaceMeters, myTime);
-            const winAvgV   = calcAvgSpeedKmh(totalRaceMeters, winTime);
+            const myTopV    = getTopSpeed(me);
+            const winTopV   = getTopSpeed(winner);
+            const myAvgV    = getAvgSpeed(me);
+            const winAvgV   = getAvgSpeed(winner);
             // IGP do vencedor é omitido por privacidade competitiva — só mostra
             // o seu para você não ter como deduzir o setup do adversário.
             const rows: Array<{ label: string; you: string; winner: string; better: boolean }> = [
@@ -1589,12 +1632,12 @@ function ResultView({ players, myUserId, onBack, totalLaps }: ResultViewProps) {
           <div className="grid grid-cols-2 gap-2 text-center">
             {(() => {
               const myTime = getTimeSec(me);
-              const myBest = getBestLap(me);
+              const myBest = getLapTimeSec(me);
               return [
                 { label: 'Posição',      value: `${me.position}º de ${players.length}` },
                 { label: 'Tempo total',  value: fmtTimer(myTime) },
-                { label: 'Vel. Máx',     value: `${calcTopSpeedKmh(totalRaceMeters, myTime)} km/h` },
-                { label: 'Vel. Média',   value: `${calcAvgSpeedKmh(totalRaceMeters, myTime)} km/h` },
+                { label: 'Vel. Máx',     value: `${getTopSpeed(me)} km/h` },
+                { label: 'Vel. Média',   value: `${getAvgSpeed(me)} km/h` },
                 { label: 'Melhor volta', value: fmtTimer(myBest) },
                 { label: 'IGP do carro', value: `${me.igp}` },
               ];
