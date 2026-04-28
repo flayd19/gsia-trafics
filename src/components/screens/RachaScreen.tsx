@@ -50,16 +50,18 @@ function positionColor(pos: number) {
 }
 
 /**
- * Tempo estimado da CORRIDA INTEIRA (totalLaps × LAP_METERS) em segundos,
- * derivado a partir do score quando o motor não fornece tempo direto.
- * Calibrado por volta × 2000m:
- *   score 0   → ~180s/corrida (carro popular muito ruim, ~120 km/h média)
- *   score 50  → ~120s/corrida (carro mediano, ~180 km/h média)
- *   score 100 → ~85s/corrida  (supercar, ~255 km/h média)
+ * Tempo estimado da CORRIDA INTEIRA em segundos.
+ * Base calibrada em 3 voltas × 2000m (6 km):
+ *   score 0   → 180s/3V  (carro popular ruim, ~120 km/h média)
+ *   score 50  → 120s/3V  (carro mediano,      ~180 km/h média)
+ *   score 100 → 85s/3V   (supercar,           ~255 km/h média)
+ * Escalado linearmente para qualquer número de voltas:
+ *   10V score 50 → 400s  (~180 km/h média sobre 20 km) ✓
  */
-function calcRaceTimeSec(score: number): number {
+function calcRaceTimeSec(score: number, totalLaps = 3): number {
   const s = Math.max(0, Math.min(score, 100));
-  return Math.max(85, 180 - s * 0.95);
+  const basePer3Laps = Math.max(85, 180 - s * 0.95);
+  return basePer3Laps * totalLaps / 3;
 }
 
 /**
@@ -97,8 +99,28 @@ function fmtTimer(sec: number): string {
 const DEFAULT_LAPS = 5;          // Padrão ao criar lobby
 const LAP_METERS   = 2_000;      // 2 km por volta
 
-/** Cores por índice de piloto */
+/** Paleta de cores dos pilotos */
 const PLAYER_COLORS = ['#facc15', '#94a3b8', '#f97316', '#60a5fa'] as const;
+
+/**
+ * Retorna a cor de um piloto durante a corrida.
+ * Regra: o JOGADOR LOCAL sempre fica amarelo (índice 0) para fácil identificação.
+ * Os demais recebem cores pelos índices 1-3, ordenados por userId (ordem
+ * estável e arbitrária — NÃO revela posição final).
+ * Não usar durante o ResultView, onde a cor por posição faz sentido.
+ */
+function raceColor(
+  player: { userId: string; isMe?: boolean },
+  allPlayers: { userId: string; isMe?: boolean }[],
+  myUserId: string | null,
+): string {
+  if (player.isMe || player.userId === myUserId) return PLAYER_COLORS[0];
+  const others = allPlayers
+    .filter(p => !p.isMe && p.userId !== myUserId)
+    .sort((a, b) => a.userId.localeCompare(b.userId));
+  const idx = others.findIndex(p => p.userId === player.userId);
+  return PLAYER_COLORS[(idx + 1) as 1 | 2 | 3] ?? '#94a3b8';
+}
 
 // ── Pista estilo F1 (segmentos matemáticos) ──────────────────────
 // Circuito definido como sequência de segmentos Linha / Bezier Cúbico.
@@ -941,11 +963,10 @@ function TrackSVG({ players, lapProgs, posMaps, myUserId, totalLaps }: TrackSVGP
 
       {/* ── Carros — z-ordenados por Y ────────────────────────────── */}
       {zSorted.map(p => {
-        const pIdx   = players.indexOf(p);
         const prog   = lapProgs[p.userId] ?? 0;
         const pt     = trackPt(prog % 1);
         const isMe   = p.isMe || p.userId === myUserId;
-        const color  = PLAYER_COLORS[pIdx] ?? '#fff';
+        const color  = raceColor(p, players, myUserId);
         const lapNum = Math.min(Math.floor(prog) + 1, totalLaps);
         const visPos = posMaps[p.userId] ?? p.position;
 
@@ -997,10 +1018,30 @@ interface RacingViewProps {
 }
 
 function RacingView({ players, myUserId, onFinish, totalLaps }: RacingViewProps) {
-  // Duração escalada com número de voltas: mais voltas = animação mais longa.
-  // Formula: totalLaps × 5500ms + jogadores × 2000ms
-  //   5 v + 2p ≈ 31,5s | 10 v + 4p ≈ 63s | 15 v + 4p ≈ 90,5s
-  const DURATION_MS = totalLaps * 5_500 + players.length * 2_000;
+  // ── Tempo de chegada por carro ────────────────────────────────────
+  // Cada carro tem seu próprio tempo de chegada baseado no score (IGP).
+  // O líder (maior score) termina em BASE_LAP_MS × totalLaps.
+  // Os demais chegam com atraso proporcional à diferença de score,
+  // limitado a 20% do tempo do líder.
+  // Não há DURATION_MS global: a animação termina quando TODOS cruzam a linha.
+  // Quantidade de jogadores NÃO afeta o tempo de chegada.
+  const BASE_LAP_MS = 6_000; // 6s por volta para o carro mais rápido
+  const leaderMs    = BASE_LAP_MS * totalLaps;
+
+  const maxScore = Math.max(...players.map(p => p.score), 1);
+  const minScore = Math.min(...players.map(p => p.score));
+  const scoreRange = Math.max(maxScore - minScore, 1);
+
+  // Tempo de chegada de cada carro (calculado uma vez, estável)
+  const carFinishMs = useRef<Record<string, number>>(
+    Object.fromEntries(players.map(p => {
+      const lag = ((maxScore - p.score) / scoreRange) * leaderMs * 0.20;
+      return [p.userId, leaderMs + lag];
+    }))
+  );
+
+  // Duração total = último carro + buffer de 1s para o jogador ver a chegada
+  const totalDurationMs = Math.max(...Object.values(carFinishMs.current)) + 1_000;
 
   const [lapProgs, setLapProgs] = useState<Record<string, number>>(() =>
     Object.fromEntries(players.map(p => [p.userId, 0]))
@@ -1008,66 +1049,71 @@ function RacingView({ players, myUserId, onFinish, totalLaps }: RacingViewProps)
   const [posMaps, setPosMaps] = useState<Record<string, number>>(() =>
     Object.fromEntries(players.map(p => [p.userId, p.position]))
   );
-  const [timeLeft, setTimeLeft] = useState(Math.ceil(DURATION_MS / 1000));
-  const startRef   = useRef<number | null>(null);
-  const rafRef     = useRef<number | null>(null);
+  // Cronômetro crescente (estilo corrida real)
+  const [elapsedSec, setElapsedSec] = useState(0);
+
+  const startRef    = useRef<number | null>(null);
+  const rafRef      = useRef<number | null>(null);
   const finishedRef = useRef(false);
 
-  // BUG FIX: refs estáveis para `players`, `DURATION_MS` e `onFinish`. Sem isso,
-  // o useEffect re-rodava toda vez que o pai re-renderizava (subscription do
-  // Supabase, polling, etc.), recriando a animação e fazendo a corrida parecer
-  // "mais rápida" para alguns jogadores. O array de dependências agora é vazio:
-  // a animação é montada exatamente uma vez por instância do componente.
-  const playersRef    = useRef(players);
-  const durationRef   = useRef(DURATION_MS);
-  const onFinishRef   = useRef(onFinish);
-  useEffect(() => { playersRef.current  = players; });
-  useEffect(() => { durationRef.current = DURATION_MS; });
-  useEffect(() => { onFinishRef.current = onFinish; });
+  // Refs estáveis para não recriar a animação em re-renders do pai
+  const playersRef     = useRef(players);
+  const onFinishRef    = useRef(onFinish);
+  const totalLapsRef   = useRef(totalLaps);
+  useEffect(() => { playersRef.current   = players; });
+  useEffect(() => { onFinishRef.current  = onFinish; });
+  useEffect(() => { totalLapsRef.current = totalLaps; });
 
   useEffect(() => {
-    const playersSnapshot = playersRef.current;
-    const duration = durationRef.current;
-    const maxScore = Math.max(...playersSnapshot.map(p => p.score), 1);
+    const snap      = playersRef.current;
+    const finishMap = carFinishMs.current;
+    const laps      = totalLapsRef.current;
+    const totalMs   = totalDurationMs;
 
     const tick = (now: number) => {
       if (startRef.current === null) startRef.current = now;
       const elapsed = now - startRef.current;
-      const t       = Math.min(1, elapsed / duration);
-      const eased   = t < 0.5 ? 2 * t * t : -1 + (4 - 2 * t) * t;
 
       const newProgs: Record<string, number> = {};
-      playersSnapshot.forEach((p, idx) => {
-        const speed = 0.85 + (p.score / maxScore) * 0.15;
-        const noise = racingNoise(t, idx * 7.3 + 1.1);
-        const amp   = Math.max(0.01, 0.06 - Math.abs(p.score / maxScore - 0.5) * 0.04);
-        newProgs[p.userId] = eased * totalLaps * speed + noise * amp;
+      snap.forEach((p, idx) => {
+        const finishTime = finishMap[p.userId] ?? leaderMs;
+        // Progresso linear puro: sem easing → velocidade constante até a linha
+        const linearProg = Math.min(laps, laps * (elapsed / finishTime));
+        // Ruído de ultrapassagem: amplitude cai para 0 conforme o carro se
+        // aproxima da linha de chegada (não há oscilação no último trecho)
+        const tNoise   = elapsed / totalMs;
+        const envelope = Math.pow(Math.max(0, 1 - linearProg / laps), 1.5);
+        const noise    = racingNoise(Math.min(tNoise, 0.95), idx * 7.3 + 1.1);
+        newProgs[p.userId] = Math.min(laps, linearProg + noise * 0.05 * envelope);
       });
       setLapProgs(newProgs);
 
-      // Recalcular posições em tempo real pelo progresso na volta
-      const sorted = [...playersSnapshot].sort((a, b) =>
+      // Posições em tempo real pelo progresso
+      const sorted = [...snap].sort((a, b) =>
         (newProgs[b.userId] ?? 0) - (newProgs[a.userId] ?? 0)
       );
       const newPos: Record<string, number> = {};
       sorted.forEach((p, i) => { newPos[p.userId] = i + 1; });
       setPosMaps(newPos);
+      setElapsedSec(elapsed / 1000);
 
-      setTimeLeft(Math.max(0, Math.ceil((duration - elapsed) / 1000)));
+      // Continuar até TODOS os carros cruzarem a linha
+      const allDone = snap.every(p => elapsed >= (finishMap[p.userId] ?? 0));
 
-      if (t < 1) {
+      if (!allDone) {
         rafRef.current = requestAnimationFrame(tick);
       } else if (!finishedRef.current) {
         finishedRef.current = true;
-        // Fixar posições finais (baseado em score real, não animação)
-        const finalPos: Record<string, number> = {};
-        playersSnapshot.forEach(p => { finalPos[p.userId] = p.position; });
-        setPosMaps(finalPos);
-        // Fixar lapProgs em totalLaps para todos
+        // Travar exatamente na linha de chegada (sem teletransporte)
         const finalProgs: Record<string, number> = {};
-        playersSnapshot.forEach(p => { finalProgs[p.userId] = totalLaps; });
+        const finalPos:   Record<string, number> = {};
+        snap.forEach(p => {
+          finalProgs[p.userId] = laps;
+          finalPos[p.userId]   = p.position;
+        });
         setLapProgs(finalProgs);
-        setTimeout(() => onFinishRef.current(), 600);
+        setPosMaps(finalPos);
+        setTimeout(() => onFinishRef.current(), 800);
       }
     };
 
@@ -1075,9 +1121,17 @@ function RacingView({ players, myUserId, onFinish, totalLaps }: RacingViewProps)
     return () => {
       if (rafRef.current) cancelAnimationFrame(rafRef.current);
     };
-  // Intencionalmente vazio: animação roda uma vez por mount, lê valores via ref.
+  // Intencionalmente vazio: animação roda exatamente uma vez por mount.
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
+
+  // Formatar cronômetro: mm:ss.d
+  const dispMin  = Math.floor(elapsedSec / 60);
+  const dispSec  = Math.floor(elapsedSec % 60);
+  const dispDeci = Math.floor((elapsedSec % 1) * 10);
+  const timerLabel = elapsedSec >= 60
+    ? `${dispMin}:${String(dispSec).padStart(2, '0')}.${dispDeci}`
+    : `${String(dispSec).padStart(2, '0')}.${dispDeci}s`;
 
   return (
     <div className="space-y-3">
@@ -1087,7 +1141,7 @@ function RacingView({ players, myUserId, onFinish, totalLaps }: RacingViewProps)
           🏎️ Corrida em andamento
         </span>
         <span className="text-[13px] font-mono text-primary font-bold">
-          {timeLeft > 0 ? `${timeLeft}s` : '🏁'}
+          {finishedRef.current ? '🏁' : timerLabel}
         </span>
       </div>
 
@@ -1105,10 +1159,11 @@ function RacingView({ players, myUserId, onFinish, totalLaps }: RacingViewProps)
         {[...players]
           .sort((a, b) => (posMaps[a.userId] ?? a.position) - (posMaps[b.userId] ?? b.position))
           .map(p => {
-            const pos   = posMaps[p.userId] ?? p.position;
-            const laps  = lapProgs[p.userId] ?? 0;
-            const isMe  = p.isMe || p.userId === myUserId;
-            const color = PLAYER_COLORS[players.indexOf(p)] ?? '#94a3b8';
+            const pos      = posMaps[p.userId] ?? p.position;
+            const laps     = lapProgs[p.userId] ?? 0;
+            const isMe     = p.isMe || p.userId === myUserId;
+            const color    = raceColor(p, players, myUserId);
+            const finished = laps >= totalLaps;
             return (
               <div key={p.userId}
                 className={`flex items-center gap-2.5 px-3 py-2 rounded-[12px] ios-surface ${
@@ -1123,14 +1178,14 @@ function RacingView({ players, myUserId, onFinish, totalLaps }: RacingViewProps)
                       {p.name}
                     </span>
                     {isMe && <span className="text-[9px] text-primary font-bold bg-primary/10 px-1 rounded">você</span>}
+                    {finished && <span className="text-[9px] font-bold text-amber-400 px-1 rounded bg-amber-400/10">🏁</span>}
                   </div>
                   <div className="text-[10px] text-muted-foreground">{p.carName}</div>
                 </div>
                 <div className="text-right">
                   <div className="text-[11px] font-bold" style={{ color }}>
-                    V{Math.min(Math.floor(laps) + 1, totalLaps)}/{totalLaps}
+                    {finished ? `V${totalLaps}/${totalLaps}` : `V${Math.min(Math.floor(laps) + 1, totalLaps)}/${totalLaps}`}
                   </div>
-                  {/* IGP só visível para o próprio jogador (privacidade competitiva) */}
                   {isMe && <div className="text-[10px] text-muted-foreground">IGP {p.igp}</div>}
                 </div>
               </div>
@@ -1163,11 +1218,11 @@ function ResultView({ players, myUserId, onBack, totalLaps }: ResultViewProps) {
   const totalRaceMeters = totalLaps * LAP_METERS;
 
   // Helpers — preferem tempos reais do motor (totalTimeSec/bestLapSec) quando
-  // disponíveis (lobbies novos), senão derivam do score (lobbies legacy).
+  // disponíveis (lobbies novos), senão derivam do score escalado pelas voltas.
   const getTimeSec = (p: typeof players[number]) =>
-    p.totalTimeSec ?? calcRaceTimeSec(p.score);
+    p.totalTimeSec ?? calcRaceTimeSec(p.score, totalLaps);
   const getBestLap = (p: typeof players[number]) =>
-    p.bestLapSec ?? calcRaceTimeSec(p.score) / totalLaps;
+    p.bestLapSec ?? calcRaceTimeSec(p.score, totalLaps) / totalLaps;
 
   // Tempo do líder (referência para cálculo de gaps)
   const leaderTime = winner ? getTimeSec(winner) : 0;
