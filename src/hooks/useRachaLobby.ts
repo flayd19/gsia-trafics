@@ -202,11 +202,55 @@ interface UseRachaLobbyOptions {
   onRaceWon?:   () => void;
 }
 
+// Persistência leve da corrida em andamento (sessionStorage).
+// Garante que se o jogador troca de aba ou o componente re-monta no meio
+// da animação, o estado é restaurado e a corrida não "some".
+const RACING_PERSIST_KEY = 'gsia_racha_active_race_v1';
+const RACING_PERSIST_TTL_MS = 5 * 60_000; // 5 min
+
+interface PersistedRace {
+  state:    'racing' | 'result';
+  players:  RacePlayerAnim[];
+  payout:   number;
+  isWin:    boolean;
+  savedAt:  number;
+}
+
+function loadPersistedRace(): PersistedRace | null {
+  try {
+    const raw = sessionStorage.getItem(RACING_PERSIST_KEY);
+    if (!raw) return null;
+    const parsed = JSON.parse(raw) as PersistedRace;
+    if (Date.now() - parsed.savedAt > RACING_PERSIST_TTL_MS) {
+      sessionStorage.removeItem(RACING_PERSIST_KEY);
+      return null;
+    }
+    return parsed;
+  } catch { return null; }
+}
+
+function savePersistedRace(data: Omit<PersistedRace, 'savedAt'>): void {
+  try {
+    sessionStorage.setItem(RACING_PERSIST_KEY, JSON.stringify({ ...data, savedAt: Date.now() }));
+  } catch { /* quota — ignora */ }
+}
+
+function clearPersistedRace(): void {
+  try { sessionStorage.removeItem(RACING_PERSIST_KEY); } catch {}
+}
+
 export function useRachaLobby({ onSpendMoney, onAddMoney, onRaceWon }: UseRachaLobbyOptions) {
-  const [state,                setState]                = useState<RachaState>('idle');
+  // Restaura corrida em andamento (se houver) ao montar.
+  const persistedOnMount = loadPersistedRace();
+
+  const [state,                setState]                = useState<RachaState>(
+    persistedOnMount?.state ?? 'idle',
+  );
   const [openLobbies,          setOpenLobbies]          = useState<OpenLobby[]>([]);
   const [pendingResults,       setPendingResults]       = useState<OpenLobby[]>([]);
-  const [currentResultPlayers, setCurrentResultPlayers] = useState<RacePlayerAnim[] | null>(null);
+  const [currentResultPlayers, setCurrentResultPlayers] = useState<RacePlayerAnim[] | null>(
+    persistedOnMount?.players ?? null,
+  );
   const [raceHistory,          setRaceHistory]          = useState<RaceRecord[]>([]);
   const [myUserId,             setMyUserId]             = useState<string | null>(null);
   const [myName,               setMyName]               = useState('Jogador');
@@ -225,6 +269,15 @@ export function useRachaLobby({ onSpendMoney, onAddMoney, onRaceWon }: UseRachaL
   // Prêmio pendente — aplicado somente após a animação terminar (finishRace)
   const pendingPayoutRef = useRef<number>(0);
   const pendingIsWinRef  = useRef<boolean>(false);
+
+  // Restaura prêmio pendente da sessão se a animação foi interrompida
+  useEffect(() => {
+    if (persistedOnMount && persistedOnMount.state === 'racing') {
+      pendingPayoutRef.current = persistedOnMount.payout;
+      pendingIsWinRef.current  = persistedOnMount.isWin;
+    }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   useEffect(() => { onAddMoneyRef.current   = onAddMoney;   }, [onAddMoney]);
   useEffect(() => { onSpendMoneyRef.current = onSpendMoney; }, [onSpendMoney]);
@@ -400,6 +453,16 @@ export function useRachaLobby({ onSpendMoney, onAddMoney, onRaceWon }: UseRachaL
     // Inicia animação de corrida (tela de resultado aparece após animação)
     setCurrentResultPlayers(players.length > 0 ? players : null);
     setState('racing');
+
+    // Persiste em sessionStorage para sobreviver a re-mounts/troca de aba
+    if (players.length > 0) {
+      savePersistedRace({
+        state:   'racing',
+        players,
+        payout:  pendingPayoutRef.current,
+        isWin:   pendingIsWinRef.current,
+      });
+    }
   }, []);
 
   // ── Transição racing → result (chamado pelo componente após animação) ──
@@ -414,10 +477,23 @@ export function useRachaLobby({ onSpendMoney, onAddMoney, onRaceWon }: UseRachaL
       pendingIsWinRef.current = false;
     }
     setState('result');
+    // Atualiza persistência: agora é resultado (não corrida ativa)
+    setCurrentResultPlayers(prev => {
+      if (prev) {
+        savePersistedRace({
+          state:   'result',
+          players: prev,
+          payout:  0,
+          isWin:   false,
+        });
+      }
+      return prev;
+    });
   }, []);
 
   // ── Fechar resultado ──────────────────────────────────────────
   const dismissResult = useCallback(() => {
+    clearPersistedRace();
     setCurrentResultPlayers(null);
     setState('idle');
     void checkPendingResults();

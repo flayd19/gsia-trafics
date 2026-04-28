@@ -13,6 +13,7 @@ import {
   Wrench,
   Car,
   Zap,
+  MessageSquare,
 } from 'lucide-react';
 import { supabase } from '@/integrations/supabase/client';
 import { useAudio } from '@/hooks/useAudio';
@@ -40,6 +41,7 @@ const PRIMARY_TABS: TabDef[] = [
 const SECONDARY_TABS: TabDef[] = [
   { id: 'home',     label: 'Início',  icon: Home },
   { id: 'rachas',   label: 'Rachas',  icon: Zap },
+  { id: 'chat',     label: 'Chat',    icon: MessageSquare },
   { id: 'ranking',  label: 'Ranking', icon: Trophy },
   { id: 'settings', label: 'Ajustes', icon: SettingsIcon },
 ];

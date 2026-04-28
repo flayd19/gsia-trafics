@@ -1348,16 +1348,23 @@ function RacingView({ players, myUserId, onFinish, totalLaps }: RacingViewProps)
       });
 
       // 4) Velocidade instantânea do jogador (km/h)
+      // BUG FIX: antes usávamos o delta de progresso da ANIMAÇÃO (compressão
+      // de tempo ~5x) com a distância real, gerando velocidades absurdas.
+      // Agora derivamos a velocidade do TEMPO REAL do motor (totalTimeSec)
+      // modulada por setor — fica coerente com a tela de resultado.
       const me = snap.find(pp => pp.isMe || pp.userId === myUserId);
       if (me) {
         const meProg = newProgs[me.userId] ?? 0;
-        const dProg  = meProg - lastSpeedSampleRef.current.prog;
-        const dtSec  = dtMs / 1000;
-        // Cada volta = LAP_METERS metros. Convertendo para km/h:
-        // (dProg * LAP_METERS / dtSec) * 3.6
-        const kmh = Math.max(0, Math.min(450, (dProg * LAP_METERS / Math.max(0.001, dtSec)) * 3.6));
-        // Suaviza com fator 0.7 antigo + 0.3 novo
-        setMeSpeedKmh(prev => prev * 0.7 + kmh * 0.3);
+        const realTotalTime = me.totalTimeSec ?? (BASE_LAP_MS / 1000) * laps;
+        // Velocidade média real em km/h
+        const avgKmh = (LAP_METERS * laps / Math.max(1, realTotalTime)) * 3.6;
+        // Modulação por setor: rápido em retas, lento em curvas.
+        // speedFactorAtFrac varia ~0.6-1.45, faz o velocímetro pulsar.
+        const fraction = meProg % 1;
+        const factor = speedFactorAtFrac(fraction);
+        const instantKmh = avgKmh * factor;
+        // Suavização: 0.6 antigo + 0.4 novo (responsivo mas sem flicker)
+        setMeSpeedKmh(prev => prev * 0.6 + instantKmh * 0.4);
       }
       lastSpeedSampleRef.current = { prog: newProgs[me?.userId ?? '___'] ?? 0, t: now };
 

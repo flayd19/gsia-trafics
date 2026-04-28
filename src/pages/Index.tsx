@@ -10,6 +10,7 @@ import { CarSalesScreen } from '@/components/screens/CarSalesScreen';
 import RankingScreen from '@/components/screens/RankingScreen';
 import { SettingsScreen } from '@/components/screens/SettingsScreen';
 import { RachaScreen } from '@/components/screens/RachaScreen';
+import { ChatScreen } from '@/components/screens/ChatScreen';
 import { useCarGameLogic } from '@/hooks/useCarGameLogic';
 import type { TuneUpgrade } from '@/types/performance';
 import { useGlobalMarketplace, type GlobalCar } from '@/hooks/useGlobalMarketplace';
@@ -308,6 +309,17 @@ const Index = () => {
             onAddMoney={addMoney}
             onRaceWon={addAsyncRaceWon}
             onUpdateCarTunes={handleUpdateCarTunes}
+          />
+        );
+
+      case 'chat':
+        return (
+          <ChatScreen
+            gameState={gameState}
+            onMoneyDeducted={(amount) => spendMoney(amount)}
+            onMoneyReceived={(amount) => addMoney(amount)}
+            onCarRemoved={(carInstanceId) => removeCarFromGarage(carInstanceId)}
+            onCarClaimed={(car) => addOwnedCarToGarage(car, 0)}
           />
         );
 
