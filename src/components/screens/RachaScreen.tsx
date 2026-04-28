@@ -253,6 +253,52 @@ function trackPt(lapFrac: number): { x: number; y: number } {
 }
 
 /**
+ * Tangente (ângulo em radianos) na fração de volta — aponta na direção do
+ * movimento. Usado para rotacionar o ícone do carro alinhado à pista.
+ */
+function trackTangent(lapFrac: number): number {
+  const ahead = trackPt(lapFrac + 0.004);
+  const back  = trackPt(lapFrac - 0.004);
+  return Math.atan2(ahead.y - back.y, ahead.x - back.x);
+}
+
+/**
+ * Multiplicador de velocidade visual baseado no setor da pista.
+ * Carros aceleram em retas (>1) e desaceleram em curvas (<1).
+ * Soma das integrais ≈ 1.0 para preservar tempo total da volta.
+ *
+ * Setores aproximados (frações):
+ *   0.00–0.20 reta principal (rápida)
+ *   0.20–0.30 T1 hairpin (lento)
+ *   0.30–0.42 reta de volta + T2 (médio)
+ *   0.42–0.55 chicane (médio-baixo)
+ *   0.55–0.72 T3 hairpin + reta saída (lento→rápido)
+ *   0.72–0.90 kink + curvas longas (médio)
+ *   0.90–1.00 retorno à reta (rápido)
+ */
+function speedFactorAtFrac(frac: number): number {
+  const f = ((frac % 1) + 1) % 1;
+  if (f < 0.20)      return 1.45;          // reta principal
+  if (f < 0.30)      return 0.65;          // T1 hairpin
+  if (f < 0.42)      return 1.10;          // reta + T2
+  if (f < 0.55)      return 0.85;          // chicane
+  if (f < 0.62)      return 0.60;          // T3 hairpin (apex)
+  if (f < 0.72)      return 1.20;          // saída do hairpin
+  if (f < 0.85)      return 0.90;          // kink
+  if (f < 0.95)      return 0.95;          // curva longa
+  return 1.40;                              // retorno à reta
+}
+
+/**
+ * Distância euclidiana entre dois pontos da pista (usada para detectar
+ * batalhas próximas no SVG).
+ */
+function trackDistance(a: { x: number; y: number }, b: { x: number; y: number }): number {
+  const dx = a.x - b.x, dy = a.y - b.y;
+  return Math.sqrt(dx * dx + dy * dy);
+}
+
+/**
  * Ruído sinusoidal REDUZIDO para simular ultrapassagens leves.
  * Amplitude: ≈ ±0.5 (bem menor que antes).
  * Funde suavemente a 0 conforme t → 0.55.
@@ -825,14 +871,37 @@ function LobbyCard({
 }
 
 // ══════════════════════════════════════════════════════════════════
-// TrackSVG — pista estilo F1 com carros animados
+// TrackSVG — pista estilo F1 com carros animados, trails e overlays
 // ══════════════════════════════════════════════════════════════════
+
+/** Ponto histórico do trail de cada carro (fade ao longo do tempo). */
+interface TrailPoint {
+  x: number;
+  y: number;
+  age: number; // 0 = recente, 1 = mais antigo (vai sumir)
+}
+
+/** Overlay de evento que aparece flutuando perto de um carro. */
+interface LiveEvent {
+  userId:    string;
+  emoji:     string;
+  text:      string;
+  /** Tempo em ms restante de exibição (animação). */
+  remaining: number;
+}
+
 interface TrackSVGProps {
-  players:   RacePlayerAnim[];
-  lapProgs:  Record<string, number>; // userId → voltas percorridas (0 → totalLaps)
-  posMaps:   Record<string, number>; // userId → posição visual em tempo real
-  myUserId:  string | null;
-  totalLaps: number;
+  players:    RacePlayerAnim[];
+  lapProgs:   Record<string, number>;
+  posMaps:    Record<string, number>;
+  myUserId:   string | null;
+  totalLaps:  number;
+  /** Histórico de posições por carro (últimas N posições para trail). */
+  trails:     Record<string, TrailPoint[]>;
+  /** Eventos ativos para mostrar como overlay flutuante. */
+  liveEvents: LiveEvent[];
+  /** Indicador se algum carro acabou de cruzar a linha (pisca a bandeira). */
+  flagPulse:  boolean;
 }
 
 // Bordas laterais da pista (offset ±12px do centro)
@@ -858,13 +927,30 @@ const TRACK_INNER_D = [
   'C 62 70 62 52 74 48 C 76 46 77 46 78 46 Z',
 ].join(' ');
 
-function TrackSVG({ players, lapProgs, posMaps, myUserId, totalLaps }: TrackSVGProps) {
+function TrackSVG({
+  players, lapProgs, posMaps, myUserId, totalLaps, trails, liveEvents, flagPulse,
+}: TrackSVGProps) {
   // Z-ordering: carros mais baixos no SVG (y maior) ficam na frente
   const zSorted = [...players].sort((a, b) => {
     const ya = trackPt((lapProgs[a.userId] ?? 0) % 1).y;
     const yb = trackPt((lapProgs[b.userId] ?? 0) % 1).y;
     return ya - yb;
   });
+
+  // Detecta batalhas em andamento — carros próximos no SVG acendem halo pulsante
+  const battlingIds = new Set<string>();
+  for (let i = 0; i < players.length; i++) {
+    for (let j = i + 1; j < players.length; j++) {
+      const a = players[i]!;
+      const b = players[j]!;
+      const pa = trackPt((lapProgs[a.userId] ?? 0) % 1);
+      const pb = trackPt((lapProgs[b.userId] ?? 0) % 1);
+      if (trackDistance(pa, pb) < 16) {
+        battlingIds.add(a.userId);
+        battlingIds.add(b.userId);
+      }
+    }
+  }
 
   // Kerbs nas apexes principais (decoração de corrida)
   const kerbPts = [
@@ -939,13 +1025,22 @@ function TrackSVG({ players, lapProgs, posMaps, myUserId, totalLaps }: TrackSVGP
         </g>
       ))}
 
-      {/* Linha de Largada/Chegada (xadrez) */}
+      {/* Linha de Largada/Chegada (xadrez) — pulsa quando alguém cruza */}
       {[0, 1, 2, 3].map(i => (
         <rect key={i}
           x={SF_PT.x - 1.5} y={SF_PT.y - 8 + i * 4}
           width={3} height={4}
-          fill={i % 2 === 0 ? '#000' : '#fff'} opacity={0.85} />
+          fill={i % 2 === 0 ? '#000' : '#fff'}
+          opacity={flagPulse ? 1 : 0.85} />
       ))}
+      {flagPulse && (
+        <circle cx={SF_PT.x} cy={SF_PT.y} r={14}
+          fill="none" stroke="#facc15" strokeWidth={1.5}
+          opacity={0.6}>
+          <animate attributeName="r" from={6} to={20} dur="0.6s" repeatCount="1" />
+          <animate attributeName="opacity" from={0.8} to={0} dur="0.6s" repeatCount="1" />
+        </circle>
+      )}
       <text x={SF_PT.x + 6} y={SF_PT.y - 4}
         fontSize={5.5} fill="#facc15" fontWeight="bold" opacity={0.95}>S/F</text>
 
@@ -961,44 +1056,109 @@ function TrackSVG({ players, lapProgs, posMaps, myUserId, totalLaps }: TrackSVGP
         {Math.round(TRACK_TOTAL_LEN)}m SVG · F1-Style
       </text>
 
+      {/* ── Trails (rastros de luz) — desenhados ANTES dos carros ─── */}
+      {players.map(p => {
+        const trail = trails[p.userId] ?? [];
+        if (trail.length < 2) return null;
+        const color = raceColor(p, players, myUserId);
+        return (
+          <g key={`trail_${p.userId}`} opacity={0.65}>
+            {trail.map((pt, i) => {
+              if (i === 0) return null;
+              const prev = trail[i - 1]!;
+              // Quanto mais antigo (age próximo de 1), mais transparente e fino
+              const opacity = (1 - pt.age) * 0.75;
+              const width   = 2.4 * (1 - pt.age * 0.7);
+              return (
+                <line key={i}
+                  x1={prev.x} y1={prev.y} x2={pt.x} y2={pt.y}
+                  stroke={color} strokeWidth={width} strokeLinecap="round"
+                  opacity={opacity}
+                />
+              );
+            })}
+          </g>
+        );
+      })}
+
       {/* ── Carros — z-ordenados por Y ────────────────────────────── */}
       {zSorted.map(p => {
-        const prog   = lapProgs[p.userId] ?? 0;
-        const pt     = trackPt(prog % 1);
-        const isMe   = p.isMe || p.userId === myUserId;
-        const color  = raceColor(p, players, myUserId);
-        const lapNum = Math.min(Math.floor(prog) + 1, totalLaps);
-        const visPos = posMaps[p.userId] ?? p.position;
+        const prog        = lapProgs[p.userId] ?? 0;
+        const pt          = trackPt(prog % 1);
+        const isMe        = p.isMe || p.userId === myUserId;
+        const color       = raceColor(p, players, myUserId);
+        const lapNum      = Math.min(Math.floor(prog) + 1, totalLaps);
+        const visPos      = posMaps[p.userId] ?? p.position;
+        const tangent     = trackTangent(prog % 1);
+        const angleDeg    = (tangent * 180) / Math.PI;
+        const inBattle    = battlingIds.has(p.userId);
+        const carRadius   = isMe ? 8.8 : 7.8;
 
         return (
           <g key={p.userId}>
-            {/* Halo do jogador */}
+            {/* Halo do jogador local */}
             {isMe && (
-              <circle cx={pt.x} cy={pt.y} r={14} fill={color} opacity={0.15} />
+              <circle cx={pt.x} cy={pt.y} r={14} fill={color} opacity={0.16} />
+            )}
+            {/* Halo pulsante para batalhas próximas */}
+            {inBattle && (
+              <circle cx={pt.x} cy={pt.y} r={11}
+                fill="none" stroke="#fb923c" strokeWidth={1.2} opacity={0.7}>
+                <animate attributeName="r" values="9;14;9" dur="0.6s" repeatCount="indefinite" />
+                <animate attributeName="opacity" values="0.7;0.15;0.7" dur="0.6s" repeatCount="indefinite" />
+              </circle>
             )}
             {/* Sombra */}
-            <circle cx={pt.x + 1} cy={pt.y + 1.5} r={isMe ? 8.5 : 7.5}
+            <circle cx={pt.x + 1} cy={pt.y + 1.5} r={carRadius}
               fill="black" opacity={0.4} />
             {/* Círculo do carro */}
-            <circle cx={pt.x} cy={pt.y} r={isMe ? 8.5 : 7.5}
-              fill={color} opacity={0.95}
+            <circle cx={pt.x} cy={pt.y} r={carRadius}
+              fill={color} opacity={0.96}
               stroke={isMe ? 'white' : '#111827'}
               strokeWidth={isMe ? 2 : 1.2}
             />
-            {/* Emoji */}
-            <text x={pt.x} y={pt.y + 3.5} textAnchor="middle"
-              fontSize={isMe ? 9 : 8} style={{ userSelect: 'none' }}>
-              {p.carIcon}
-            </text>
-            {/* Volta */}
-            <text x={pt.x + (isMe ? 12 : 10)} y={pt.y - 8}
+            {/* Emoji rotacionado pela tangente da pista */}
+            <g transform={`rotate(${angleDeg}, ${pt.x}, ${pt.y})`}>
+              <text x={pt.x} y={pt.y + 3.2} textAnchor="middle"
+                fontSize={isMe ? 9.5 : 8.5} style={{ userSelect: 'none' }}>
+                {p.carIcon}
+              </text>
+            </g>
+            {/* Indicador de volta */}
+            <text x={pt.x + (isMe ? 12 : 10)} y={pt.y - 9}
               fontSize={5.5} fill={color} fontWeight="bold" opacity={0.95}>
               V{lapNum}
             </text>
             {/* Posição */}
-            <text x={pt.x - (isMe ? 12 : 10)} y={pt.y - 8}
-              fontSize={5.5} fill="white" fontWeight="bold" opacity={0.75}>
+            <text x={pt.x - (isMe ? 12 : 10)} y={pt.y - 9}
+              fontSize={5.5} fill="white" fontWeight="bold" opacity={0.78}>
               {positionMedal(visPos)}
+            </text>
+          </g>
+        );
+      })}
+
+      {/* ── Overlays de eventos flutuantes ─────────────────────────── */}
+      {liveEvents.map((ev, i) => {
+        const player = players.find(p => p.userId === ev.userId);
+        if (!player) return null;
+        const prog = lapProgs[ev.userId] ?? 0;
+        const pt   = trackPt(prog % 1);
+        const fade = Math.min(1, ev.remaining / 1000);
+        // Texto sobe enquanto desaparece
+        const yOffset = -22 - (1 - fade) * 8;
+        return (
+          <g key={`ev_${i}`} opacity={fade}>
+            <rect
+              x={pt.x - 22} y={pt.y + yOffset - 5}
+              width={44} height={10} rx={5}
+              fill="rgba(15,15,20,0.85)"
+              stroke="#fb923c" strokeWidth={0.6}
+            />
+            <text x={pt.x} y={pt.y + yOffset + 2}
+              textAnchor="middle"
+              fontSize={6} fill="#fff" fontWeight="bold">
+              {ev.emoji} {ev.text}
             </text>
           </g>
         );
@@ -1017,46 +1177,75 @@ interface RacingViewProps {
   totalLaps:  number;
 }
 
+/** Mapeia tipos de evento para emoji + texto curto da overlay flutuante. */
+function eventOverlayLabel(type: string): { emoji: string; text: string } | null {
+  switch (type) {
+    case 'great_start':       return { emoji: '🚀', text: 'LARGADA!' };
+    case 'poor_start':        return { emoji: '😬', text: 'TRAVOU' };
+    case 'pole_advantage':    return { emoji: '🏆', text: 'AR LIMPO' };
+    case 'overtake':          return { emoji: '⚡', text: 'PASSOU!' };
+    case 'big_slipstream':    return { emoji: '🌪️', text: 'VÁCUO!' };
+    case 'slipstream_pass':   return { emoji: '💨', text: 'VÁCUO' };
+    case 'defended_position': return { emoji: '🛡️', text: 'DEFESA!' };
+    case 'side_by_side':      return { emoji: '🤝', text: 'LADO A LADO' };
+    case 'late_brake':        return { emoji: '🎯', text: 'NA TRAVE!' };
+    case 'last_lap_attack':   return { emoji: '🏁', text: 'ATAQUE!' };
+    case 'hot_lap':           return { emoji: '🔥', text: 'HOT LAP' };
+    case 'redemption':        return { emoji: '✨', text: 'RECUPEROU' };
+    case 'cascading_error':   return { emoji: '😵', text: 'ERRO!' };
+    case 'minor_mistake':     return { emoji: '⚠️', text: 'ERRO' };
+    case 'lost_grip':         return { emoji: '💥', text: 'PERDEU!' };
+    case 'tire_struggle':     return { emoji: '🛞', text: 'PNEUS' };
+    case 'position_lost':     return { emoji: '⬇️', text: 'PERDEU POS' };
+    case 'close_battle':      return { emoji: '🔥', text: 'BATALHA' };
+    default: return null;
+  }
+}
+
 function RacingView({ players, myUserId, onFinish, totalLaps }: RacingViewProps) {
   // ── Tempo de chegada por carro ────────────────────────────────────
-  // Cada carro tem seu próprio tempo de chegada baseado no score (IGP).
-  // O líder (maior score) termina em BASE_LAP_MS × totalLaps.
-  // Os demais chegam com atraso proporcional à diferença de score,
-  // limitado a 20% do tempo do líder.
-  // Não há DURATION_MS global: a animação termina quando TODOS cruzam a linha.
-  // Quantidade de jogadores NÃO afeta o tempo de chegada.
-  const BASE_LAP_MS = 6_000; // 6s por volta para o carro mais rápido
+  const BASE_LAP_MS = 6_000;
   const leaderMs    = BASE_LAP_MS * totalLaps;
 
-  const maxScore = Math.max(...players.map(p => p.score), 1);
-  const minScore = Math.min(...players.map(p => p.score));
+  const maxScore   = Math.max(...players.map(p => p.score), 1);
+  const minScore   = Math.min(...players.map(p => p.score));
   const scoreRange = Math.max(maxScore - minScore, 1);
 
-  // Tempo de chegada de cada carro (calculado uma vez, estável)
   const carFinishMs = useRef<Record<string, number>>(
     Object.fromEntries(players.map(p => {
       const lag = ((maxScore - p.score) / scoreRange) * leaderMs * 0.20;
       return [p.userId, leaderMs + lag];
     }))
   );
-
-  // Duração total = último carro + buffer de 1s para o jogador ver a chegada
   const totalDurationMs = Math.max(...Object.values(carFinishMs.current)) + 1_000;
 
-  const [lapProgs, setLapProgs] = useState<Record<string, number>>(() =>
+  // ── Estado de animação ────────────────────────────────────────────
+  /** Countdown de largada: 3 → 2 → 1 → 0 (GO!). Animação só começa quando 0. */
+  const [countdown, setCountdown]     = useState(3);
+  const [lapProgs, setLapProgs]       = useState<Record<string, number>>(() =>
     Object.fromEntries(players.map(p => [p.userId, 0]))
   );
-  const [posMaps, setPosMaps] = useState<Record<string, number>>(() =>
+  const [posMaps, setPosMaps]         = useState<Record<string, number>>(() =>
     Object.fromEntries(players.map(p => [p.userId, p.position]))
   );
-  // Cronômetro crescente (estilo corrida real)
-  const [elapsedSec, setElapsedSec] = useState(0);
+  const [elapsedSec, setElapsedSec]   = useState(0);
+  const [trails, setTrails]           = useState<Record<string, TrailPoint[]>>({});
+  const [liveEvents, setLiveEvents]   = useState<LiveEvent[]>([]);
+  const [flagPulse, setFlagPulse]     = useState(false);
+  const [meSpeedKmh, setMeSpeedKmh]   = useState(0);
 
   const startRef    = useRef<number | null>(null);
   const rafRef      = useRef<number | null>(null);
   const finishedRef = useRef(false);
+  /** Última volta processada por carro — controla disparo de eventos. */
+  const lastProcessedLapRef = useRef<Record<string, number>>({});
+  /** Se já cruzou a linha no SVG — controla pulso da bandeira xadrez. */
+  const crossedFlagRef = useRef<Set<string>>(new Set());
+  /** Trail interno mantido em ref para evitar re-render por frame. */
+  const trailsRef       = useRef<Record<string, TrailPoint[]>>({});
+  const lastSpeedSampleRef = useRef<{ prog: number; t: number }>({ prog: 0, t: 0 });
 
-  // Refs estáveis para não recriar a animação em re-renders do pai
+  // Refs estáveis
   const playersRef     = useRef(players);
   const onFinishRef    = useRef(onFinish);
   const totalLapsRef   = useRef(totalLaps);
@@ -1064,31 +1253,121 @@ function RacingView({ players, myUserId, onFinish, totalLaps }: RacingViewProps)
   useEffect(() => { onFinishRef.current  = onFinish; });
   useEffect(() => { totalLapsRef.current = totalLaps; });
 
+  // ── Countdown 3-2-1-GO antes da animação ──────────────────────────
   useEffect(() => {
+    if (countdown <= 0) return;
+    const id = setTimeout(() => setCountdown(c => c - 1), 1000);
+    return () => clearTimeout(id);
+  }, [countdown]);
+
+  // ── Animação principal ────────────────────────────────────────────
+  useEffect(() => {
+    if (countdown > 0) return; // espera GO
     const snap      = playersRef.current;
     const finishMap = carFinishMs.current;
     const laps      = totalLapsRef.current;
     const totalMs   = totalDurationMs;
 
+    /** Coleta eventos importantes que ocorrem na volta corrente de cada piloto. */
+    const triggerEventsForLap = (userId: string, lap: number) => {
+      const player = snap.find(p => p.userId === userId);
+      if (!player?.events) return;
+      const lapEvents = player.events.filter(ev => ev.lap === lap);
+      if (lapEvents.length === 0) return;
+      // Pega o evento de maior impacto narrativo
+      const ranked = [...lapEvents].sort((a, b) => Math.abs(b.timeImpact) - Math.abs(a.timeImpact));
+      const top = ranked[0]!;
+      const label = eventOverlayLabel(top.type);
+      if (!label) return;
+      setLiveEvents(prev => [
+        ...prev,
+        { userId, emoji: label.emoji, text: label.text, remaining: 1500 },
+      ]);
+    };
+
     const tick = (now: number) => {
       if (startRef.current === null) startRef.current = now;
-      const elapsed = now - startRef.current;
+      const elapsed  = now - startRef.current;
+      const dtMs     = Math.max(8, now - (lastSpeedSampleRef.current.t || now));
 
+      // 1) Progresso de cada carro (linear + ruído + modulação por setor)
       const newProgs: Record<string, number> = {};
       snap.forEach((p, idx) => {
         const finishTime = finishMap[p.userId] ?? leaderMs;
-        // Progresso linear puro: sem easing → velocidade constante até a linha
         const linearProg = Math.min(laps, laps * (elapsed / finishTime));
-        // Ruído de ultrapassagem: amplitude cai para 0 conforme o carro se
-        // aproxima da linha de chegada (não há oscilação no último trecho)
         const tNoise   = elapsed / totalMs;
         const envelope = Math.pow(Math.max(0, 1 - linearProg / laps), 1.5);
         const noise    = racingNoise(Math.min(tNoise, 0.95), idx * 7.3 + 1.1);
-        newProgs[p.userId] = Math.min(laps, linearProg + noise * 0.05 * envelope);
+        // Modulação visual por setor: setor é a fração da volta atual
+        const fraction = linearProg % 1;
+        const speedMod = speedFactorAtFrac(fraction);
+        // Aplica modulação como pequeno desvio em torno do progresso linear.
+        // Isso faz o carro "respirar" na pista: rápido em retas, lento em curvas.
+        const modulated = linearProg + (speedMod - 1) * 0.012;
+        newProgs[p.userId] = Math.max(0, Math.min(laps, modulated + noise * 0.05 * envelope));
       });
       setLapProgs(newProgs);
 
-      // Posições em tempo real pelo progresso
+      // 2) Atualiza trails (mantém últimas 12 posições com fading)
+      snap.forEach(p => {
+        const prog = newProgs[p.userId] ?? 0;
+        const pt = trackPt(prog % 1);
+        const arr = trailsRef.current[p.userId] ?? [];
+        // Adiciona apenas se moveu o suficiente (evita flicker)
+        const last = arr[arr.length - 1];
+        const dist = last ? Math.hypot(pt.x - last.x, pt.y - last.y) : 999;
+        let next = arr;
+        if (dist > 1.5) {
+          next = [...arr, { x: pt.x, y: pt.y, age: 0 }];
+        }
+        // Envelhece e descarta os antigos
+        next = next
+          .map(t => ({ ...t, age: Math.min(1, t.age + dtMs / 700) }))
+          .filter(t => t.age < 1)
+          .slice(-12);
+        trailsRef.current[p.userId] = next;
+      });
+      setTrails({ ...trailsRef.current });
+
+      // 3) Detecta cruzamento de volta para disparar eventos
+      snap.forEach(p => {
+        const prog = newProgs[p.userId] ?? 0;
+        const currentLap = Math.min(laps, Math.floor(prog) + 1);
+        const prevLap = lastProcessedLapRef.current[p.userId] ?? 0;
+        if (currentLap > prevLap) {
+          lastProcessedLapRef.current[p.userId] = currentLap;
+          // Volta corrente acabou de começar — dispara evento da NOVA volta
+          triggerEventsForLap(p.userId, currentLap);
+        }
+        // Detecta cruzamento da linha (volta inteira completada)
+        if (currentLap === laps && prog >= laps - 0.05 && !crossedFlagRef.current.has(p.userId)) {
+          crossedFlagRef.current.add(p.userId);
+          setFlagPulse(true);
+          setTimeout(() => setFlagPulse(false), 600);
+        }
+      });
+
+      // 4) Velocidade instantânea do jogador (km/h)
+      const me = snap.find(pp => pp.isMe || pp.userId === myUserId);
+      if (me) {
+        const meProg = newProgs[me.userId] ?? 0;
+        const dProg  = meProg - lastSpeedSampleRef.current.prog;
+        const dtSec  = dtMs / 1000;
+        // Cada volta = LAP_METERS metros. Convertendo para km/h:
+        // (dProg * LAP_METERS / dtSec) * 3.6
+        const kmh = Math.max(0, Math.min(450, (dProg * LAP_METERS / Math.max(0.001, dtSec)) * 3.6));
+        // Suaviza com fator 0.7 antigo + 0.3 novo
+        setMeSpeedKmh(prev => prev * 0.7 + kmh * 0.3);
+      }
+      lastSpeedSampleRef.current = { prog: newProgs[me?.userId ?? '___'] ?? 0, t: now };
+
+      // 5) Atualiza overlays de eventos (decremento)
+      setLiveEvents(prev =>
+        prev.map(e => ({ ...e, remaining: e.remaining - dtMs }))
+            .filter(e => e.remaining > 0)
+      );
+
+      // 6) Posições em tempo real
       const sorted = [...snap].sort((a, b) =>
         (newProgs[b.userId] ?? 0) - (newProgs[a.userId] ?? 0)
       );
@@ -1097,14 +1376,12 @@ function RacingView({ players, myUserId, onFinish, totalLaps }: RacingViewProps)
       setPosMaps(newPos);
       setElapsedSec(elapsed / 1000);
 
-      // Continuar até TODOS os carros cruzarem a linha
+      // 7) Continuar até TODOS os carros cruzarem a linha
       const allDone = snap.every(p => elapsed >= (finishMap[p.userId] ?? 0));
-
       if (!allDone) {
         rafRef.current = requestAnimationFrame(tick);
       } else if (!finishedRef.current) {
         finishedRef.current = true;
-        // Travar exatamente na linha de chegada (sem teletransporte)
         const finalProgs: Record<string, number> = {};
         const finalPos:   Record<string, number> = {};
         snap.forEach(p => {
@@ -1121,9 +1398,8 @@ function RacingView({ players, myUserId, onFinish, totalLaps }: RacingViewProps)
     return () => {
       if (rafRef.current) cancelAnimationFrame(rafRef.current);
     };
-  // Intencionalmente vazio: animação roda exatamente uma vez por mount.
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
+  }, [countdown]);
 
   // Formatar cronômetro: mm:ss.d
   const dispMin  = Math.floor(elapsedSec / 60);
@@ -1133,8 +1409,15 @@ function RacingView({ players, myUserId, onFinish, totalLaps }: RacingViewProps)
     ? `${dispMin}:${String(dispSec).padStart(2, '0')}.${dispDeci}`
     : `${String(dispSec).padStart(2, '0')}.${dispDeci}s`;
 
+  // Cor do speedometer baseada na velocidade
+  const speedColor =
+    meSpeedKmh > 240 ? 'text-red-400'
+    : meSpeedKmh > 180 ? 'text-amber-400'
+    : meSpeedKmh > 120 ? 'text-emerald-400'
+    : 'text-muted-foreground';
+
   return (
-    <div className="space-y-3">
+    <div className="space-y-3 relative">
       {/* Header da corrida */}
       <div className="flex items-center justify-between px-1">
         <span className="font-game-title text-lg font-bold text-foreground flex items-center gap-2">
@@ -1145,14 +1428,46 @@ function RacingView({ players, myUserId, onFinish, totalLaps }: RacingViewProps)
         </span>
       </div>
 
-      {/* Pista */}
-      <TrackSVG
-        players={players}
-        lapProgs={lapProgs}
-        posMaps={posMaps}
-        myUserId={myUserId}
-        totalLaps={totalLaps}
-      />
+      {/* Pista (com overlay de countdown) */}
+      <div className="relative">
+        <TrackSVG
+          players={players}
+          lapProgs={lapProgs}
+          posMaps={posMaps}
+          myUserId={myUserId}
+          totalLaps={totalLaps}
+          trails={trails}
+          liveEvents={liveEvents}
+          flagPulse={flagPulse}
+        />
+        {/* Countdown overlay 3-2-1-GO */}
+        {countdown > 0 && (
+          <div className="absolute inset-0 flex items-center justify-center pointer-events-none">
+            <div className="font-game-title text-7xl font-black text-primary drop-shadow-[0_0_20px_rgba(250,204,21,0.7)] animate-pulse">
+              {countdown}
+            </div>
+          </div>
+        )}
+        {countdown === 0 && elapsedSec < 0.5 && (
+          <div className="absolute inset-0 flex items-center justify-center pointer-events-none">
+            <div className="font-game-title text-7xl font-black text-emerald-400 drop-shadow-[0_0_20px_rgba(52,211,153,0.7)]">
+              GO!
+            </div>
+          </div>
+        )}
+        {/* Speedometer do jogador (canto inferior direito da pista) */}
+        {!finishedRef.current && countdown === 0 && (
+          <div className="absolute bottom-2 right-2 ios-surface rounded-[10px] px-2.5 py-1.5 !shadow-md bg-black/40 border border-white/10">
+            <div className="text-[8px] uppercase tracking-wider text-muted-foreground font-semibold leading-none">
+              Sua vel.
+            </div>
+            <div className={`text-[14px] font-mono font-black tabular-nums leading-tight ${speedColor}`}>
+              {Math.round(meSpeedKmh)}
+              <span className="text-[9px] font-normal text-muted-foreground ml-0.5">km/h</span>
+            </div>
+          </div>
+        )}
+      </div>
 
       {/* Classificação em tempo real */}
       <div className="space-y-1.5">
