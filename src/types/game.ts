@@ -330,6 +330,11 @@ export interface GameState {
    * Usado para evitar reexecutar reconstrução em saves já normalizados.
    */
   _reputationMigrationVersion?: number;
+
+  /** Funcionários contratados (lavador, vendedor, etc.). */
+  employees?: import('./employees').HiredEmployee[];
+  /** Último dia in-game em que o salário dos funcionários foi cobrado. */
+  lastEmployeePayDay?: number;
 }
 
 // ── Helpers de tipo ───────────────────────────────────────────────
@@ -367,5 +372,7 @@ export function ensureGameState(raw: Partial<GameState>): GameState {
     completedOrders: raw.completedOrders ?? 0,
     asyncRacesWon:   raw.asyncRacesWon   ?? 0,
     _reputationMigrationVersion: raw._reputationMigrationVersion,
+    employees:        raw.employees        ?? [],
+    lastEmployeePayDay: raw.lastEmployeePayDay ?? 0,
   };
 }

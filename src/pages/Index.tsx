@@ -11,6 +11,7 @@ import RankingScreen from '@/components/screens/RankingScreen';
 import { SettingsScreen } from '@/components/screens/SettingsScreen';
 import { RachaScreen } from '@/components/screens/RachaScreen';
 import { ChatScreen } from '@/components/screens/ChatScreen';
+import { EmployeesScreen } from '@/components/screens/EmployeesScreen';
 import { useCarGameLogic } from '@/hooks/useCarGameLogic';
 import type { TuneUpgrade } from '@/types/performance';
 import { useGlobalMarketplace, type GlobalCar } from '@/hooks/useGlobalMarketplace';
@@ -70,6 +71,10 @@ const Index = () => {
     repairTypes,
     garageSlotDefs,
     applyCarTune,
+
+    hireEmployee,
+    fireEmployee,
+    updateEmployeeConfig,
   } = useCarGameLogic();
 
   const {
@@ -320,6 +325,16 @@ const Index = () => {
             onMoneyReceived={(amount) => addMoney(amount)}
             onCarRemoved={(carInstanceId) => removeCarFromGarage(carInstanceId)}
             onCarClaimed={(car) => addOwnedCarToGarage(car, 0)}
+          />
+        );
+
+      case 'employees':
+        return (
+          <EmployeesScreen
+            gameState={gameState}
+            onHireEmployee={hireEmployee}
+            onFireEmployee={fireEmployee}
+            onUpdateEmployeeConfig={updateEmployeeConfig}
           />
         );
 

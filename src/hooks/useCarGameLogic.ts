@@ -25,6 +25,14 @@ import {
   generateCycleBuyers,
 } from '@/data/carBuyers';
 import { ensureReputation, addXp, reconstructReputation, XP_REWARDS } from '@/lib/reputation';
+import {
+  EMPLOYEES_CATALOG,
+  totalDailyStaffCost,
+  calcSellerPrice,
+  type EmployeeId,
+  type EmployeeConfig,
+  type HiredEmployee,
+} from '@/types/employees';
 import { supabase } from '@/integrations/supabase/client';
 
 // ── Config ────────────────────────────────────────────────────────
@@ -484,6 +492,124 @@ export function useCarGameLogic() {
           // XP por reparos/lavagens concluídos
           const repairXp = finishedRepairs.length * XP_REWARDS.repair;
           next = { ...next, activeRepairs: pendingRepairs, garage: updatedGarage, reputation: addXp(next.reputation, repairXp).reputation };
+        }
+
+        // ── Funcionários: salário diário ──────────────────────────
+        const employees = next.employees ?? [];
+        if (employees.length > 0 && day > (next.lastEmployeePayDay ?? 0)) {
+          const totalSalary = totalDailyStaffCost(employees);
+          if (totalSalary > 0) {
+            next = {
+              ...next,
+              money: safeMoney(next.money, next.money - totalSalary),
+              lastEmployeePayDay: day,
+            };
+          } else {
+            next = { ...next, lastEmployeePayDay: day };
+          }
+        }
+
+        // ── Funcionário: Lavador (lava 1 carro/tick por slot livre) ──
+        const hasWasher = employees.some(e => e.id === 'washer');
+        if (hasWasher) {
+          // Limite: lava só 1 carro por tick para não saturar (cada lavagem
+          // dura 20s e precisa do carro fora de reparo)
+          const candidate = next.garage.find(s =>
+            s.unlocked &&
+            s.car &&
+            !s.car.inRepair &&
+            !(s.car.completedRepairs ?? []).includes('lavagem_completa')
+          );
+          if (candidate?.car) {
+            const car = candidate.car;
+            const washType = REPAIR_TYPES.find(r => r.id === 'lavagem_completa');
+            if (washType) {
+              const gain = Math.round(5 + Math.random() * 23);
+              const newRepair = {
+                carInstanceId: car.instanceId,
+                repairTypeId:  'lavagem_completa',
+                startedAt:     now,
+                durationSec:   washType.durationSec,
+                conditionGain: gain,
+                cost:          0, // lavador faz de graça (jogador paga o salário)
+                targetAttribute: washType.attribute,
+              };
+              next = {
+                ...next,
+                garage: next.garage.map(s => {
+                  if (s.car?.instanceId !== car.instanceId) return s;
+                  return {
+                    ...s,
+                    car: {
+                      ...s.car!,
+                      inRepair:          true,
+                      repairCompletesAt: now + washType.durationSec * 1000,
+                      repairTypeId:      'lavagem_completa',
+                      repairGain:        gain,
+                      completedRepairs:  [...(s.car!.completedRepairs ?? []), 'lavagem_completa'],
+                    },
+                  };
+                }),
+                activeRepairs: [...next.activeRepairs, newRepair],
+              };
+            }
+          }
+        }
+
+        // ── Funcionário: Vendedor (envia ofertas automáticas) ───────
+        const sellerEmployee = employees.find(e => e.id === 'seller');
+        if (sellerEmployee) {
+          const sellerCfg = sellerEmployee.config ?? {};
+          // Procura compradores aguardando + carro compatível
+          const waitingBuyers = next.carBuyers.filter(b => b.state === 'waiting');
+          for (const buyer of waitingBuyers) {
+            // Se já enviou oferta neste buyer (state mudaria para thinking)
+            // ou já foi processado no mesmo tick, pula
+            if (buyer.state !== 'waiting') continue;
+
+            // Acha um carro compatível na garagem (sem reparo, não em uso)
+            const compatibleSlot = next.garage.find(slot => {
+              if (!slot.car || slot.car.inRepair) return false;
+              const car = slot.car;
+              // Carro não pode estar em outra negociação
+              const isInNegotiation = next.carBuyers.some(b =>
+                b.targetCarInstanceId === car.instanceId &&
+                (b.state === 'thinking' || b.state === 'countering')
+              );
+              if (isInNegotiation) return false;
+              // Verifica compatibilidade com o pedido do buyer
+              if (buyer.requirementType === 'model' && buyer.targetModelId) {
+                return car.modelId === buyer.targetModelId;
+              }
+              if (buyer.requirementType === 'category' && buyer.targetCategories.length > 0) {
+                const carModel = CAR_MODELS.find(m => m.id === car.modelId);
+                return !!carModel && buyer.targetCategories.includes(carModel.category);
+              }
+              return false;
+            });
+
+            if (compatibleSlot?.car) {
+              const car = compatibleSlot.car;
+              const askingPrice = calcSellerPrice(car.fipePrice, sellerCfg);
+              // Envia oferta colocando o buyer em "thinking"
+              next = {
+                ...next,
+                carBuyers: next.carBuyers.map(b =>
+                  b.id === buyer.id
+                    ? {
+                        ...b,
+                        state: 'thinking' as const,
+                        thinkingStartedAt: now,
+                        thinkDuration: Math.floor(Math.random() * 8) + 3,
+                        playerOffer: askingPrice,
+                        playerIncludedTradeIn: false,
+                        targetCarInstanceId: car.instanceId,
+                      }
+                    : b
+                ),
+              };
+            }
+          }
         }
 
         // ── Expansão imediata de slots ao subir de nível ──────────
@@ -1251,6 +1377,57 @@ export function useCarGameLogic() {
     setTimeout(() => void saveGame(), 400);
   }, [saveGame]);
 
+  // ─────────────────────────────────────────────────────────────────
+  // Funcionários (staff) — contratar / demitir / configurar
+  // ─────────────────────────────────────────────────────────────────
+
+  const hireEmployee = useCallback((id: EmployeeId, config: EmployeeConfig = {}): { success: boolean; message: string } => {
+    const state = stateRef.current;
+    const meta = EMPLOYEES_CATALOG[id];
+    if (!meta) return { success: false, message: 'Funcionário desconhecido.' };
+    if ((state.employees ?? []).some(e => e.id === id)) {
+      return { success: false, message: 'Esse funcionário já está contratado.' };
+    }
+    // Não exige saldo positivo na contratação — salário só é cobrado no
+    // próximo dia in-game.
+    const newEmployee: HiredEmployee = {
+      id,
+      hiredAt:     Date.now(),
+      config:      { ...config },
+      lastPaidDay: state.gameTime.day,
+    };
+    setGameState(prev => ({
+      ...prev,
+      employees: [...(prev.employees ?? []), newEmployee],
+    }));
+    setTimeout(() => void saveGame(), 400);
+    return { success: true, message: `${meta.name} contratado!` };
+  }, [saveGame]);
+
+  const fireEmployee = useCallback((id: EmployeeId): { success: boolean; message: string } => {
+    const meta = EMPLOYEES_CATALOG[id];
+    if (!meta) return { success: false, message: 'Funcionário desconhecido.' };
+    setGameState(prev => ({
+      ...prev,
+      employees: (prev.employees ?? []).filter(e => e.id !== id),
+    }));
+    setTimeout(() => void saveGame(), 400);
+    return { success: true, message: `${meta.name} demitido.` };
+  }, [saveGame]);
+
+  const updateEmployeeConfig = useCallback((id: EmployeeId, config: EmployeeConfig): { success: boolean; message: string } => {
+    const meta = EMPLOYEES_CATALOG[id];
+    if (!meta) return { success: false, message: 'Funcionário desconhecido.' };
+    setGameState(prev => ({
+      ...prev,
+      employees: (prev.employees ?? []).map(e =>
+        e.id === id ? { ...e, config: { ...e.config, ...config } } : e
+      ),
+    }));
+    setTimeout(() => void saveGame(), 400);
+    return { success: true, message: 'Configuração atualizada.' };
+  }, [saveGame]);
+
 
   // ── Derived values ────────────────────────────────────────────
   const garageCarCount = gameState.garage.filter(s => s.car).length;
@@ -1287,6 +1464,11 @@ export function useCarGameLogic() {
     addAsyncRaceWon,
     saveGame,
     resetGame,
+
+    // Funcionários
+    hireEmployee,
+    fireEmployee,
+    updateEmployeeConfig,
 
     repairTypes:    REPAIR_TYPES,
     garageSlotDefs: GARAGE_SLOTS,
