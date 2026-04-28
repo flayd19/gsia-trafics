@@ -768,70 +768,187 @@ export function maxBuyerSlots(level: number): number {
 
 interface BuyerTier {
   minLevel: number;
-  /** Categorias que compradores podem solicitar neste tier */
-  allowedCategories: string[];
-  /** Preço FIPE máximo (variante mais barata do modelo) para pedidos de modelo específico */
+  maxLevel: number;
+  /**
+   * Distribuição percentual por categoria. A soma não precisa ser 100 —
+   * usamos como pesos normalizados em weighted random.
+   * Categorias ausentes neste objeto NUNCA são pedidas neste tier
+   * (exceto pedidos raros que pegam de um tier superior).
+   */
+  categoryWeights: Record<string, number>;
+  /** Preço FIPE máximo (variante mais barata) para pedidos de modelo específico. */
   maxFipePrice: number;
 }
 
 /**
- * Tabela de progressão de compradores por nível do jogador.
- * Cada tier define quais categorias são desbloqueadas e o teto de
- * preço FIPE que um comprador pode solicitar (pedido de modelo exato).
+ * Progressão de pedidos por nível do jogador.
  *
- * Níveis 1–5   → populares baratos (até R$ 100 k)
- * Níveis 6–15  → populares + médios (até R$ 160 k)
- * Níveis 1–5   → populares e clássicos (até R$ 100 k)
- * Níveis 6–15  → + médios (até R$ 160 k)
- * Níveis 16–29 → + SUVs e pickups (até R$ 250 k)
- * Níveis 30–49 → + elétricos e luxo (até R$ 400 k)
- * Nível 50+    → + esportivos e todo o catálogo (sem teto)
+ *  • 1-10  Início       — populares dominam, médios e clássicos como apoio.
+ *  • 11-15 Intermediário — adiciona SUVs e pickups.
+ *  • 16-20 Intermediário+— adiciona esportivos e elétricos.
+ *  • 21-25 Avançado     — esportivos e luxo ganham espaço, populares somem aos poucos.
+ *  • 26+   Endgame      — supercarros dominam, luxo segue como apoio.
+ *
+ * Pedidos raros: 5% de chance por comprador de pegar uma categoria de um
+ * TIER ACIMA do atual (ex: jogador Lv 5 recebendo um pedido de SUV).
  */
 const LEVEL_TIERS: BuyerTier[] = [
+  // ── Tier 1 — Início (1-10) ──────────────────────────────────────
   {
-    minLevel: 1,
-    allowedCategories: ['popular', 'classico'],
-    maxFipePrice: 100_000,
+    minLevel: 1, maxLevel: 10,
+    categoryWeights: {
+      popular:  60,
+      medio:    25,
+      classico: 15,
+    },
+    maxFipePrice: 120_000,
   },
+  // ── Tier 2 — Intermediário 1 (11-15) ────────────────────────────
   {
-    minLevel: 6,
-    allowedCategories: ['popular', 'classico', 'medio'],
-    maxFipePrice: 160_000,
+    minLevel: 11, maxLevel: 15,
+    categoryWeights: {
+      popular:  20,
+      medio:    20,
+      suv:      25,
+      pickup:   20,
+      classico: 15,
+    },
+    maxFipePrice: 220_000,
   },
+  // ── Tier 3 — Intermediário 2 (16-20) ────────────────────────────
   {
-    minLevel: 16,
-    allowedCategories: ['popular', 'classico', 'medio', 'suv', 'pickup'],
-    maxFipePrice: 250_000,
-  },
-  {
-    minLevel: 30,
-    allowedCategories: ['popular', 'classico', 'medio', 'suv', 'pickup', 'eletrico', 'luxo'],
+    minLevel: 16, maxLevel: 20,
+    categoryWeights: {
+      medio:     10,
+      suv:       10,
+      pickup:    10,
+      esportivo: 25,
+      eletrico:  20,
+      popular:   15,
+      classico:  10,
+    },
     maxFipePrice: 400_000,
   },
+  // ── Tier 4 — Avançado (21-25) ───────────────────────────────────
   {
-    minLevel: 50,
-    allowedCategories: ['popular', 'classico', 'medio', 'suv', 'pickup', 'eletrico', 'esportivo', 'luxo'],
+    minLevel: 21, maxLevel: 25,
+    categoryWeights: {
+      esportivo: 35,
+      luxo:      25,
+      suv:       10,
+      pickup:    10,
+      eletrico:  10,
+      popular:    5,
+      medio:      5,
+    },
+    maxFipePrice: 1_000_000,
+  },
+  // ── Tier 5 — Endgame (26+) ──────────────────────────────────────
+  {
+    minLevel: 26, maxLevel: 100,
+    categoryWeights: {
+      supercar:  50,
+      luxo:      20,
+      esportivo: 15,
+      eletrico:  10,
+      popular:    2,
+      medio:      2,
+      suv:        1,
+    },
     maxFipePrice: Infinity,
   },
 ];
 
-/** Retorna o tier de compradores correspondente ao nível do jogador */
+/** Retorna o tier de compradores correspondente ao nível do jogador. */
 function getBuyerTier(level: number): BuyerTier {
-  let tier = LEVEL_TIERS[0];
   for (const t of LEVEL_TIERS) {
-    if (level >= t.minLevel) tier = t;
+    if (level >= t.minLevel && level <= t.maxLevel) return t;
   }
-  return tier;
+  // Fallback defensivo — nunca deveria chegar aqui se LEVEL_TIERS cobre 1-100.
+  return LEVEL_TIERS[LEVEL_TIERS.length - 1] ?? LEVEL_TIERS[0]!;
+}
+
+/** Retorna o tier IMEDIATAMENTE acima do atual (para pedidos raros). */
+function getNextTierAbove(level: number): BuyerTier | null {
+  const current = getBuyerTier(level);
+  const idx = LEVEL_TIERS.indexOf(current);
+  if (idx < 0 || idx >= LEVEL_TIERS.length - 1) return null;
+  return LEVEL_TIERS[idx + 1] ?? null;
+}
+
+/**
+ * Weighted random: escolhe uma chave do objeto de pesos.
+ * Pesos podem somar qualquer valor — normalizamos internamente.
+ */
+function weightedPick<K extends string>(weights: Record<K, number>): K | null {
+  const entries = Object.entries(weights) as Array<[K, number]>;
+  const total = entries.reduce((sum, [, w]) => sum + w, 0);
+  if (total <= 0) return null;
+  let roll = Math.random() * total;
+  for (const [key, w] of entries) {
+    roll -= w;
+    if (roll <= 0) return key;
+  }
+  return entries[entries.length - 1]?.[0] ?? null;
+}
+
+/**
+ * Probabilidade (0-1) de um comprador gerar pedido raro de tier acima.
+ * Calibrado em 5% — pequeno o suficiente para não atrapalhar a progressão,
+ * grande o suficiente para o jogador ter uma surpresa ocasional.
+ */
+const RARE_REQUEST_CHANCE = 0.05;
+
+/**
+ * Seleciona a categoria do pedido respeitando os pesos do tier corrente
+ * e aplicando 5% de chance de pedido raro (categoria de tier acima).
+ *
+ * Retorna a categoria escolhida e um flag indicando se foi pedido raro.
+ */
+function pickRequestedCategory(playerLevel: number): { category: string; rare: boolean } {
+  const tier = getBuyerTier(playerLevel);
+  const isRare = Math.random() < RARE_REQUEST_CHANCE;
+
+  if (isRare) {
+    const upperTier = getNextTierAbove(playerLevel);
+    if (upperTier) {
+      // Filtra apenas categorias do tier acima que NÃO existem no tier atual.
+      const newCategories = Object.keys(upperTier.categoryWeights).filter(
+        c => !(c in tier.categoryWeights),
+      );
+      if (newCategories.length > 0) {
+        const upperWeights: Record<string, number> = {};
+        for (const c of newCategories) {
+          upperWeights[c] = upperTier.categoryWeights[c] ?? 1;
+        }
+        const picked = weightedPick(upperWeights);
+        if (picked) return { category: picked, rare: true };
+      }
+    }
+    // Sem tier acima ou todas as categorias já cobertas — cai no normal
+  }
+
+  const picked = weightedPick(tier.categoryWeights);
+  return { category: picked ?? 'popular', rare: false };
+}
+
+/** Lista de todas as categorias permitidas no tier (legacy compat). */
+function tierAllowedCategories(tier: BuyerTier): string[] {
+  return Object.keys(tier.categoryWeights);
 }
 
 // Labels legíveis para categorias
 export const CATEGORY_LABELS: Record<string, string> = {
   popular:   'Popular',
   medio:     'Médio',
+  classico:  'Clássico',
   suv:       'SUV',
   pickup:    'Pickup',
   esportivo: 'Esportivo',
   eletrico:  'Elétrico',
+  luxo:      'Luxo',
+  jdm:       'JDM',
+  supercar:  'Supercarro',
 };
 
 function genCycleId(): string {
@@ -859,12 +976,23 @@ export function spawnCycleBuyer(
   playerLevel: number,
 ): CarBuyerNPC {
   const tier = getBuyerTier(playerLevel);
+  const allowedCats = tierAllowedCategories(tier);
 
-  // Filtra templates cujas categorias-alvo têm interseção com o tier atual
-  const eligibleTemplates = BUYER_TEMPLATES.filter(t =>
-    t.targetCategories.some(c => tier.allowedCategories.includes(c)),
+  // Categoria desejada do pedido — aplica weighted distribution + 5% rare
+  const { category: requestedCategory, rare: isRareRequest } = pickRequestedCategory(playerLevel);
+
+  // Filtra templates cujas categorias-alvo TÊM a categoria sorteada
+  // (tornar a personalidade do comprador coerente com o pedido).
+  // Se nenhum template combinar, cai pra qualquer template do tier.
+  const matchingTemplates = BUYER_TEMPLATES.filter(t =>
+    t.targetCategories.includes(requestedCategory),
   );
-  const templatePool = eligibleTemplates.length > 0 ? eligibleTemplates : BUYER_TEMPLATES;
+  const fallbackTemplates = BUYER_TEMPLATES.filter(t =>
+    t.targetCategories.some(c => allowedCats.includes(c)),
+  );
+  const templatePool = matchingTemplates.length > 0
+    ? matchingTemplates
+    : (fallbackTemplates.length > 0 ? fallbackTemplates : BUYER_TEMPLATES);
   const template = templatePool[Math.floor(Math.random() * templatePool.length)];
 
   // ── 1. Decide antecipadamente se haverá trade-in ─────────────────
@@ -879,25 +1007,33 @@ export function spawnCycleBuyer(
   let targetModelName:  string | undefined;
   let maxTradeInFipe:   number;
 
+  // Pedidos raros levantam o teto de FIPE para acomodar carros caros
+  const effectiveMaxFipe = isRareRequest && tier.maxFipePrice !== Infinity
+    ? tier.maxFipePrice * 3
+    : tier.maxFipePrice;
+
   if (effectiveReqType === 'model') {
+    // Filtra modelos PELA categoria sorteada para coerência com o pedido
     const eligibleModels = CAR_MODELS.filter(m =>
-      tier.allowedCategories.includes(m.category) &&
-      Math.min(...m.variants.map(v => v.fipePrice)) <= tier.maxFipePrice,
+      m.category === requestedCategory &&
+      Math.min(...m.variants.map(v => v.fipePrice)) <= effectiveMaxFipe,
     );
-    const modelPool = eligibleModels.length > 0 ? eligibleModels : CAR_MODELS;
+    // Fallback se nenhum modelo se encaixa
+    const widerPool = eligibleModels.length > 0
+      ? eligibleModels
+      : CAR_MODELS.filter(m =>
+          allowedCats.includes(m.category) &&
+          Math.min(...m.variants.map(v => v.fipePrice)) <= effectiveMaxFipe,
+        );
+    const modelPool = widerPool.length > 0 ? widerPool : CAR_MODELS;
     const model = modelPool[Math.floor(Math.random() * modelPool.length)];
     targetModelIds  = [model.id];
     targetModelId   = model.id;
     targetModelName = `${model.brand} ${model.model}`;
-    // Teto do trade-in: 90 % do menor FIPE do modelo solicitado.
-    // Garante que o trade-in nunca vale mais do que o carro desejado.
     maxTradeInFipe = Math.min(...model.variants.map(v => v.fipePrice)) * 0.9;
   } else {
-    const cats = template.targetCategories.filter(c => tier.allowedCategories.includes(c));
-    const catPool = cats.length > 0 ? cats : tier.allowedCategories;
-    const cat = catPool[Math.floor(Math.random() * catPool.length)];
-    targetCategories = [cat];
-    maxTradeInFipe = (tier.maxFipePrice === Infinity ? 500_000 : tier.maxFipePrice) * 0.8;
+    targetCategories = [requestedCategory];
+    maxTradeInFipe = (effectiveMaxFipe === Infinity ? 500_000 : effectiveMaxFipe) * 0.8;
   }
 
   // ── 3. Gera trade-in dentro do teto ─────────────────────────────
