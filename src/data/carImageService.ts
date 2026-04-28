@@ -196,6 +196,135 @@ const MODEL_WIKI: Record<string, WikiEntry> = {
   challenger_hellcat: ['Dodge Challenger',           'Dodge Challenger'],
   charger_srt:        ['Dodge Charger',              'Dodge Charger'],
   wrx_sti:            ['Subaru WRX STI',             'Subaru WRX STI'],
+
+  // ── JDM ──────────────────────────────────────────────────────────
+  toyota_supra_mk4:   ['Toyota Supra',                'Toyota Supra A80'],
+  toyota_supra_mk5:   ['Toyota GR Supra',             'Toyota GR Supra'],
+  mazda_rx7_fd:       ['Mazda RX-7',                  'Mazda RX-7'],
+  mazda_rx7_fc:       ['Mazda RX-7',                  'Mazda RX-7'],
+  mazda_rx8:          ['Mazda RX-8',                  'Mazda RX-8'],
+  honda_s2000:        ['Honda S2000',                 'Honda S2000'],
+  honda_nsx_na1:      ['Honda NSX',                   'Honda NSX (first generation)'],
+  mitsubishi_evo9:    ['Mitsubishi Lancer Evolution', 'Mitsubishi Lancer Evolution IX'],
+  mitsubishi_evo10:   ['Mitsubishi Lancer Evolution', 'Mitsubishi Lancer Evolution X'],
+  mitsubishi_evo8:    ['Mitsubishi Lancer Evolution', 'Mitsubishi Lancer Evolution VIII'],
+  nissan_silvia_s15:  ['Nissan Silvia',               'Nissan Silvia'],
+  nissan_180sx:       ['Nissan 180SX',                'Nissan 180SX'],
+  honda_integra_type_r: ['Honda Integra Type R',      'Honda Integra Type R'],
+  ae86:               ['Toyota AE86',                 'Toyota AE86'],
+  celica_gt4:         ['Toyota Celica',               'Toyota Celica GT-Four'],
+  subaru_brz:         ['Subaru BRZ',                  'Subaru BRZ'],
+  mazda_mx5:          ['Mazda MX-5',                  'Mazda MX-5'],
+  mitsubishi_eclipse_gsx: ['Mitsubishi Eclipse',      'Mitsubishi Eclipse'],
+  toyota_gr_yaris:    ['Toyota GR Yaris',             'Toyota GR Yaris'],
+  toyota_gr_corolla:  ['Toyota GR Corolla',           'Toyota GR Corolla'],
+  hyundai_elantra_n:  ['Hyundai Elantra N',           'Hyundai Elantra N'],
+  kia_stinger_gt:     ['Kia Stinger',                 'Kia Stinger'],
+  nissan_350z:        ['Nissan 350Z',                 'Nissan 350Z'],
+  nissan_370z:        ['Nissan 370Z',                 'Nissan 370Z'],
+  nissan_z_rz34:      ['Nissan Z',                    'Nissan Z (RZ34)'],
+
+  // ── Supercars já existentes (estavam faltando no MODEL_WIKI) ─────
+  lamborghini_huracan:  ['Lamborghini Huracán',       'Lamborghini Huracán'],
+  lamborghini_aventador:['Lamborghini Aventador',     'Lamborghini Aventador'],
+  ferrari_488:          ['Ferrari 488',               'Ferrari 488'],
+  ferrari_f8:           ['Ferrari F8',                'Ferrari F8 Tributo'],
+  ferrari_296:          ['Ferrari 296',               'Ferrari 296 GTB'],
+  mclaren_720s:         ['McLaren 720S',              'McLaren 720S'],
+  mclaren_570s:         ['McLaren 570S',              'McLaren 570S'],
+  porsche_911_gt3:      ['Porsche 911 GT3',           'Porsche 911 GT3'],
+  porsche_911_turbo_s:  ['Porsche 911 Turbo',         'Porsche 911 Turbo'],
+  porsche_cayman_gt4:   ['Porsche Cayman',            'Porsche 718 Cayman GT4 RS'],
+  audi_r8:              ['Audi R8',                   'Audi R8'],
+  honda_nsx_type_s:     ['Honda NSX',                 'Honda NSX (second generation)'],
+  ford_gt_mk4:          ['Ford GT',                   'Ford GT (second generation)'],
+
+  // ── Porsche linha completa (novos) ───────────────────────────────
+  porsche_718_cayman:   ['Porsche Cayman',            'Porsche 718 Cayman'],
+  porsche_718_boxster:  ['Porsche Boxster',           'Porsche 718 Boxster'],
+  porsche_911_gt3_rs:   ['Porsche 911 GT3 RS',        'Porsche 911 GT3 RS'],
+  porsche_911_gt2_rs:   ['Porsche 911 GT2 RS',        'Porsche 911 GT2 RS'],
+  porsche_911_carrera:  ['Porsche 911',               'Porsche 911'],
+  porsche_911_targa:    ['Porsche 911',               'Porsche 911 Targa'],
+  porsche_911_sport_classic: ['Porsche 911',          'Porsche 911 Sport Classic'],
+  porsche_911_dakar:    ['Porsche 911 Dakar',         'Porsche 911 Dakar'],
+  porsche_taycan:       ['Porsche Taycan',            'Porsche Taycan'],
+  porsche_panamera:     ['Porsche Panamera',          'Porsche Panamera'],
+  porsche_cayenne_coupe:['Porsche Cayenne',           'Porsche Cayenne Coupé'],
+
+  // ── Lamborghini ──────────────────────────────────────────────────
+  lambo_revuelto:       ['Lamborghini Revuelto',      'Lamborghini Revuelto'],
+  lambo_urus_performante:['Lamborghini Urus',         'Lamborghini Urus'],
+  lambo_sian:           ['Lamborghini Sián FKP 37',   'Lamborghini Sián'],
+  lambo_countach_lpi:   ['Lamborghini Countach',      'Lamborghini Countach LPI 800-4'],
+  lambo_diablo:         ['Lamborghini Diablo',        'Lamborghini Diablo'],
+  lambo_murcielago:     ['Lamborghini Murciélago',    'Lamborghini Murciélago'],
+  lambo_gallardo:       ['Lamborghini Gallardo',      'Lamborghini Gallardo'],
+
+  // ── Ferrari ──────────────────────────────────────────────────────
+  ferrari_sf90:         ['Ferrari SF90 Stradale',     'Ferrari SF90 Stradale'],
+  ferrari_laferrari:    ['Ferrari LaFerrari',         'Ferrari LaFerrari'],
+  ferrari_roma:         ['Ferrari Roma',              'Ferrari Roma'],
+  ferrari_portofino_m:  ['Ferrari Portofino',         'Ferrari Portofino'],
+  ferrari_812_superfast:['Ferrari 812 Superfast',     'Ferrari 812 Superfast'],
+  ferrari_812_competizione:['Ferrari 812',            'Ferrari 812 Competizione'],
+  ferrari_daytona_sp3:  ['Ferrari Daytona SP3',       'Ferrari Daytona SP3'],
+  ferrari_monza_sp2:    ['Ferrari Monza SP1 e SP2',   'Ferrari Monza SP1 and SP2'],
+  ferrari_purosangue:   ['Ferrari Purosangue',        'Ferrari Purosangue'],
+  ferrari_f12:          ['Ferrari F12 Berlinetta',    'Ferrari F12berlinetta'],
+  ferrari_f40:          ['Ferrari F40',               'Ferrari F40'],
+  ferrari_f50:          ['Ferrari F50',               'Ferrari F50'],
+  ferrari_enzo:         ['Ferrari Enzo',              'Ferrari Enzo Ferrari'],
+
+  // ── McLaren ──────────────────────────────────────────────────────
+  mclaren_artura:       ['McLaren Artura',            'McLaren Artura'],
+  mclaren_765lt:        ['McLaren 765LT',             'McLaren 765LT'],
+  mclaren_senna:        ['McLaren Senna',             'McLaren Senna'],
+  mclaren_p1:           ['McLaren P1',                'McLaren P1'],
+  mclaren_speedtail:    ['McLaren Speedtail',         'McLaren Speedtail'],
+  mclaren_gt:           ['McLaren GT',                'McLaren GT'],
+  mclaren_elva:         ['McLaren Elva',              'McLaren Elva'],
+
+  // ── Aston Martin ─────────────────────────────────────────────────
+  aston_vantage:        ['Aston Martin Vantage',      'Aston Martin Vantage'],
+  aston_db12:           ['Aston Martin DB12',         'Aston Martin DB12'],
+  aston_dbs:            ['Aston Martin DBS Superleggera', 'Aston Martin DBS Superleggera'],
+  aston_valhalla:       ['Aston Martin Valhalla',     'Aston Martin Valhalla'],
+  aston_valkyrie:       ['Aston Martin Valkyrie',     'Aston Martin Valkyrie'],
+  aston_dbx707:         ['Aston Martin DBX',          'Aston Martin DBX'],
+
+  // ── Bugatti ──────────────────────────────────────────────────────
+  bugatti_chiron:       ['Bugatti Chiron',            'Bugatti Chiron'],
+  bugatti_bolide:       ['Bugatti Bolide',            'Bugatti Bolide'],
+  bugatti_veyron_ss:    ['Bugatti Veyron',            'Bugatti Veyron'],
+  bugatti_centodieci:   ['Bugatti Centodieci',        'Bugatti Centodieci'],
+
+  // ── Koenigsegg ───────────────────────────────────────────────────
+  koenigsegg_jesko:     ['Koenigsegg Jesko',          'Koenigsegg Jesko'],
+  koenigsegg_regera:    ['Koenigsegg Regera',         'Koenigsegg Regera'],
+  koenigsegg_gemera:    ['Koenigsegg Gemera',         'Koenigsegg Gemera'],
+  koenigsegg_agera_rs:  ['Koenigsegg Agera',          'Koenigsegg Agera'],
+
+  // ── Pagani ───────────────────────────────────────────────────────
+  pagani_huayra:        ['Pagani Huayra',             'Pagani Huayra'],
+  pagani_utopia:        ['Pagani Utopia',             'Pagani Utopia'],
+  pagani_zonda:         ['Pagani Zonda',              'Pagani Zonda'],
+
+  // ── Lotus ────────────────────────────────────────────────────────
+  lotus_evija:          ['Lotus Evija',               'Lotus Evija'],
+  lotus_emira:          ['Lotus Emira',               'Lotus Emira'],
+
+  // ── Maserati / Hipercarros / AMG / BMW M / Audi RS ──────────────
+  maserati_mc20:        ['Maserati MC20',             'Maserati MC20'],
+  rimac_nevera:         ['Rimac Nevera',              'Rimac Nevera'],
+  czinger_21c:          ['Czinger 21C',               'Czinger 21C'],
+  amg_one:              ['Mercedes-AMG ONE',          'Mercedes-AMG One'],
+  amg_gt_black_series:  ['Mercedes-AMG GT',           'Mercedes-AMG GT Black Series'],
+  amg_sl63:             ['Mercedes-Benz SL',          'Mercedes-Benz SL-Class (R232)'],
+  bmw_m5_cs:            ['BMW M5',                    'BMW M5 (F90)'],
+  bmw_m8_competition:   ['BMW M8',                    'BMW M8'],
+  audi_rsq8:            ['Audi RS Q8',                'Audi RS Q8'],
+  audi_rs_etron_gt:     ['Audi e-tron GT',            'Audi e-tron GT'],
 };
 
 // ── Cache e estado ────────────────────────────────────────────────────────────

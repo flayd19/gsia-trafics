@@ -50,12 +50,12 @@ function positionColor(pos: number) {
 }
 
 /**
- * Tempo estimado da CORRIDA INTEIRA (LAPS × LAP_METERS) em segundos,
+ * Tempo estimado da CORRIDA INTEIRA (totalLaps × LAP_METERS) em segundos,
  * derivado a partir do score quando o motor não fornece tempo direto.
- * Calibrado para 3 voltas × 2000m (6 km totais):
- *   score 0   → ~180s (carro popular muito ruim, ~120 km/h média)
- *   score 50  → ~120s (carro mediano, ~180 km/h média)
- *   score 100 → ~85s  (supercar, ~255 km/h média)
+ * Calibrado por volta × 2000m:
+ *   score 0   → ~180s/corrida (carro popular muito ruim, ~120 km/h média)
+ *   score 50  → ~120s/corrida (carro mediano, ~180 km/h média)
+ *   score 100 → ~85s/corrida  (supercar, ~255 km/h média)
  */
 function calcRaceTimeSec(score: number): number {
   const s = Math.max(0, Math.min(score, 100));
@@ -93,10 +93,9 @@ function fmtTimer(sec: number): string {
   return `${String(s).padStart(2, '0')}.${d}s`;
 }
 
-// ── Constantes do circuito (3 voltas × 2000 m = 6 km totais) ─────
-const LAPS       = 3;
-const LAP_METERS = 2_000;
-const TOTAL_RACE_METERS = LAPS * LAP_METERS;
+// ── Constantes do circuito ────────────────────────────────────────
+const DEFAULT_LAPS = 5;          // Padrão ao criar lobby
+const LAP_METERS   = 2_000;      // 2 km por volta
 
 /** Cores por índice de piloto */
 const PLAYER_COLORS = ['#facc15', '#94a3b8', '#f97316', '#60a5fa'] as const;
@@ -258,6 +257,7 @@ export function RachaScreen({ gameState, onSpendMoney, onAddMoney, onRaceWon }: 
 
   const [showCreate,      setShowCreate]      = useState(false);
   const [joinLobbyTarget, setJoinLobbyTarget] = useState<OpenLobby | null>(null);
+  const [selectedLaps,    setSelectedLaps]    = useState(DEFAULT_LAPS);
 
   const {
     state,
@@ -285,7 +285,8 @@ export function RachaScreen({ gameState, onSpendMoney, onAddMoney, onRaceWon }: 
       <CreateLobbyView
         carsInGarage={carsInGarage}
         gameState={gameState}
-        onConfirm={(car, bet, maxPlayers) => {
+        onConfirm={(car, bet, maxPlayers, laps) => {
+          setSelectedLaps(laps);
           setShowCreate(false);
           void createLobby(car, bet, maxPlayers);
         }}
@@ -319,6 +320,7 @@ export function RachaScreen({ gameState, onSpendMoney, onAddMoney, onRaceWon }: 
         players={currentResultPlayers}
         myUserId={myUserId}
         onFinish={finishRace}
+        totalLaps={selectedLaps}
       />
     );
   }
@@ -330,6 +332,7 @@ export function RachaScreen({ gameState, onSpendMoney, onAddMoney, onRaceWon }: 
         players={currentResultPlayers}
         myUserId={myUserId}
         onBack={dismissResult}
+        totalLaps={selectedLaps}
       />
     );
   }
@@ -404,7 +407,7 @@ function LobbyListView({
             Rachas
           </h2>
           <p className="text-[12px] text-muted-foreground mt-0.5">
-            PvP · {LAPS} voltas · {LAP_METERS * LAPS}m · Até 4 jogadores
+            PvP · 5–15 voltas · até 30 km · Até 4 jogadores
           </p>
         </div>
         <div className="flex gap-2">
@@ -803,10 +806,11 @@ function LobbyCard({
 // TrackSVG — pista estilo F1 com carros animados
 // ══════════════════════════════════════════════════════════════════
 interface TrackSVGProps {
-  players:  RacePlayerAnim[];
-  lapProgs: Record<string, number>; // userId → voltas percorridas (0 → LAPS)
-  posMaps:  Record<string, number>; // userId → posição visual em tempo real
-  myUserId: string | null;
+  players:   RacePlayerAnim[];
+  lapProgs:  Record<string, number>; // userId → voltas percorridas (0 → totalLaps)
+  posMaps:   Record<string, number>; // userId → posição visual em tempo real
+  myUserId:  string | null;
+  totalLaps: number;
 }
 
 // Bordas laterais da pista (offset ±12px do centro)
@@ -832,7 +836,7 @@ const TRACK_INNER_D = [
   'C 62 70 62 52 74 48 C 76 46 77 46 78 46 Z',
 ].join(' ');
 
-function TrackSVG({ players, lapProgs, posMaps, myUserId }: TrackSVGProps) {
+function TrackSVG({ players, lapProgs, posMaps, myUserId, totalLaps }: TrackSVGProps) {
   // Z-ordering: carros mais baixos no SVG (y maior) ficam na frente
   const zSorted = [...players].sort((a, b) => {
     const ya = trackPt((lapProgs[a.userId] ?? 0) % 1).y;
@@ -850,7 +854,7 @@ function TrackSVG({ players, lapProgs, posMaps, myUserId }: TrackSVGProps) {
   ];
 
   return (
-    <svg viewBox="0 0 360 210" className="w-full select-none" style={{ maxHeight: 220 }}>
+    <svg viewBox="0 0 360 210" className="w-full select-none">
       {/* Fundo grama */}
       <rect width={360} height={210} fill="#0f1a0f" rx={14} />
 
@@ -926,7 +930,7 @@ function TrackSVG({ players, lapProgs, posMaps, myUserId }: TrackSVGProps) {
       {/* Nome do circuito */}
       <text x={180} y={100} textAnchor="middle"
         fontSize={7.5} fill="#6b7280" fontWeight="bold" letterSpacing={1.5} opacity={0.6}>
-        CIRCUITO · {LAPS}V · {LAP_METERS * LAPS / 1000}KM
+        CIRCUITO · {totalLaps}V · {LAP_METERS * totalLaps / 1000}KM
       </text>
 
       {/* Total length info */}
@@ -942,7 +946,7 @@ function TrackSVG({ players, lapProgs, posMaps, myUserId }: TrackSVGProps) {
         const pt     = trackPt(prog % 1);
         const isMe   = p.isMe || p.userId === myUserId;
         const color  = PLAYER_COLORS[pIdx] ?? '#fff';
-        const lapNum = Math.min(Math.floor(prog) + 1, LAPS);
+        const lapNum = Math.min(Math.floor(prog) + 1, totalLaps);
         const visPos = posMaps[p.userId] ?? p.position;
 
         return (
@@ -986,18 +990,17 @@ function TrackSVG({ players, lapProgs, posMaps, myUserId }: TrackSVGProps) {
 // RacingView — Animação da corrida com pista F1
 // ══════════════════════════════════════════════════════════════════
 interface RacingViewProps {
-  players:   RacePlayerAnim[];
-  myUserId:  string | null;
-  onFinish:  () => void;
+  players:    RacePlayerAnim[];
+  myUserId:   string | null;
+  onFinish:   () => void;
+  totalLaps:  number;
 }
 
-function RacingView({ players, myUserId, onFinish }: RacingViewProps) {
-  // Duração da animação visual: 30-40s para 2-4 jogadores.
-  // Calibrada para se aproximar da percepção real da corrida — uma corrida
-  // de 6 km a 150 km/h média demora ~144s reais; comprimir isso em 15s era
-  // muito brusco. Agora a animação respira mais e o jogador acompanha as
-  // ultrapassagens com calma.
-  const DURATION_MS = 25_000 + players.length * 2_500;
+function RacingView({ players, myUserId, onFinish, totalLaps }: RacingViewProps) {
+  // Duração escalada com número de voltas: mais voltas = animação mais longa.
+  // Formula: totalLaps × 5500ms + jogadores × 2000ms
+  //   5 v + 2p ≈ 31,5s | 10 v + 4p ≈ 63s | 15 v + 4p ≈ 90,5s
+  const DURATION_MS = totalLaps * 5_500 + players.length * 2_000;
 
   const [lapProgs, setLapProgs] = useState<Record<string, number>>(() =>
     Object.fromEntries(players.map(p => [p.userId, 0]))
@@ -1038,7 +1041,7 @@ function RacingView({ players, myUserId, onFinish }: RacingViewProps) {
         const speed = 0.85 + (p.score / maxScore) * 0.15;
         const noise = racingNoise(t, idx * 7.3 + 1.1);
         const amp   = Math.max(0.01, 0.06 - Math.abs(p.score / maxScore - 0.5) * 0.04);
-        newProgs[p.userId] = eased * LAPS * speed + noise * amp;
+        newProgs[p.userId] = eased * totalLaps * speed + noise * amp;
       });
       setLapProgs(newProgs);
 
@@ -1060,9 +1063,9 @@ function RacingView({ players, myUserId, onFinish }: RacingViewProps) {
         const finalPos: Record<string, number> = {};
         playersSnapshot.forEach(p => { finalPos[p.userId] = p.position; });
         setPosMaps(finalPos);
-        // Fixar lapProgs em LAPS para todos
+        // Fixar lapProgs em totalLaps para todos
         const finalProgs: Record<string, number> = {};
-        playersSnapshot.forEach(p => { finalProgs[p.userId] = LAPS; });
+        playersSnapshot.forEach(p => { finalProgs[p.userId] = totalLaps; });
         setLapProgs(finalProgs);
         setTimeout(() => onFinishRef.current(), 600);
       }
@@ -1094,6 +1097,7 @@ function RacingView({ players, myUserId, onFinish }: RacingViewProps) {
         lapProgs={lapProgs}
         posMaps={posMaps}
         myUserId={myUserId}
+        totalLaps={totalLaps}
       />
 
       {/* Classificação em tempo real */}
@@ -1124,7 +1128,7 @@ function RacingView({ players, myUserId, onFinish }: RacingViewProps) {
                 </div>
                 <div className="text-right">
                   <div className="text-[11px] font-bold" style={{ color }}>
-                    V{Math.min(Math.floor(laps) + 1, LAPS)}/{LAPS}
+                    V{Math.min(Math.floor(laps) + 1, totalLaps)}/{totalLaps}
                   </div>
                   {/* IGP só visível para o próprio jogador (privacidade competitiva) */}
                   {isMe && <div className="text-[10px] text-muted-foreground">IGP {p.igp}</div>}
@@ -1142,26 +1146,28 @@ function RacingView({ players, myUserId, onFinish }: RacingViewProps) {
 // Apenas 1º lugar recebe prêmio
 // ══════════════════════════════════════════════════════════════════
 interface ResultViewProps {
-  players:  RacePlayerAnim[];
-  myUserId: string | null;
-  onBack:   () => void;
+  players:   RacePlayerAnim[];
+  myUserId:  string | null;
+  onBack:    () => void;
+  totalLaps: number;
 }
 
-function ResultView({ players, myUserId, onBack }: ResultViewProps) {
+function ResultView({ players, myUserId, onBack, totalLaps }: ResultViewProps) {
   const sorted   = [...players].sort((a, b) => a.position - b.position);
   const me       = players.find(p => p.isMe || p.userId === myUserId);
   const myPos    = me?.position ?? 0;
   const won      = myPos === 1;
   const pot      = players.reduce((s, p) => s + p.payout, 0);
   const winner   = sorted[0];
-  const totalDistanceKm = (LAPS * LAP_METERS) / 1000;
+  const totalDistanceKm = (totalLaps * LAP_METERS) / 1000;
+  const totalRaceMeters = totalLaps * LAP_METERS;
 
   // Helpers — preferem tempos reais do motor (totalTimeSec/bestLapSec) quando
   // disponíveis (lobbies novos), senão derivam do score (lobbies legacy).
   const getTimeSec = (p: typeof players[number]) =>
     p.totalTimeSec ?? calcRaceTimeSec(p.score);
   const getBestLap = (p: typeof players[number]) =>
-    p.bestLapSec ?? calcRaceTimeSec(p.score) / LAPS;
+    p.bestLapSec ?? calcRaceTimeSec(p.score) / totalLaps;
 
   // Tempo do líder (referência para cálculo de gaps)
   const leaderTime = winner ? getTimeSec(winner) : 0;
@@ -1221,7 +1227,7 @@ function ResultView({ players, myUserId, onBack }: ResultViewProps) {
           </div>
           <div className="flex justify-between">
             <span className="text-muted-foreground">Voltas</span>
-            <span className="font-semibold text-foreground">{LAPS}</span>
+            <span className="font-semibold text-foreground">{totalLaps}</span>
           </div>
           <div className="flex justify-between">
             <span className="text-muted-foreground">Pot total</span>
@@ -1246,10 +1252,10 @@ function ResultView({ players, myUserId, onBack }: ResultViewProps) {
           const color      = PLAYER_COLORS[players.indexOf(p)] ?? '#94a3b8';
           const timeSec    = getTimeSec(p);
           const gap        = p.position === 1 ? 0 : timeSec - leaderTime;
-          // Velocidade calculada sobre a corrida INTEIRA (LAPS × LAP_METERS).
+          // Velocidade calculada sobre a corrida INTEIRA (totalLaps × LAP_METERS).
           // Top speed é estimado como ~1.42× a média (picos em reta).
-          const topSpeed   = calcTopSpeedKmh(TOTAL_RACE_METERS, timeSec);
-          const avgSpeed   = calcAvgSpeedKmh(TOTAL_RACE_METERS, timeSec);
+          const topSpeed   = calcTopSpeedKmh(totalRaceMeters, timeSec);
+          const avgSpeed   = calcAvgSpeedKmh(totalRaceMeters, timeSec);
           const lapTime    = getBestLap(p);
           return (
             <div key={p.userId}
@@ -1328,19 +1334,37 @@ function ResultView({ players, myUserId, onBack }: ResultViewProps) {
             .map(ev => ({ ...ev, player: p })),
         );
         if (highlights.length === 0) return null;
-        // Limita a 6 highlights mais relevantes (largadas + maiores impactos)
+        // Pesos para priorizar eventos mais dramáticos no top da lista.
+        // Quanto MENOR o número, mais para cima aparece.
+        const eventPriority = (type: string): number => {
+          switch (type) {
+            case 'great_start':
+            case 'poor_start':       return 0;
+            case 'comeback':         return 1;
+            case 'overtake':
+            case 'slipstream_pass':  return 2;
+            case 'defended_position':return 3;
+            case 'last_lap_attack':
+            case 'hot_lap':          return 4;
+            case 'lost_grip':
+            case 'close_battle':     return 5;
+            case 'late_brake':       return 6;
+            case 'minor_mistake':
+            case 'tire_struggle':    return 7;
+            case 'consistent_pace':  return 8;
+            default:                 return 9;
+          }
+        };
+        // Limita a 8 highlights mais relevantes
         const ranked = [...highlights]
           .sort((a, b) => {
-            // Largadas primeiro, depois por volta crescente, depois por |timeImpact| desc
-            const startBoost = (e: typeof a) =>
-              e.type === 'great_start' || e.type === 'poor_start' ? 0 : 1;
-            const sb = startBoost(a) - startBoost(b);
-            if (sb !== 0) return sb;
+            const pDiff = eventPriority(a.type) - eventPriority(b.type);
+            if (pDiff !== 0) return pDiff;
             const lapDiff = (a.lap ?? 99) - (b.lap ?? 99);
             if (lapDiff !== 0) return lapDiff;
             return Math.abs(b.timeImpact) - Math.abs(a.timeImpact);
           })
-          .slice(0, 6);
+          .slice(0, 8);
         return (
           <div className="ios-surface rounded-[14px] p-3 space-y-2">
             <div className="text-[11px] uppercase tracking-wider text-muted-foreground font-semibold">
@@ -1358,10 +1382,20 @@ function ResultView({ players, myUserId, onBack }: ResultViewProps) {
                     }`}
                   >
                     <span className="text-base shrink-0">
-                      {h.type === 'great_start'    ? '🚀' :
-                       h.type === 'poor_start'     ? '😬' :
-                       h.type === 'consistent_pace' ? '🎯' :
-                       h.type === 'minor_mistake'  ? '⚠️' : '⏱️'}
+                      {h.type === 'great_start'      ? '🚀' :
+                       h.type === 'poor_start'       ? '😬' :
+                       h.type === 'consistent_pace'  ? '🎯' :
+                       h.type === 'minor_mistake'    ? '⚠️' :
+                       h.type === 'overtake'         ? '⚡' :
+                       h.type === 'defended_position'? '🛡️' :
+                       h.type === 'close_battle'     ? '🔥' :
+                       h.type === 'late_brake'       ? '🎯' :
+                       h.type === 'slipstream_pass'  ? '💨' :
+                       h.type === 'tire_struggle'    ? '🛞' :
+                       h.type === 'hot_lap'          ? '🔥' :
+                       h.type === 'comeback'         ? '📈' :
+                       h.type === 'lost_grip'        ? '💥' :
+                       h.type === 'last_lap_attack'  ? '🏁' : '⏱️'}
                     </span>
                     <span className="text-base shrink-0">{h.player.carIcon}</span>
                     <div className="flex-1 min-w-0">
@@ -1398,10 +1432,10 @@ function ResultView({ players, myUserId, onBack }: ResultViewProps) {
           {(() => {
             const myTime    = getTimeSec(me);
             const winTime   = getTimeSec(winner);
-            const myTopV    = calcTopSpeedKmh(TOTAL_RACE_METERS, myTime);
-            const winTopV   = calcTopSpeedKmh(TOTAL_RACE_METERS, winTime);
-            const myAvgV    = calcAvgSpeedKmh(TOTAL_RACE_METERS, myTime);
-            const winAvgV   = calcAvgSpeedKmh(TOTAL_RACE_METERS, winTime);
+            const myTopV    = calcTopSpeedKmh(totalRaceMeters, myTime);
+            const winTopV   = calcTopSpeedKmh(totalRaceMeters, winTime);
+            const myAvgV    = calcAvgSpeedKmh(totalRaceMeters, myTime);
+            const winAvgV   = calcAvgSpeedKmh(totalRaceMeters, winTime);
             // IGP do vencedor é omitido por privacidade competitiva — só mostra
             // o seu para você não ter como deduzir o setup do adversário.
             const rows: Array<{ label: string; you: string; winner: string; better: boolean }> = [
@@ -1504,8 +1538,8 @@ function ResultView({ players, myUserId, onBack }: ResultViewProps) {
               return [
                 { label: 'Posição',      value: `${me.position}º de ${players.length}` },
                 { label: 'Tempo total',  value: fmtTimer(myTime) },
-                { label: 'Vel. Máx',     value: `${calcTopSpeedKmh(TOTAL_RACE_METERS, myTime)} km/h` },
-                { label: 'Vel. Média',   value: `${calcAvgSpeedKmh(TOTAL_RACE_METERS, myTime)} km/h` },
+                { label: 'Vel. Máx',     value: `${calcTopSpeedKmh(totalRaceMeters, myTime)} km/h` },
+                { label: 'Vel. Média',   value: `${calcAvgSpeedKmh(totalRaceMeters, myTime)} km/h` },
                 { label: 'Melhor volta', value: fmtTimer(myBest) },
                 { label: 'IGP do carro', value: `${me.igp}` },
               ];
@@ -1533,7 +1567,7 @@ function ResultView({ players, myUserId, onBack }: ResultViewProps) {
 interface CreateLobbyViewProps {
   carsInGarage: OwnedCar[];
   gameState:    GameState;
-  onConfirm:    (car: OwnedCar, bet: number, maxPlayers: number) => void;
+  onConfirm:    (car: OwnedCar, bet: number, maxPlayers: number, laps: number) => void;
   onBack:       () => void;
 }
 
@@ -1541,6 +1575,7 @@ function CreateLobbyView({ carsInGarage, gameState, onConfirm, onBack }: CreateL
   const [selectedCar, setSelectedCar] = useState<OwnedCar | null>(carsInGarage[0] ?? null);
   const [bet,         setBet]         = useState(BET_PRESETS[1]);
   const [maxPlayers,  setMaxPlayers]  = useState(2);
+  const [laps,        setLaps]        = useState(DEFAULT_LAPS);
 
   const pot = Math.round(bet * maxPlayers * 0.95);
 
@@ -1635,6 +1670,31 @@ function CreateLobbyView({ carsInGarage, gameState, onConfirm, onBack }: CreateL
         </div>
       </div>
 
+      {/* Número de voltas */}
+      <div className="space-y-2">
+        <div className="text-[11px] uppercase tracking-wider text-muted-foreground font-semibold px-1">
+          Voltas
+        </div>
+        <div className="flex gap-1.5">
+          {[5, 10, 15].map(n => (
+            <button
+              key={n}
+              onClick={() => setLaps(n)}
+              className={`flex-1 py-2 text-[13px] font-semibold rounded-[10px] transition-all ${
+                laps === n
+                  ? 'bg-primary text-primary-foreground'
+                  : 'ios-surface text-muted-foreground hover:text-foreground'
+              }`}
+            >
+              {n}V
+            </button>
+          ))}
+        </div>
+        <div className="text-center text-[11px] text-muted-foreground">
+          {laps * LAP_METERS / 1000} km totais
+        </div>
+      </div>
+
       {/* Saldo */}
       <div className="flex items-center justify-between px-1 text-[12px]">
         <span className="text-muted-foreground">Seu saldo</span>
@@ -1646,7 +1706,7 @@ function CreateLobbyView({ carsInGarage, gameState, onConfirm, onBack }: CreateL
       <Button
         className="w-full"
         disabled={!selectedCar || gameState.money < bet}
-        onClick={() => selectedCar && onConfirm(selectedCar, bet, maxPlayers)}
+        onClick={() => selectedCar && onConfirm(selectedCar, bet, maxPlayers, laps)}
       >
         <Flag size={14} className="mr-1.5" />
         Criar Racha · {fmt(bet)}

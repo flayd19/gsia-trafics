@@ -2,16 +2,18 @@
 // raceEngine — Motor de simulação de corridas baseado em performance
 //
 // Filosofia:
-//   • 90% determinístico: tempo final é dominado pelos stats reais do carro
-//     (top speed, aceleração, grip, stability, aero, gearShift) ponderados por
-//     setor do circuito (reta, aceleração, chicane, hairpin).
-//   • 10% ou menos de variabilidade: pequenos eventos de corrida (largada,
-//     erros, sorte de "tração") que dão sabor sem comprometer o resultado
-//     esperado pelo desempenho do carro.
+//   • ~85% determinístico: tempo final é dominado pelos stats reais do carro
+//     (top speed, aceleração, grip, stability, aero, gearShift) ponderados
+//     por setor do circuito (reta, aceleração, chicane, hairpin).
+//   • ~15% drama controlado: o motor simula volta-a-volta, com degradação
+//     de pneu, slipstream, batalhas entre pilotos próximos, ultrapassagens
+//     dramáticas, comebacks e variabilidade aumentada na última volta.
+//     O cap absoluto de impacto evita que sorte inverta corridas com gap
+//     significativo de IGP.
 //   • Reaproveita os mesmos pesos setoriais usados em `calcIgp` no
 //     performanceEngine — um carro com IGP 80 sempre vence em média um
-//     IGP 50, mas com variabilidade suficiente para fazer cada corrida
-//     ser interessante de assistir.
+//     IGP 50, mas com narrativa rica suficiente para a corrida não ser
+//     previsível em IGPs próximos.
 //
 // Determinismo:
 //   • Ao receber um `seed`, o resultado é estável (reprodutível). Útil para
@@ -34,9 +36,26 @@ export interface RaceEntrant {
   condition?: number;
 }
 
+export type RaceEventType =
+  | 'great_start'
+  | 'poor_start'
+  | 'minor_mistake'
+  | 'consistent_pace'
+  | 'fastest_lap'
+  | 'overtake'
+  | 'defended_position'
+  | 'close_battle'
+  | 'late_brake'
+  | 'slipstream_pass'
+  | 'tire_struggle'
+  | 'hot_lap'
+  | 'comeback'
+  | 'lost_grip'
+  | 'last_lap_attack';
+
 export interface RaceEventLog {
   /** Tipo do evento — útil para narração. */
-  type:       'great_start' | 'poor_start' | 'minor_mistake' | 'consistent_pace' | 'fastest_lap';
+  type:       RaceEventType;
   /** Em qual volta aconteceu (1-N). */
   lap?:       number;
   /** Em qual setor aconteceu. */
@@ -45,6 +64,8 @@ export interface RaceEventLog {
   description: string;
   /** Impacto em segundos no tempo total (positivo = perdeu tempo, negativo = ganhou). */
   timeImpact: number;
+  /** Para eventos de batalha: userId do oponente envolvido. */
+  opponentUserId?: string;
 }
 
 export interface RaceEntrantResult {
@@ -71,9 +92,9 @@ export interface SimulateRaceOptions {
   /** Seed determinístico (recomendado em multiplayer). */
   seed?:   string;
   /**
-   * Magnitude máxima de variabilidade aleatória final (0..0.10). Default 0.03 (3%).
+   * Magnitude máxima de variabilidade aleatória final (0..0.10). Default 0.04 (4%).
    * Mantida baixa por design: o resultado deve refletir o desempenho real do
-   * carro, não da sorte. Valores acima de 0.05 começam a inverter resultados
+   * carro, não da sorte. Valores acima de 0.06 começam a inverter resultados
    * em IGPs próximos.
    */
   luckAmplitude?: number;
@@ -83,8 +104,6 @@ export interface SimulateRaceOptions {
 
 /**
  * Pesos por setor — quais stats importam mais em cada parte do circuito.
- * Soma de pesos por setor é normalizada (não precisa somar 1.0 exatamente
- * porque normalizamos depois).
  */
 const SECTOR_WEIGHTS: Record<RaceSector, Partial<Record<keyof PerformanceStats, number>>> = {
   // Reta: top speed e potência dominam; aero ajuda
@@ -97,14 +116,6 @@ const SECTOR_WEIGHTS: Record<RaceSector, Partial<Record<keyof PerformanceStats, 
   hairpin:  { grip: 0.45, stability: 0.30, torque: 0.25 },
 };
 
-/** Peso de cada setor no score TOTAL da corrida. Soma = 1.0. */
-const SECTOR_WEIGHT_IN_TOTAL: Record<RaceSector, number> = {
-  straight: 0.30,
-  accel:    0.25,
-  chicane:  0.25,
-  hairpin:  0.20,
-};
-
 /** Bônus por tipo de tração (idêntico ao do performanceEngine). */
 const TRACTION_BONUS: Record<NonNullable<PerformanceStats['traction']>, number> = {
   AWD: 3.5,
@@ -112,9 +123,19 @@ const TRACTION_BONUS: Record<NonNullable<PerformanceStats['traction']>, number> 
   FWD: 0,
 };
 
+/**
+ * Cap absoluto de impacto agregado de eventos por piloto. Garante que
+ * mesmo um carro azarado (várias largadas ruins, erros, perdas em batalha)
+ * não tenha mais que ±2.5s de "drama" sobre o tempo determinístico.
+ *
+ * Calibração: para corridas de 80-180s, isso é 1.5-3% — não inverte
+ * resultados entre carros com gap de IGP > 8.
+ */
+const MAX_TOTAL_EVENT_IMPACT_SEC = 2.5;
+
 // ── Helpers ────────────────────────────────────────────────────────────
 
-/** PRNG seedável simples (mulberry32) para reprodutibilidade. */
+/** PRNG seedável (mulberry32) para reprodutibilidade. */
 function createRng(seed: string | undefined): () => number {
   if (!seed) {
     return Math.random;
@@ -143,7 +164,7 @@ function approximateStatsFromIgp(igp: number): PerformanceStats {
     acceleration: v,
     power:        v,
     torque:       v,
-    weight:       50, // neutro
+    weight:       50,
     aerodynamics: v,
     stability:    v,
     grip:         v,
@@ -171,7 +192,7 @@ function calcSectorScore(stats: PerformanceStats, sector: RaceSector, condition:
     raw += statValue * w;
     totalW += w;
   }
-  if (totalW > 0) raw /= totalW; // normaliza para 0-100
+  if (totalW > 0) raw /= totalW;
 
   // Penalidade de peso: carros pesados perdem em hairpin/accel; menos em reta
   const weightPenalty = sector === 'straight' ? 0
@@ -187,17 +208,7 @@ function calcSectorScore(stats: PerformanceStats, sector: RaceSector, condition:
 
 /**
  * Converte score 0-100 em tempo de setor (segundos por volta).
- * Tempos calibrados para uma volta típica de 2000m (2 km) em circuito misto.
- * Gera velocidades médias de 130-260 km/h por volta:
- *   • Reta principal (~700m): 12s (top) → 25s (fundo) — 100-210 km/h média
- *   • Aceleração saída de curva (~250m): 4s (top) → 9s (fundo)
- *   • Chicane (~400m): 5s (top) → 11s (fundo)
- *   • Hairpin + reta curta (~650m): 7s (top) → 15s (fundo)
- *
- * Volta total:
- *   • Top performer (score 100): ~28s/volta → ~257 km/h média
- *   • Mid performer (score 50):  ~42s/volta → ~171 km/h média
- *   • Bottom (score 0):          ~60s/volta → ~120 km/h média
+ * Calibrado para volta de 2000m em circuito misto.
  */
 function sectorScoreToTime(score: number, sector: RaceSector): number {
   const s = Math.max(0, Math.min(100, score));
@@ -210,199 +221,479 @@ function sectorScoreToTime(score: number, sector: RaceSector): number {
   }
 }
 
-// ── Eventos narrativos (sorte controlada e baixa) ─────────────────────
+// ── Estado interno por piloto durante simulação volta-a-volta ──────────
 
-/**
- * Retorna eventos extras de corrida — largada, erros pontuais — junto com
- * o impacto em tempo. Probabilidades reduzidas e impactos capeados para
- * que eventos sejam SABOR e não decidam o resultado entre carros distantes.
- *
- * Cap total dos eventos: ±1.5s no tempo da corrida. Para corridas de 80-180s,
- * isso é ~1-2% — não consegue inverter um resultado entre carros com IGP
- * minimamente distantes.
- */
-function rollRaceEvents(
-  stats: PerformanceStats,
-  laps: number,
-  rng: () => number,
-): RaceEventLog[] {
-  const events: RaceEventLog[] = [];
-
-  // ── Largada (start) — depende de gearShift + grip + tração ──
-  const startBase = (stats.gearShift + stats.grip) / 2 + (TRACTION_BONUS[stats.traction] ?? 0);
-  const startRoll = rng();
-  // P(great_start) varia de ~3% (ruim) a ~18% (excelente)
-  const greatStartProb = 0.03 + Math.min(0.15, startBase / 700);
-  // P(poor_start) varia de ~10% (ruim) a ~2% (excelente)
-  const poorStartProb  = Math.max(0.02, 0.12 - startBase / 700);
-
-  if (startRoll < greatStartProb) {
-    events.push({
-      type:        'great_start',
-      lap:         1,
-      sector:      'straight',
-      description: 'Largada perfeita',
-      timeImpact:  -(0.2 + rng() * 0.3), // ganha 0.2-0.5s
-    });
-  } else if (startRoll > 1 - poorStartProb) {
-    events.push({
-      type:        'poor_start',
-      lap:         1,
-      sector:      'straight',
-      description: 'Largada hesitante',
-      timeImpact:  +(0.2 + rng() * 0.3), // perde 0.2-0.5s
-    });
-  }
-
-  // ── Erros pontuais — probabilidade reduzida ──
-  const stabilityFactor = stats.stability / 100;
-  for (let lap = 1; lap <= laps; lap++) {
-    const mistakeRoll = rng();
-    // P varia de ~2% (carro estável) a ~6% (instável)
-    const mistakeProb = 0.06 - stabilityFactor * 0.04;
-    if (mistakeRoll < mistakeProb) {
-      const sectors: RaceSector[] = ['accel', 'chicane', 'hairpin'];
-      const sector = sectors[Math.floor(rng() * sectors.length)] ?? 'chicane';
-      events.push({
-        type:        'minor_mistake',
-        lap,
-        sector,
-        description: sector === 'hairpin' ? 'Travou na frenagem' :
-                     sector === 'chicane' ? 'Errou a apex' :
-                                            'Patinou na saída',
-        timeImpact:  +(0.1 + rng() * 0.2), // perde 0.1-0.3s
-      });
-    }
-  }
-
-  // ── Pace consistente: bonus para carros com stability + grip altos ──
-  if (stats.stability > 75 && stats.grip > 75 && rng() < 0.25) {
-    events.push({
-      type:        'consistent_pace',
-      description: 'Ritmo cirúrgico ao longo da corrida',
-      timeImpact:  -(0.15 + rng() * 0.25), // ganha 0.15-0.4s
-    });
-  }
-
-  return events;
+interface DriverState {
+  entrant:        RaceEntrant;
+  stats:          PerformanceStats;
+  condition:      number;
+  baseLapTime:    number;
+  sectorScores:   Record<RaceSector, number>;
+  /** Tempo acumulado desde a largada (segundos). */
+  totalTime:      number;
+  /** Tempos individuais de cada volta. */
+  lapTimes:       number[];
+  /** Eventos narrativos coletados. */
+  events:         RaceEventLog[];
+  /** Posição na largada (1 = pole). Definida após primeira volta. */
+  startingPos:    number;
+  /** Posição corrente — recalculada após cada volta. */
+  currentPos:     number;
+  /** "Estilo" — estilo que o piloto/carro atacou nesta corrida. Influencia eventos. */
+  aggression:     number; // 0-1
 }
 
 /**
- * Caps o impacto agregado dos eventos para garantir que não invertam
- * resultados entre carros com diferença significativa de desempenho.
- * Limite: ±1.5s no tempo total da corrida.
+ * Calcula coeficiente de degradação de pneu por volta. Carros com grip
+ * baixo degradam mais rápido. Ajustado para somar até ~3-5% nas últimas
+ * voltas de uma corrida de 3 voltas.
  */
-function capEventImpact(rawImpact: number): number {
-  const MAX_IMPACT_SEC = 1.5;
-  return Math.max(-MAX_IMPACT_SEC, Math.min(MAX_IMPACT_SEC, rawImpact));
+function tireDegradationPerLap(stats: PerformanceStats, lap: number, totalLaps: number): number {
+  // Carros com grip alto degradam menos. Grip 100 = 0.5% por volta cumulativo;
+  // Grip 0 = 1.5% por volta.
+  const baseDegradation = 0.015 - (stats.grip / 100) * 0.010; // 0.005-0.015
+  // Aumenta progressivamente — pneus piores no fim
+  const lapFactor = lap / Math.max(1, totalLaps); // 0..1 ao longo da corrida
+  return baseDegradation * lapFactor;
+}
+
+/**
+ * Aceleração extra nas últimas voltas por causa do consumo de combustível.
+ * Carros mais pesados se beneficiam mais (perdem mais peso relativo).
+ */
+function fuelSaveBonusPerLap(stats: PerformanceStats, lap: number, totalLaps: number): number {
+  // Carro pesado (peso=80) ganha até 0.8% por volta no fim; leve (peso=20) ganha 0.3%.
+  const baseBenefit = 0.003 + (stats.weight / 100) * 0.005; // 0.003-0.008
+  const lapFactor = lap / Math.max(1, totalLaps);
+  return baseBenefit * lapFactor;
+}
+
+// ── Eventos individuais (largada e variações por volta) ────────────────
+
+function rollStartEvent(stats: PerformanceStats, rng: () => number): RaceEventLog | null {
+  const startBase = (stats.gearShift + stats.grip) / 2 + (TRACTION_BONUS[stats.traction] ?? 0);
+  const startRoll = rng();
+  const greatStartProb = 0.04 + Math.min(0.18, startBase / 600);
+  const poorStartProb  = Math.max(0.02, 0.14 - startBase / 600);
+
+  if (startRoll < greatStartProb) {
+    return {
+      type: 'great_start',
+      lap: 1,
+      sector: 'straight',
+      description: 'Largada perfeita',
+      timeImpact: -(0.3 + rng() * 0.4),
+    };
+  }
+  if (startRoll > 1 - poorStartProb) {
+    return {
+      type: 'poor_start',
+      lap: 1,
+      sector: 'straight',
+      description: 'Largada hesitante',
+      timeImpact: +(0.3 + rng() * 0.4),
+    };
+  }
+  return null;
+}
+
+function rollPerLapEvent(
+  stats: PerformanceStats,
+  lap: number,
+  totalLaps: number,
+  isLastLap: boolean,
+  rng: () => number,
+): RaceEventLog | null {
+  const stabilityFactor = stats.stability / 100;
+  const gripFactor      = stats.grip / 100;
+
+  // Probabilidade baseline de evento por volta — ~15-20% (cria ritmo narrativo)
+  const eventRoll = rng();
+  if (eventRoll > 0.20) return null;
+
+  // Decide o TIPO de evento. Última volta tem distribuição diferente:
+  // mais "last_lap_attack" e "hot_lap", menos erros bobos.
+  const typeRoll = rng();
+
+  // ── ÚLTIMA VOLTA: drama crescente ──
+  if (isLastLap) {
+    if (typeRoll < 0.35) {
+      // Last lap attack: carro empurra o limite, ganha tempo se conseguir
+      const success = rng() < (0.5 + gripFactor * 0.3);
+      return success ? {
+        type: 'last_lap_attack',
+        lap,
+        description: 'Atacou no limite na última volta',
+        timeImpact: -(0.4 + rng() * 0.5),
+      } : {
+        type: 'lost_grip',
+        lap,
+        sector: rng() < 0.5 ? 'chicane' : 'hairpin',
+        description: 'Tentou atacar e perdeu o controle',
+        timeImpact: +(0.5 + rng() * 0.6),
+      };
+    }
+    if (typeRoll < 0.60 && stats.power > 60) {
+      return {
+        type: 'hot_lap',
+        lap,
+        description: 'Volta excepcional, tudo perfeito',
+        timeImpact: -(0.4 + rng() * 0.4),
+      };
+    }
+    // Erro pontual mais raro na última volta
+    if (typeRoll < 0.70) {
+      const sectors: RaceSector[] = ['accel', 'chicane', 'hairpin'];
+      const sector = sectors[Math.floor(rng() * sectors.length)] ?? 'chicane';
+      return {
+        type: 'minor_mistake',
+        lap,
+        sector,
+        description: sector === 'hairpin' ? 'Travou na frenagem'
+                   : sector === 'chicane' ? 'Errou a apex'
+                   :                        'Patinou na saída',
+        timeImpact: +(0.2 + rng() * 0.3),
+      };
+    }
+    return null;
+  }
+
+  // ── VOLTAS NORMAIS ──
+  if (typeRoll < 0.40) {
+    // Erro pontual — mais provável em carros instáveis
+    const mistakeProb = 0.06 - stabilityFactor * 0.04;
+    if (rng() < mistakeProb) {
+      const sectors: RaceSector[] = ['accel', 'chicane', 'hairpin'];
+      const sector = sectors[Math.floor(rng() * sectors.length)] ?? 'chicane';
+      return {
+        type: 'minor_mistake',
+        lap,
+        sector,
+        description: sector === 'hairpin' ? 'Travou na frenagem'
+                   : sector === 'chicane' ? 'Errou a apex'
+                   :                        'Patinou na saída',
+        timeImpact: +(0.15 + rng() * 0.25),
+      };
+    }
+  }
+
+  if (typeRoll < 0.65 && stats.stability > 70 && stats.grip > 70) {
+    return {
+      type: 'consistent_pace',
+      lap,
+      description: 'Mantém ritmo cirúrgico',
+      timeImpact: -(0.15 + rng() * 0.20),
+    };
+  }
+
+  if (typeRoll < 0.78 && stats.acceleration > 75) {
+    return {
+      type: 'late_brake',
+      lap,
+      sector: 'hairpin',
+      description: 'Frenagem ousada na curva',
+      timeImpact: -(0.15 + rng() * 0.25),
+    };
+  }
+
+  // Nas voltas finais (não a última), pode ter problemas de pneu
+  if (lap >= totalLaps - 1 && stats.grip < 70 && rng() < 0.4) {
+    return {
+      type: 'tire_struggle',
+      lap,
+      description: 'Pneus desgastados, perdendo grip',
+      timeImpact: +(0.2 + rng() * 0.3),
+    };
+  }
+
+  return null;
+}
+
+// ── Eventos de batalha entre pilotos próximos ───────────────────────────
+
+/**
+ * Detecta pilotos com tempos próximos numa volta e gera eventos de batalha
+ * (ultrapassagens, defesas). Modifica os tempos para criar drama coerente.
+ */
+function rollBattleEvents(
+  drivers: DriverState[],
+  lap: number,
+  isLastLap: boolean,
+  rng: () => number,
+): void {
+  // Ordena por tempo acumulado (corrida atual)
+  const ordered = [...drivers].sort((a, b) => a.totalTime - b.totalTime);
+
+  for (let i = 0; i < ordered.length - 1; i++) {
+    const ahead = ordered[i];
+    const behind = ordered[i + 1];
+    if (!ahead || !behind) continue;
+
+    const gap = behind.totalTime - ahead.totalTime;
+    // Considera "batalha" gap < 1.2s (próximos)
+    if (gap > 1.2) continue;
+
+    // Probabilidade de evento de batalha aumenta com proximidade
+    // gap=0.0 → 50% chance, gap=1.2 → 0%
+    const battleProb = (1.2 - gap) / 1.2 * (isLastLap ? 0.65 : 0.4);
+    if (rng() > battleProb) continue;
+
+    const aheadStats = ahead.stats;
+    const behindStats = behind.stats;
+
+    // Quem tem stats melhor para ataque (acceleration + power)?
+    const behindAttackPower = behindStats.acceleration * 0.5 + behindStats.power * 0.3 + (TRACTION_BONUS[behindStats.traction] ?? 0);
+    const aheadDefense      = aheadStats.stability * 0.4 + aheadStats.grip * 0.4 + aheadStats.gearShift * 0.2;
+
+    // Slipstream: carro de trás ganha bonus na próxima reta se vem rebocado
+    if (gap < 0.4 && rng() < 0.5) {
+      const slipBonus = -(0.15 + rng() * 0.30);
+      behind.totalTime += slipBonus;
+      behind.events.push({
+        type: 'slipstream_pass',
+        lap,
+        sector: 'straight',
+        description: `Pegou vácuo de ${ahead.entrant.userId === behind.entrant.userId ? 'rival' : 'frente'}`,
+        timeImpact: slipBonus,
+        opponentUserId: ahead.entrant.userId,
+      });
+      continue;
+    }
+
+    // Decide se é ultrapassagem bem-sucedida ou defesa
+    const attackRoll = rng();
+    const successThreshold = 0.5 + (behindAttackPower - aheadDefense) / 200;
+
+    if (attackRoll < successThreshold) {
+      // ── ULTRAPASSAGEM bem-sucedida ──
+      const overtakeGain = 0.3 + rng() * 0.5;
+      behind.totalTime -= overtakeGain * 0.5;
+      ahead.totalTime  += overtakeGain * 0.3;
+      behind.events.push({
+        type: 'overtake',
+        lap,
+        sector: rng() < 0.5 ? 'straight' : 'hairpin',
+        description: 'Ultrapassagem afiada',
+        timeImpact: -(overtakeGain * 0.5),
+        opponentUserId: ahead.entrant.userId,
+      });
+      ahead.events.push({
+        type: 'lost_grip',
+        lap,
+        description: 'Perdeu posição na disputa',
+        timeImpact: +(overtakeGain * 0.3),
+        opponentUserId: behind.entrant.userId,
+      });
+    } else {
+      // ── DEFESA bem-sucedida ──
+      const defenseLoss = 0.15 + rng() * 0.30;
+      behind.totalTime += defenseLoss;
+      ahead.events.push({
+        type: 'defended_position',
+        lap,
+        sector: rng() < 0.5 ? 'chicane' : 'hairpin',
+        description: 'Defendeu a posição com classe',
+        timeImpact: -(defenseLoss * 0.2),
+        opponentUserId: behind.entrant.userId,
+      });
+      behind.events.push({
+        type: 'close_battle',
+        lap,
+        description: 'Disputou ferozmente, sem sucesso',
+        timeImpact: +defenseLoss,
+        opponentUserId: ahead.entrant.userId,
+      });
+    }
+  }
+}
+
+// ── Caps e ajustes finais ──────────────────────────────────────────────
+
+/**
+ * Aplica cap ao impacto agregado de eventos de UM piloto. Mantém drama
+ * mas evita inversão de resultado para diferenças grandes de IGP.
+ */
+function capDriverEventImpact(driver: DriverState): void {
+  const totalImpact = driver.events.reduce((sum, ev) => sum + ev.timeImpact, 0);
+  if (Math.abs(totalImpact) <= MAX_TOTAL_EVENT_IMPACT_SEC) return;
+
+  const ratio = MAX_TOTAL_EVENT_IMPACT_SEC / Math.abs(totalImpact);
+  // Reduz proporcionalmente o impacto de cada evento
+  for (const ev of driver.events) {
+    ev.timeImpact *= ratio;
+  }
+  // Recalcula `totalTime` ajustado
+  const newTotalImpact = driver.events.reduce((sum, ev) => sum + ev.timeImpact, 0);
+  driver.totalTime += (newTotalImpact - totalImpact);
 }
 
 // ── API principal ──────────────────────────────────────────────────────
 
 /**
- * Simula uma corrida e retorna resultados ordenados por tempo.
+ * Simula uma corrida volta-a-volta e retorna resultados ordenados por tempo.
  *
- * Distribuição típica de variabilidade:
- *   • 90%+ do resultado vem dos stats setoriais reais (determinístico).
- *   • ~5% vem de eventos de corrida (largada, erros) — calibrados pelos
- *     próprios stats do carro (carro mais estável erra menos, etc.).
- *   • ~5% vem de "luck" pura (`luckAmplitude`).
- *
- * Em valores de IGP muito próximos (diferença < 5), a aleatoriedade pode
- * decidir o vencedor — exatamente como em uma corrida real. Em IGPs muito
- * distantes (> 15), o melhor carro vence em quase 100% das simulações.
+ * Mecânicas implementadas:
+ *   • Stats setoriais (reta, aceleração, chicane, hairpin) — base do tempo
+ *   • Degradação de pneus progressiva (carros sem grip degradam mais)
+ *   • Economia de combustível (carros pesados ganham mais nas últimas voltas)
+ *   • Eventos por volta: erros, paces consistentes, late brakings, hot laps
+ *   • Eventos de batalha entre pilotos próximos (gap < 1.2s):
+ *     - Slipstream/vácuo na reta
+ *     - Ultrapassagens com base em acceleration vs stability
+ *     - Defesas bem-sucedidas
+ *   • Drama crescente na última volta (ataques arriscados, voltas perfeitas)
+ *   • Detecção de comebacks (ganhou várias posições)
+ *   • Cap absoluto de ±2.5s em impacto de eventos por piloto
  */
 export function simulateRace(
   entrants: ReadonlyArray<RaceEntrant>,
   opts: SimulateRaceOptions = {},
 ): RaceEntrantResult[] {
   const laps          = opts.laps          ?? 3;
-  // Sorte capeada em 5%. Default 3% — resultados ficam bem alinhados ao IGP.
-  const luckAmplitude = Math.max(0, Math.min(0.05, opts.luckAmplitude ?? 0.03));
+  const luckAmplitude = Math.max(0, Math.min(0.06, opts.luckAmplitude ?? 0.04));
   const rng           = createRng(opts.seed);
 
-  const interim = entrants.map(e => {
+  // ── Setup inicial dos pilotos ────────────────────────────────────
+  const drivers: DriverState[] = entrants.map(e => {
     const stats     = e.stats ?? approximateStatsFromIgp(e.igp);
     const condition = e.condition ?? 100;
-
-    // Score por setor (determinístico, baseado em stats)
     const sectorScores: Record<RaceSector, number> = {
       straight: calcSectorScore(stats, 'straight', condition),
       accel:    calcSectorScore(stats, 'accel',    condition),
       chicane:  calcSectorScore(stats, 'chicane',  condition),
       hairpin:  calcSectorScore(stats, 'hairpin',  condition),
     };
-
-    // Tempo de uma volta sem ruído
-    const lapTimeBase =
+    const baseLapTime =
       sectorScoreToTime(sectorScores.straight, 'straight') +
       sectorScoreToTime(sectorScores.accel,    'accel') +
       sectorScoreToTime(sectorScores.chicane,  'chicane') +
       sectorScoreToTime(sectorScores.hairpin,  'hairpin');
 
-    // Variabilidade por volta — ±1.5% por padrão, aumenta se carro mal cuidado
-    const conditionFactor = 1 + (1 - condition / 100) * 0.03; // até +3% extra para carro 0%
-    const lapTimes: number[] = [];
-    for (let lap = 0; lap < laps; lap++) {
-      const noisePerLap = (rng() - 0.5) * 0.03 * conditionFactor; // ±1.5% por volta
-      lapTimes.push(lapTimeBase * (1 + noisePerLap));
-    }
+    // Aggression: carros com mais power+acceleration tendem a atacar mais
+    const aggression = (stats.power + stats.acceleration) / 200; // 0..1
 
-    // Eventos de corrida (largada + erros) — impacto em segundos, CAPEADO
-    const events       = rollRaceEvents(stats, laps, rng);
-    const eventTimeMod = capEventImpact(
-      events.reduce((sum, ev) => sum + ev.timeImpact, 0),
-    );
-
-    // Sorte pura (luck amplitude) — afeta o tempo total
-    const luckRoll = (rng() - 0.5) * 2 * luckAmplitude; // [-luckAmp, +luckAmp]
-
-    const totalTimeBase = lapTimes.reduce((a, b) => a + b, 0);
-    const totalTime     = totalTimeBase * (1 + luckRoll) + eventTimeMod;
-    const bestLap       = Math.min(...lapTimes);
-
-    return { entrant: e, stats, sectorScores, totalTime, bestLap, events, lapTimes };
+    return {
+      entrant: e,
+      stats,
+      condition,
+      baseLapTime,
+      sectorScores,
+      totalTime: 0,
+      lapTimes: [],
+      events: [],
+      startingPos: 0,
+      currentPos: 0,
+      aggression,
+    };
   });
 
-  // Ordena por menor tempo
-  interim.sort((a, b) => a.totalTime - b.totalTime);
+  // ── Largada (definir posição inicial e gerar evento de start) ────
+  // Posição de largada baseada em IGP — simula resultado de classificação
+  const sortedByIgp = [...drivers].sort((a, b) => b.stats.igp - a.stats.igp);
+  sortedByIgp.forEach((d, i) => {
+    d.startingPos = i + 1;
+    d.currentPos = i + 1;
+    const startEv = rollStartEvent(d.stats, rng);
+    if (startEv) {
+      d.events.push(startEv);
+      d.totalTime += startEv.timeImpact;
+    }
+  });
 
-  // Tempo do líder serve para normalizar score em 0-100
-  const fastest = interim[0]?.totalTime ?? 1;
-  const slowest = interim[interim.length - 1]?.totalTime ?? fastest;
-  const range   = Math.max(0.001, slowest - fastest);
+  // ── Simulação volta-a-volta ──────────────────────────────────────
+  for (let lap = 1; lap <= laps; lap++) {
+    const isLastLap = lap === laps;
 
-  // Marca a volta mais rápida da corrida
-  const overallFastestLap = Math.min(...interim.map(r => r.bestLap));
-  const fastestLapHolder  = interim.find(r => r.bestLap === overallFastestLap);
-  if (fastestLapHolder) {
-    fastestLapHolder.events.push({
-      type:        'fastest_lap',
+    // 1. Cada piloto roda sua volta
+    for (const d of drivers) {
+      // Tempo base + degradação + bonus combustível
+      const degradation = tireDegradationPerLap(d.stats, lap, laps);
+      const fuelBonus   = fuelSaveBonusPerLap(d.stats, lap, laps);
+      const noisePerLap = (rng() - 0.5) * 0.025; // ±1.25% por volta
+      const lastLapDrama = isLastLap ? (rng() - 0.5) * 0.025 : 0; // extra ±1.25% na última
+
+      const lapTime = d.baseLapTime * (1 + degradation - fuelBonus + noisePerLap + lastLapDrama);
+      d.lapTimes.push(lapTime);
+      d.totalTime += lapTime;
+    }
+
+    // 2. Eventos por volta (erros, hot laps, late brakings)
+    for (const d of drivers) {
+      const ev = rollPerLapEvent(d.stats, lap, laps, isLastLap, rng);
+      if (ev) {
+        d.events.push(ev);
+        d.totalTime += ev.timeImpact;
+      }
+    }
+
+    // 3. Eventos de batalha entre pilotos próximos
+    rollBattleEvents(drivers, lap, isLastLap, rng);
+
+    // 4. Atualiza posição corrente
+    const orderedNow = [...drivers].sort((a, b) => a.totalTime - b.totalTime);
+    orderedNow.forEach((d, i) => { d.currentPos = i + 1; });
+  }
+
+  // ── Sorte pura final (luck amplitude) — pequena variação no tempo ──
+  for (const d of drivers) {
+    const luckRoll = (rng() - 0.5) * 2 * luckAmplitude;
+    d.totalTime *= (1 + luckRoll * 0.5); // metade do luck amplitude no tempo total
+  }
+
+  // ── Caps e detecção de comebacks ──────────────────────────────────
+  for (const d of drivers) {
+    capDriverEventImpact(d);
+
+    const positionsGained = d.startingPos - d.currentPos;
+    if (positionsGained >= 2) {
+      d.events.push({
+        type: 'comeback',
+        description: `Recuperou ${positionsGained} posições`,
+        timeImpact: 0,
+      });
+    }
+  }
+
+  // ── Ordenação final + volta mais rápida ───────────────────────────
+  drivers.sort((a, b) => a.totalTime - b.totalTime);
+
+  const fastestLapDriver = drivers.reduce((best, d) => {
+    const bestLap = Math.min(...d.lapTimes);
+    if (!best || bestLap < best.bestLap) return { driver: d, bestLap };
+    return best;
+  }, null as { driver: DriverState; bestLap: number } | null);
+
+  if (fastestLapDriver) {
+    fastestLapDriver.driver.events.push({
+      type: 'fastest_lap',
       description: 'Volta mais rápida da corrida',
-      timeImpact:  0,
+      timeImpact: 0,
     });
   }
 
-  return interim.map((r, i) => {
-    // Score: 100 para o vencedor, decai linearmente até ~50 para o último
-    // Garante diferença de score visível entre 1º e último mesmo com tempos próximos.
-    const relGap = (r.totalTime - fastest) / range;
+  // ── Score 0-100 normalizado para compatibilidade com UI ───────────
+  const fastest = drivers[0]?.totalTime ?? 1;
+  const slowest = drivers[drivers.length - 1]?.totalTime ?? fastest;
+  const range   = Math.max(0.001, slowest - fastest);
+
+  return drivers.map((d, i) => {
+    const relGap = (d.totalTime - fastest) / range;
     const score  = Math.round(Math.max(20, 100 - relGap * 50));
+    const bestLap = Math.min(...d.lapTimes);
 
     return {
-      userId:       r.entrant.userId,
+      userId:       d.entrant.userId,
       score,
       position:     i + 1,
-      totalTimeSec: Math.round(r.totalTime * 100) / 100,
-      bestLapSec:   Math.round(r.bestLap * 100) / 100,
+      totalTimeSec: Math.round(d.totalTime * 100) / 100,
+      bestLapSec:   Math.round(bestLap * 100) / 100,
       sectorScores: {
-        straight: Math.round(r.sectorScores.straight),
-        accel:    Math.round(r.sectorScores.accel),
-        chicane:  Math.round(r.sectorScores.chicane),
-        hairpin:  Math.round(r.sectorScores.hairpin),
+        straight: Math.round(d.sectorScores.straight),
+        accel:    Math.round(d.sectorScores.accel),
+        chicane:  Math.round(d.sectorScores.chicane),
+        hairpin:  Math.round(d.sectorScores.hairpin),
       },
-      events:       r.events,
+      events:       d.events,
     };
   });
 }
-
