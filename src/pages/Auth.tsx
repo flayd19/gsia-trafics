@@ -70,6 +70,18 @@ const AuthPage = () => {
     }
   }, [user, loading, navigate]);
 
+  // Atalho de teclado pra abrir o painel admin (Ctrl+Shift+A)
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      if (e.ctrlKey && e.shiftKey && e.key.toLowerCase() === 'a') {
+        e.preventDefault();
+        setAdminOpen(true);
+      }
+    };
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  }, []);
+
   const handleSignIn = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!loginEmail || !loginPassword) return;
@@ -260,15 +272,16 @@ const AuthPage = () => {
         </CardContent>
       </Card>
 
-      {/* Cadeado oculto — clique abre modal de admin */}
+      {/* Cadeado discreto (canto inferior direito) — clique abre modal de admin.
+          Atalho de teclado Ctrl+Shift+A funciona como backup. */}
       <button
         type="button"
         aria-label="Painel administrativo"
+        title="Painel administrativo (Ctrl+Shift+A)"
         onClick={() => setAdminOpen(true)}
-        className="fixed bottom-3 right-3 w-7 h-7 rounded-full opacity-25 hover:opacity-100 transition-opacity flex items-center justify-center bg-muted/40 hover:bg-muted text-muted-foreground"
-        tabIndex={-1}
+        className="fixed bottom-4 right-4 z-50 w-10 h-10 rounded-full opacity-50 hover:opacity-100 hover:scale-110 transition-all flex items-center justify-center bg-muted/60 hover:bg-primary hover:text-primary-foreground text-muted-foreground border border-border/40 shadow-sm"
       >
-        <Lock size={12} />
+        <Lock size={16} />
       </button>
 
       <Dialog open={adminOpen} onOpenChange={(o) => { setAdminOpen(o); if (!o) setAdminPassword(''); }}>
