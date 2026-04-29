@@ -15,6 +15,13 @@ export interface EmployeeMeta {
   dailyCost:   number;
 }
 
+/**
+ * Comissão do vendedor sobre cada venda total fechada por ele.
+ * Aplicada SOBRE O VALOR DA VENDA (não sobre o lucro), descontada
+ * automaticamente do valor recebido pelo jogador.
+ */
+export const SELLER_COMMISSION_RATE = 0.03; // 3%
+
 /** Catálogo de funcionários disponíveis. */
 export const EMPLOYEES_CATALOG: Record<EmployeeId, EmployeeMeta> = {
   washer: {
@@ -28,8 +35,8 @@ export const EMPLOYEES_CATALOG: Record<EmployeeId, EmployeeMeta> = {
     id:          'seller',
     name:        'Vendedor',
     icon:        '💼',
-    description: 'Envia ofertas automaticamente para os compradores da aba Vendas. Você define a margem de preço.',
-    dailyCost:   1_000,
+    description: 'Envia ofertas automaticamente para os compradores da aba Vendas. Você define a margem de preço. Cobra 3% de comissão sobre cada venda total fechada.',
+    dailyCost:   2_000,
   },
 };
 

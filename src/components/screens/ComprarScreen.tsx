@@ -1,10 +1,11 @@
 // =====================================================================
-// ComprarScreen — Aba "Comprar" com sub-abas Global e P2P
+// ComprarScreen — Aba "Comprar" com sub-abas Global, P2P e Leilões
 // =====================================================================
 import { useState } from 'react';
-import { Globe, Users } from 'lucide-react';
+import { Globe, Users, Gavel } from 'lucide-react';
 import { FornecedoresCarrosScreen } from './FornecedoresCarrosScreen';
 import { PlayerMarketScreen } from './PlayerMarketScreen';
+import { AuctionsTab } from './AuctionsTab';
 import type { GameState, OwnedCar } from '@/types/game';
 import type { GlobalCar } from '@/hooks/useGlobalMarketplace';
 
@@ -29,7 +30,7 @@ interface ComprarScreenProps {
   onSoldListing: (carInstanceId: string) => void;
 }
 
-type SubTab = 'global' | 'p2p';
+type SubTab = 'global' | 'p2p' | 'auctions';
 
 export function ComprarScreen(props: ComprarScreenProps) {
   const [subTab, setSubTab] = useState<SubTab>('global');
@@ -47,30 +48,41 @@ export function ComprarScreen(props: ComprarScreenProps) {
       <div className="flex gap-1 bg-muted rounded-[12px] p-1 mx-0 mb-3">
         <button
           onClick={() => setSubTab('global')}
-          className={`flex-1 flex items-center justify-center gap-1.5 py-2 rounded-[10px] text-[13px] font-semibold transition-all ${
+          className={`flex-1 flex items-center justify-center gap-1 py-2 rounded-[10px] text-[12px] font-semibold transition-all ${
             subTab === 'global'
               ? 'bg-background text-foreground shadow-sm'
               : 'text-muted-foreground'
           }`}
         >
-          <Globe size={14} />
+          <Globe size={13} />
           Global
         </button>
         <button
           onClick={() => setSubTab('p2p')}
-          className={`flex-1 flex items-center justify-center gap-1.5 py-2 rounded-[10px] text-[13px] font-semibold transition-all ${
+          className={`flex-1 flex items-center justify-center gap-1 py-2 rounded-[10px] text-[12px] font-semibold transition-all ${
             subTab === 'p2p'
               ? 'bg-background text-foreground shadow-sm'
               : 'text-muted-foreground'
           }`}
         >
-          <Users size={14} />
+          <Users size={13} />
           Jogadores
+        </button>
+        <button
+          onClick={() => setSubTab('auctions')}
+          className={`flex-1 flex items-center justify-center gap-1 py-2 rounded-[10px] text-[12px] font-semibold transition-all ${
+            subTab === 'auctions'
+              ? 'bg-background text-foreground shadow-sm'
+              : 'text-muted-foreground'
+          }`}
+        >
+          <Gavel size={13} />
+          Leilões
         </button>
       </div>
 
       {/* Conteúdo da sub-aba */}
-      {subTab === 'global' ? (
+      {subTab === 'global' && (
         <FornecedoresCarrosScreen
           gameState={gameState}
           globalCars={globalCars}
@@ -82,7 +94,8 @@ export function ComprarScreen(props: ComprarScreenProps) {
           onBuyAtPrice={onBuyAtPrice}
           onRefreshMarketplace={onRefreshMarketplace}
         />
-      ) : (
+      )}
+      {subTab === 'p2p' && (
         <PlayerMarketScreen
           gameState={gameState as any}
           products={[]}
@@ -93,6 +106,12 @@ export function ComprarScreen(props: ComprarScreenProps) {
           onAddMoney={onAddMoney}
           onAddToGarage={onAddToGarage}
           onSoldListing={onSoldListing}
+        />
+      )}
+      {subTab === 'auctions' && (
+        <AuctionsTab
+          gameState={gameState}
+          onAddCarToGarage={(car) => onAddToGarage(car, car.purchasePrice)}
         />
       )}
     </div>

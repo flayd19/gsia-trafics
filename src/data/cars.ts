@@ -2952,10 +2952,10 @@ export function carYear(modelId: string, variantId: string): number {
 }
 
 // ── Constantes de geração do mercado ────────────────────────────
-/** Mínimo de veículos gerados por ciclo de 24h. */
-const MARKET_MIN_BATCH = 500;
-/** Máximo de veículos gerados por ciclo de 24h. */
-const MARKET_MAX_BATCH = 600;
+/** Mínimo de veículos gerados por ciclo (dobrado para mais variedade). */
+const MARKET_MIN_BATCH = 1_000;
+/** Máximo de veículos gerados por ciclo. */
+const MARKET_MAX_BATCH = 1_200;
 /** Proporção mínima de veículos populares no mercado. */
 const POPULAR_MIN_RATIO = 0.40;
 /** Quantas vezes o mesmo modelo pode aparecer no mesmo ciclo. */

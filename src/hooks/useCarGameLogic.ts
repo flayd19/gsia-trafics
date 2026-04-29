@@ -29,6 +29,7 @@ import {
   EMPLOYEES_CATALOG,
   totalDailyStaffCost,
   calcSellerPrice,
+  SELLER_COMMISSION_RATE,
   type EmployeeId,
   type EmployeeConfig,
   type HiredEmployee,
@@ -591,7 +592,8 @@ export function useCarGameLogic() {
             if (compatibleSlot?.car) {
               const car = compatibleSlot.car;
               const askingPrice = calcSellerPrice(car.fipePrice, sellerCfg);
-              // Envia oferta colocando o buyer em "thinking"
+              // Envia oferta colocando o buyer em "thinking" e MARCANDO que
+              // a oferta veio do funcionário (para cobrar comissão depois).
               next = {
                 ...next,
                 carBuyers: next.carBuyers.map(b =>
@@ -604,6 +606,7 @@ export function useCarGameLogic() {
                         playerOffer: askingPrice,
                         playerIncludedTradeIn: false,
                         targetCarInstanceId: car.instanceId,
+                        offerSentByEmployee: true,
                       }
                     : b
                 ),
@@ -1041,7 +1044,15 @@ export function useCarGameLogic() {
     }
     finalPrice = safeAmount(finalPrice);
 
-    const profit     = playerOfferSafe - purchasePriceSafe;
+    // Comissão do vendedor (3% sobre o valor TOTAL da venda) quando a oferta
+    // foi enviada pelo funcionário automaticamente. Aplicada sobre o
+    // playerOffer (valor total que o comprador paga), não sobre o lucro.
+    const sellerCommission = buyer.offerSentByEmployee
+      ? Math.round(playerOfferSafe * SELLER_COMMISSION_RATE)
+      : 0;
+    const moneyReceived = Math.max(0, finalPrice - sellerCommission);
+
+    const profit     = playerOfferSafe - purchasePriceSafe - sellerCommission;
     const saleRecord = {
       id: generateId(), carInstanceId: car.instanceId, fullName: car.fullName,
       purchasePrice: purchasePriceSafe, salePrice: playerOfferSafe,
@@ -1064,7 +1075,7 @@ export function useCarGameLogic() {
       if (slotIdx >= 0) locks[slotIdx] = lockEpoch;
       return {
         ...prev,
-        money:           safeMoney(prev.money, prev.money + finalPrice),
+        money:           safeMoney(prev.money, prev.money + moneyReceived),
         garage,
         // Remove reparos órfãos do carro vendido
         activeRepairs:   prev.activeRepairs.filter(r => r.carInstanceId !== car.instanceId),
@@ -1079,7 +1090,10 @@ export function useCarGameLogic() {
     });
 
     setTimeout(() => void saveGame(), 400);
-    return { success: true, accepted: true, message: `Venda confirmada! Lucro: ${formatMoney(profit)}` };
+    const msg = sellerCommission > 0
+      ? `Venda fechada pelo Vendedor! Lucro: ${formatMoney(profit)} (comissão: ${formatMoney(sellerCommission)})`
+      : `Venda confirmada! Lucro: ${formatMoney(profit)}`;
+    return { success: true, accepted: true, message: msg };
   }, [saveGame]);
 
   // ── Resposta do jogador à contraproposta do comprador ─────────────
@@ -1157,7 +1171,14 @@ export function useCarGameLogic() {
     }
     finalPrice = safeAmount(finalPrice);
 
-    const profit     = counterPrice - purchasePriceSafe;
+    // Comissão do vendedor (3% sobre venda total) se a oferta original veio
+    // do funcionário. Aplica sobre o valor da contraproposta aceita.
+    const sellerCommission = buyer.offerSentByEmployee
+      ? Math.round(counterPrice * SELLER_COMMISSION_RATE)
+      : 0;
+    const moneyReceived = Math.max(0, finalPrice - sellerCommission);
+
+    const profit     = counterPrice - purchasePriceSafe - sellerCommission;
     const saleRecord = {
       id: generateId(),
       carInstanceId: car.instanceId,
@@ -1195,7 +1216,7 @@ export function useCarGameLogic() {
 
       return {
         ...prev,
-        money:          safeMoney(prev.money, prev.money + finalPrice),
+        money:          safeMoney(prev.money, prev.money + moneyReceived),
         garage,
         activeRepairs:  prev.activeRepairs.filter(r => r.carInstanceId !== car.instanceId),
         carBuyers:      prev.carBuyers.map(b => b.id === buyerId ? { ...b, state: 'accepted' as const, finalPrice: counterPrice } : b),
@@ -1209,10 +1230,13 @@ export function useCarGameLogic() {
     });
 
     setTimeout(() => void saveGame(), 400);
+    const counterMsg = sellerCommission > 0
+      ? `Contraproposta aceita pelo Vendedor! Lucro: ${formatMoney(profit)} (comissão: ${formatMoney(sellerCommission)})`
+      : `Contraproposta aceita! Lucro: ${formatMoney(profit)}`;
     return {
       success:    true,
       accepted:   true,
-      message:    `Contraproposta aceita! Lucro: ${formatMoney(profit)}`,
+      message:    counterMsg,
       finalPrice,
     };
   }, [saveGame]);

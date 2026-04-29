@@ -69,6 +69,12 @@ export interface OwnedCar {
   tuneUpgrades?: import('./performance').TuneUpgrade[];
   /** Histórico de rachas deste carro */
   raceHistory?: import('./performance').RaceRecord[];
+
+  /**
+   * Origem do carro — identifica como chegou na garagem do jogador.
+   * Útil para selos visuais (ex: badge "🔨 Leilão" no P2P) e auditoria.
+   */
+  acquiredFrom?: 'marketplace' | 'p2p' | 'auction' | 'gift' | 'trade_in';
 }
 
 // ── Slots da garagem ─────────────────────────────────────────────
@@ -145,6 +151,12 @@ export interface CarBuyerNPC {
   /** Valor máximo que o comprador aceita pagar — preenchido quando state='countering' */
   counterOffer?: number;
   targetCarInstanceId?: string; // qual carro da garagem quer comprar
+  /**
+   * True quando a oferta foi enviada pelo Vendedor (funcionário) automaticamente.
+   * Quando a venda fecha, o sistema cobra comissão (SELLER_COMMISSION_RATE)
+   * sobre o valor total da venda.
+   */
+  offerSentByEmployee?: boolean;
 
   // ── Sistema de ciclos (30 min) ──────────────────────────────────
   /** Índice do slot que este comprador ocupa (0-based) */

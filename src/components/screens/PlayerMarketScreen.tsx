@@ -240,6 +240,7 @@ function ListingCard({
   const si        = statusInfo(listing.status);
   const isActive  = listing.status === 'active';
   const condition = listing.car_data?.condition;
+  const isAuction = listing.car_data?.acquiredFrom === 'auction';
 
   return (
     <div className="ios-surface rounded-[14px] p-4 space-y-3">
@@ -249,7 +250,14 @@ function ListingCard({
           {listing.product_icon ?? '🚗'}
         </div>
         <div className="flex-1 min-w-0">
-          <div className="font-bold text-[14px] text-foreground truncate">{listing.product_name}</div>
+          <div className="flex items-center gap-1.5 flex-wrap">
+            <span className="font-bold text-[14px] text-foreground truncate">{listing.product_name}</span>
+            {isAuction && (
+              <span className="text-[9px] font-bold text-amber-500 px-1.5 py-0.5 rounded-full bg-amber-500/15 flex items-center gap-0.5 shrink-0">
+                🔨 Leilão
+              </span>
+            )}
+          </div>
           <div className="text-[11px] text-muted-foreground">
             Vendedor: {listing.seller_name}
           </div>
@@ -645,23 +653,33 @@ export const PlayerMarketScreen = ({
                 <div className="space-y-2">
                   <div className="text-[12px] font-semibold text-muted-foreground uppercase tracking-wider">Carro</div>
                   <div className="space-y-2 max-h-48 overflow-y-auto">
-                    {availableCars.map(car => (
-                      <button
-                        key={car.instanceId}
-                        onClick={() => setSelectedCarId(car.instanceId)}
-                        className={`w-full flex items-center gap-3 p-3 rounded-[12px] border text-left transition-all ${
-                          selectedCarId === car.instanceId
-                            ? 'border-primary/50 bg-primary/5'
-                            : 'border-border bg-muted/20 hover:bg-muted/40'
-                        }`}
-                      >
-                        <span className="text-xl">{car.icon}</span>
-                        <div className="flex-1 min-w-0">
-                          <div className="font-semibold text-[13px] truncate">{car.brand} {car.model} {car.trim}</div>
-                          <div className="text-[10px] text-muted-foreground">{car.year} · Condição {car.condition}%</div>
-                        </div>
-                      </button>
-                    ))}
+                    {availableCars.map(car => {
+                      const isAuction = car.acquiredFrom === 'auction';
+                      return (
+                        <button
+                          key={car.instanceId}
+                          onClick={() => setSelectedCarId(car.instanceId)}
+                          className={`w-full flex items-center gap-3 p-3 rounded-[12px] border text-left transition-all ${
+                            selectedCarId === car.instanceId
+                              ? 'border-primary/50 bg-primary/5'
+                              : 'border-border bg-muted/20 hover:bg-muted/40'
+                          }`}
+                        >
+                          <span className="text-xl">{car.icon}</span>
+                          <div className="flex-1 min-w-0">
+                            <div className="flex items-center gap-1.5 flex-wrap">
+                              <span className="font-semibold text-[13px] truncate">{car.brand} {car.model} {car.trim}</span>
+                              {isAuction && (
+                                <span className="text-[9px] font-bold text-amber-500 px-1.5 py-0.5 rounded-full bg-amber-500/15 flex items-center gap-0.5 shrink-0">
+                                  🔨 Leilão
+                                </span>
+                              )}
+                            </div>
+                            <div className="text-[10px] text-muted-foreground">{car.year} · Condição {car.condition}%</div>
+                          </div>
+                        </button>
+                      );
+                    })}
                   </div>
                 </div>
 
@@ -767,23 +785,33 @@ export const PlayerMarketScreen = ({
                 <div className="space-y-2">
                   <div className="text-[12px] font-semibold text-muted-foreground uppercase tracking-wider">Carro</div>
                   <div className="space-y-2 max-h-48 overflow-y-auto">
-                    {availableCars.map(car => (
-                      <button
-                        key={car.instanceId}
-                        onClick={() => setSelectedCarId(car.instanceId)}
-                        className={`w-full flex items-center gap-3 p-3 rounded-[12px] border text-left transition-all ${
-                          selectedCarId === car.instanceId
-                            ? 'border-primary/50 bg-primary/5'
-                            : 'border-border bg-muted/20 hover:bg-muted/40'
-                        }`}
-                      >
-                        <span className="text-xl">{car.icon}</span>
-                        <div className="flex-1 min-w-0">
-                          <div className="font-semibold text-[13px] truncate">{car.brand} {car.model} {car.trim}</div>
-                          <div className="text-[10px] text-muted-foreground">{car.year} · Condição {car.condition}%</div>
-                        </div>
-                      </button>
-                    ))}
+                    {availableCars.map(car => {
+                      const isAuction = car.acquiredFrom === 'auction';
+                      return (
+                        <button
+                          key={car.instanceId}
+                          onClick={() => setSelectedCarId(car.instanceId)}
+                          className={`w-full flex items-center gap-3 p-3 rounded-[12px] border text-left transition-all ${
+                            selectedCarId === car.instanceId
+                              ? 'border-primary/50 bg-primary/5'
+                              : 'border-border bg-muted/20 hover:bg-muted/40'
+                          }`}
+                        >
+                          <span className="text-xl">{car.icon}</span>
+                          <div className="flex-1 min-w-0">
+                            <div className="flex items-center gap-1.5 flex-wrap">
+                              <span className="font-semibold text-[13px] truncate">{car.brand} {car.model} {car.trim}</span>
+                              {isAuction && (
+                                <span className="text-[9px] font-bold text-amber-500 px-1.5 py-0.5 rounded-full bg-amber-500/15 flex items-center gap-0.5 shrink-0">
+                                  🔨 Leilão
+                                </span>
+                              )}
+                            </div>
+                            <div className="text-[10px] text-muted-foreground">{car.year} · Condição {car.condition}%</div>
+                          </div>
+                        </button>
+                      );
+                    })}
                   </div>
                 </div>
                 <div className="space-y-1.5">
