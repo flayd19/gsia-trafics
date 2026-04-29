@@ -1,22 +1,11 @@
 // =====================================================================
-// AdminPage — painel administrativo com 5 abas:
-//   • Mercado     — overview + force refresh
-//   • Jogadores   — busca + ajustar saldo
-//   • Carros      — criar + listar custom cars
-//   • Categorias  — pesos % do mercado
-//   • Erros       — logs de RPC
-//
-// Acesso protegido por hasAdminToken() (sessão validada via verify_admin_password
-// + RLS server-side em todas as RPCs admin_*).
+// AdminPage — painel administrativo com 5 abas (Mercado, Jogadores,
+// Carros, Categorias, Erros). Acesso protegido por senha em
+// sessionStorage; cada RPC valida server-side via _admin_pw_ok.
 // =====================================================================
 import { useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
-import {
-  hasAdminToken, clearAdminToken, getAdminTokenString,
-} from '@/lib/adminAuth';
-import {
-  getAdminClient, resetAdminClient,
-} from '@/integrations/supabase/admin-client';
+import { hasAdminPassword, clearAdminPassword } from '@/lib/adminAuth';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Button } from '@/components/ui/button';
 import { LogOut, ShieldAlert } from 'lucide-react';
@@ -30,27 +19,17 @@ export default function AdminPage(): JSX.Element {
   const navigate = useNavigate();
 
   useEffect(() => {
-    // Acesso INDEPENDENTE do login do jogo — só precisa do admin token
-    if (!hasAdminToken()) {
+    if (!hasAdminPassword()) {
       navigate('/auth');
     }
   }, [navigate]);
 
-  /* eslint-disable @typescript-eslint/no-explicit-any */
-  const handleLogout = async () => {
-    const token = getAdminTokenString();
-    if (token) {
-      try {
-        await (getAdminClient() as any).rpc('admin_logout', { p_token: token });
-      } catch { /* silencioso */ }
-    }
-    clearAdminToken();
-    resetAdminClient();
+  const handleLogout = () => {
+    clearAdminPassword();
     navigate('/auth');
   };
-  /* eslint-enable @typescript-eslint/no-explicit-any */
 
-  if (!hasAdminToken()) {
+  if (!hasAdminPassword()) {
     return (
       <div className="min-h-screen flex items-center justify-center bg-background">
         <div className="text-center text-muted-foreground text-sm">Verificando acesso...</div>
@@ -69,10 +48,10 @@ export default function AdminPage(): JSX.Element {
               Painel administrativo
             </h1>
             <p className="text-xs text-muted-foreground mt-0.5">
-              Sessão admin independente — token expira em 8h.
+              Sessão admin · expira em 8h ou ao fechar o navegador.
             </p>
           </div>
-          <Button variant="outline" size="sm" onClick={() => void handleLogout()} className="gap-1.5">
+          <Button variant="outline" size="sm" onClick={handleLogout} className="gap-1.5">
             <LogOut size={13} /> Sair do painel
           </Button>
         </div>

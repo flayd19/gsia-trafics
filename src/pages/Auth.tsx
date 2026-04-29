@@ -13,8 +13,7 @@ import {
 import { Lock } from 'lucide-react';
 import { supabase } from '@/integrations/supabase/client';
 import { toast } from 'sonner';
-import { setAdminToken } from '@/lib/adminAuth';
-import { resetAdminClient } from '@/integrations/supabase/admin-client';
+import { setAdminPassword } from '@/lib/adminAuth';
 
 const AuthPage = () => {
   const { user, signIn, signUp, loading } = useAuth();
@@ -31,33 +30,29 @@ const AuthPage = () => {
   const [signupNotice, setSignupNotice] = useState<string | null>(null);
 
   // Admin gate (cadeado oculto) — login INDEPENDENTE do auth do jogo
-  const [adminOpen, setAdminOpen]           = useState(false);
-  const [adminUsername, setAdminUsername]   = useState('alife');
-  const [adminPassword, setAdminPassword]   = useState('');
-  const [adminLoading, setAdminLoading]     = useState(false);
+  const [adminOpen, setAdminOpen]         = useState(false);
+  const [adminPwInput, setAdminPwInput]   = useState('');
+  const [adminLoading, setAdminLoading]   = useState(false);
 
   /* eslint-disable @typescript-eslint/no-explicit-any */
   const handleAdminSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!adminUsername.trim() || !adminPassword) return;
+    if (!adminPwInput) return;
     setAdminLoading(true);
     try {
-      const { data, error } = await (supabase as any).rpc('admin_login', {
-        p_username: adminUsername.trim(),
-        p_password: adminPassword,
+      const { data, error } = await (supabase as any).rpc('admin_check_password', {
+        p_password: adminPwInput,
       });
-      if (error || !data?.token) {
-        const msg = (error?.message ?? '').toLowerCase();
-        if (msg.includes('invalid_credentials')) {
-          toast.error('Usuário ou senha incorretos.');
-        } else {
-          toast.error('Falha ao autenticar — verifique se a migration foi aplicada.');
-        }
-        setAdminPassword('');
+      if (error) {
+        toast.error('Erro ao verificar senha. Detalhe: ' + (error.message ?? 'desconhecido'));
         return;
       }
-      setAdminToken(data.token, data.expires_at);
-      resetAdminClient();
+      if (data !== true) {
+        toast.error('Senha incorreta.');
+        setAdminPwInput('');
+        return;
+      }
+      setAdminPassword(adminPwInput);
       toast.success('Acesso concedido — entrando no painel.');
       navigate('/admin');
     } catch {
@@ -291,7 +286,7 @@ const AuthPage = () => {
 
       <Dialog
         open={adminOpen}
-        onOpenChange={(o) => { setAdminOpen(o); if (!o) setAdminPassword(''); }}
+        onOpenChange={(o) => { setAdminOpen(o); if (!o) setAdminPwInput(''); }}
       >
         <DialogContent className="max-w-sm">
           <DialogHeader>
@@ -304,18 +299,10 @@ const AuthPage = () => {
           </DialogHeader>
           <form onSubmit={handleAdminSubmit} className="space-y-3">
             <Input
-              type="text"
-              placeholder="Usuário admin"
-              value={adminUsername}
-              onChange={(e) => setAdminUsername(e.target.value)}
-              autoComplete="off"
-              disabled={adminLoading}
-            />
-            <Input
               type="password"
               placeholder="Senha admin"
-              value={adminPassword}
-              onChange={(e) => setAdminPassword(e.target.value)}
+              value={adminPwInput}
+              onChange={(e) => setAdminPwInput(e.target.value)}
               autoFocus
               autoComplete="off"
               disabled={adminLoading}
@@ -324,10 +311,7 @@ const AuthPage = () => {
               <Button type="button" variant="outline" onClick={() => setAdminOpen(false)}>
                 Cancelar
               </Button>
-              <Button
-                type="submit"
-                disabled={!adminUsername.trim() || !adminPassword || adminLoading}
-              >
+              <Button type="submit" disabled={!adminPwInput || adminLoading}>
                 {adminLoading ? 'Verificando...' : 'Acessar'}
               </Button>
             </DialogFooter>

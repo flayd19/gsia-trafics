@@ -1,15 +1,17 @@
 // =====================================================================
-// useAdminApi — wrappers tipados das RPCs admin_* do Supabase.
+// useAdminApi — wrappers tipados das RPCs admin_*.
 //
-// Toda função aqui assume que o caller já validou is_admin() (via token)
-// — mas as RPCs também checam server-side, então é defesa em profundidade.
+// Cada RPC recebe a senha admin como primeiro parâmetro. A senha vem do
+// sessionStorage (gerenciado por lib/adminAuth.ts). Se a senha não estiver
+// presente, as funções retornam imediatamente.
 // =====================================================================
 import { useCallback } from 'react';
-import { getAdminClient } from '@/integrations/supabase/admin-client';
+import { supabase } from '@/integrations/supabase/client';
 import { logRpcError } from '@/lib/errorLogger';
+import { getAdminPassword } from '@/lib/adminAuth';
 
 /* eslint-disable @typescript-eslint/no-explicit-any */
-const db = () => getAdminClient() as any;
+const db = () => supabase as any;
 /* eslint-enable @typescript-eslint/no-explicit-any */
 
 export interface AdminPlayer {
@@ -67,12 +69,19 @@ export interface AdminCustomCar {
   created_at: string;
 }
 
+const getPw = (): string => {
+  const pw = getAdminPassword();
+  if (!pw) throw new Error('admin_not_authenticated');
+  return pw;
+};
+
 export function useAdminApi() {
   // ── Jogadores ─────────────────────────────────────────────────
   const listPlayers = useCallback(async (search?: string): Promise<AdminPlayer[]> => {
     const { data, error } = await db().rpc('admin_list_players', {
-      p_search: search ?? null,
-      p_limit:  200,
+      p_admin_password: getPw(),
+      p_search:         search ?? null,
+      p_limit:          200,
     });
     if (error) {
       logRpcError('admin_list_players', error);
@@ -83,6 +92,7 @@ export function useAdminApi() {
 
   const setPlayerMoney = useCallback(async (userId: string, newMoney: number) => {
     const { data, error } = await db().rpc('admin_set_player_money', {
+      p_admin_password: getPw(),
       p_target_user_id: userId,
       p_new_money:      newMoney,
     });
@@ -95,6 +105,7 @@ export function useAdminApi() {
 
   const adjustPlayerMoney = useCallback(async (userId: string, delta: number) => {
     const { data, error } = await db().rpc('admin_adjust_player_money', {
+      p_admin_password: getPw(),
       p_target_user_id: userId,
       p_delta:          delta,
     });
@@ -105,7 +116,7 @@ export function useAdminApi() {
     return data as number;
   }, []);
 
-  // ── Dedupe de contas ─────────────────────────────────────────
+  // ── Dedupe ────────────────────────────────────────────────────
   const listDuplicateAccounts = useCallback(async (): Promise<Array<{
     category:        string;
     email:           string;
@@ -113,7 +124,9 @@ export function useAdminApi() {
     oldest_user_id:  string;
     newest_user_id:  string;
   }>> => {
-    const { data, error } = await db().rpc('admin_list_duplicate_accounts');
+    const { data, error } = await db().rpc('admin_list_duplicate_accounts', {
+      p_admin_password: getPw(),
+    });
     if (error) {
       logRpcError('admin_list_duplicate_accounts', error);
       return [];
@@ -133,7 +146,9 @@ export function useAdminApi() {
     orphanProfilesDeleted:  number;
     orphanProgressDeleted:  number;
   } | null> => {
-    const { data, error } = await db().rpc('admin_dedupe_accounts');
+    const { data, error } = await db().rpc('admin_dedupe_accounts', {
+      p_admin_password: getPw(),
+    });
     if (error) {
       logRpcError('admin_dedupe_accounts', error);
       throw error;
@@ -147,9 +162,11 @@ export function useAdminApi() {
     };
   }, []);
 
-  // ── Mercado ──────────────────────────────────────────────────
+  // ── Mercado ───────────────────────────────────────────────────
   const getMarketOverview = useCallback(async (): Promise<AdminMarketOverview | null> => {
-    const { data, error } = await db().rpc('admin_get_market_overview');
+    const { data, error } = await db().rpc('admin_get_market_overview', {
+      p_admin_password: getPw(),
+    });
     if (error) {
       logRpcError('admin_get_market_overview', error);
       return null;
@@ -158,7 +175,9 @@ export function useAdminApi() {
   }, []);
 
   const forceMarketRefresh = useCallback(async (): Promise<boolean> => {
-    const { error } = await db().rpc('admin_force_market_refresh');
+    const { error } = await db().rpc('admin_force_market_refresh', {
+      p_admin_password: getPw(),
+    });
     if (error) {
       logRpcError('admin_force_market_refresh', error);
       return false;
@@ -166,7 +185,19 @@ export function useAdminApi() {
     return true;
   }, []);
 
-  // ── Carros ───────────────────────────────────────────────────
+  const clearMarketplace = useCallback(async (): Promise<{ deleted: number; newBatchId: number } | null> => {
+    const { data, error } = await db().rpc('admin_clear_marketplace', {
+      p_admin_password: getPw(),
+    });
+    if (error) {
+      logRpcError('admin_clear_marketplace', error);
+      return null;
+    }
+    const obj = (data ?? {}) as { deleted?: number; new_batch_id?: number };
+    return { deleted: obj.deleted ?? 0, newBatchId: obj.new_batch_id ?? 0 };
+  }, []);
+
+  // ── Carros ────────────────────────────────────────────────────
   const listCustomCars = useCallback(async (): Promise<AdminCustomCar[]> => {
     const { data, error } = await db()
       .from('admin_custom_cars')
@@ -191,6 +222,7 @@ export function useAdminApi() {
     imageUrls?: string[];
   }): Promise<boolean> => {
     const { error } = await db().rpc('admin_create_car', {
+      p_admin_password: getPw(),
       p_id:         car.id,
       p_brand:      car.brand,
       p_model:      car.model,
@@ -209,7 +241,10 @@ export function useAdminApi() {
   }, []);
 
   const deleteCar = useCallback(async (id: string): Promise<boolean> => {
-    const { data, error } = await db().rpc('admin_delete_car', { p_id: id });
+    const { data, error } = await db().rpc('admin_delete_car', {
+      p_admin_password: getPw(),
+      p_id: id,
+    });
     if (error) {
       logRpcError('admin_delete_car', error, { id });
       return false;
@@ -235,6 +270,7 @@ export function useAdminApi() {
     maxSameModel?:     number;
   }) => {
     const { error } = await db().rpc('admin_update_full_market_config', {
+      p_admin_password:    getPw(),
       p_weights:           cfg.weights,
       p_min_batch:         cfg.minBatch,
       p_max_batch:         cfg.maxBatch,
@@ -247,16 +283,6 @@ export function useAdminApi() {
     }
   }, []);
 
-  const clearMarketplace = useCallback(async (): Promise<{ deleted: number; newBatchId: number } | null> => {
-    const { data, error } = await db().rpc('admin_clear_marketplace');
-    if (error) {
-      logRpcError('admin_clear_marketplace', error);
-      return null;
-    }
-    const obj = (data ?? {}) as { deleted?: number; new_batch_id?: number };
-    return { deleted: obj.deleted ?? 0, newBatchId: obj.new_batch_id ?? 0 };
-  }, []);
-
   // ── Erros ────────────────────────────────────────────────────
   const listErrorLogs = useCallback(async (filters?: {
     functionName?: string;
@@ -264,9 +290,10 @@ export function useAdminApi() {
     limit?:        number;
   }): Promise<AdminErrorLog[]> => {
     const { data, error } = await db().rpc('admin_list_error_logs', {
-      p_limit:         filters?.limit ?? 100,
-      p_function_name: filters?.functionName ?? null,
-      p_since:         filters?.sinceIso ?? null,
+      p_admin_password: getPw(),
+      p_limit:          filters?.limit ?? 100,
+      p_function_name:  filters?.functionName ?? null,
+      p_since:          filters?.sinceIso ?? null,
     });
     if (error) {
       logRpcError('admin_list_error_logs', error);
@@ -277,7 +304,8 @@ export function useAdminApi() {
 
   const clearErrorLogs = useCallback(async (olderThanDays: number): Promise<number> => {
     const { data, error } = await db().rpc('admin_clear_error_logs', {
-      p_older_than_days: olderThanDays,
+      p_admin_password:   getPw(),
+      p_older_than_days:  olderThanDays,
     });
     if (error) {
       logRpcError('admin_clear_error_logs', error);
@@ -296,6 +324,7 @@ export function useAdminApi() {
     // Mercado
     getMarketOverview,
     forceMarketRefresh,
+    clearMarketplace,
     // Carros
     listCustomCars,
     createCar,
@@ -303,7 +332,6 @@ export function useAdminApi() {
     // Categorias / config
     getFullMarketConfig,
     updateFullMarketConfig,
-    clearMarketplace,
     // Erros
     listErrorLogs,
     clearErrorLogs,
