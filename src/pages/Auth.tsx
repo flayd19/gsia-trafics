@@ -13,7 +13,8 @@ import {
 import { Lock } from 'lucide-react';
 import { supabase } from '@/integrations/supabase/client';
 import { toast } from 'sonner';
-import { ADMIN_TOKEN_KEY } from '@/lib/adminAuth';
+import { setAdminToken } from '@/lib/adminAuth';
+import { resetAdminClient } from '@/integrations/supabase/admin-client';
 
 const AuthPage = () => {
   const { user, signIn, signUp, loading } = useAuth();
@@ -29,30 +30,34 @@ const AuthPage = () => {
   const [displayName, setDisplayName] = useState('');
   const [signupNotice, setSignupNotice] = useState<string | null>(null);
 
-  // Admin gate (cadeado oculto)
-  const [adminOpen, setAdminOpen]         = useState(false);
-  const [adminPassword, setAdminPassword] = useState('');
-  const [adminLoading, setAdminLoading]   = useState(false);
+  // Admin gate (cadeado oculto) — login INDEPENDENTE do auth do jogo
+  const [adminOpen, setAdminOpen]           = useState(false);
+  const [adminUsername, setAdminUsername]   = useState('alife');
+  const [adminPassword, setAdminPassword]   = useState('');
+  const [adminLoading, setAdminLoading]     = useState(false);
 
   /* eslint-disable @typescript-eslint/no-explicit-any */
   const handleAdminSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!user) {
-      toast.error('Faça login na sua conta antes de acessar o painel admin.');
-      return;
-    }
-    if (!adminPassword) return;
+    if (!adminUsername.trim() || !adminPassword) return;
     setAdminLoading(true);
     try {
-      const { data, error } = await (supabase as any).rpc('verify_admin_password', {
+      const { data, error } = await (supabase as any).rpc('admin_login', {
+        p_username: adminUsername.trim(),
         p_password: adminPassword,
       });
-      if (error || data !== true) {
-        toast.error('Senha incorreta ou usuário sem permissão.');
+      if (error || !data?.token) {
+        const msg = (error?.message ?? '').toLowerCase();
+        if (msg.includes('invalid_credentials')) {
+          toast.error('Usuário ou senha incorretos.');
+        } else {
+          toast.error('Falha ao autenticar — verifique se a migration foi aplicada.');
+        }
         setAdminPassword('');
         return;
       }
-      sessionStorage.setItem(ADMIN_TOKEN_KEY, JSON.stringify({ uid: user.id, ts: Date.now() }));
+      setAdminToken(data.token, data.expires_at);
+      resetAdminClient();
       toast.success('Acesso concedido — entrando no painel.');
       navigate('/admin');
     } catch {
@@ -284,19 +289,28 @@ const AuthPage = () => {
         <Lock size={16} />
       </button>
 
-      <Dialog open={adminOpen} onOpenChange={(o) => { setAdminOpen(o); if (!o) setAdminPassword(''); }}>
+      <Dialog
+        open={adminOpen}
+        onOpenChange={(o) => { setAdminOpen(o); if (!o) setAdminPassword(''); }}
+      >
         <DialogContent className="max-w-sm">
           <DialogHeader>
             <DialogTitle className="flex items-center gap-2">
               <Lock size={16} /> Painel administrativo
             </DialogTitle>
             <DialogDescription className="text-xs">
-              {user
-                ? <>Logado como <strong>{user.email}</strong>. Informe a senha de admin.</>
-                : 'Faça login na sua conta primeiro.'}
+              Login independente — não precisa estar logado na sua conta de jogo.
             </DialogDescription>
           </DialogHeader>
           <form onSubmit={handleAdminSubmit} className="space-y-3">
+            <Input
+              type="text"
+              placeholder="Usuário admin"
+              value={adminUsername}
+              onChange={(e) => setAdminUsername(e.target.value)}
+              autoComplete="off"
+              disabled={adminLoading}
+            />
             <Input
               type="password"
               placeholder="Senha admin"
@@ -304,11 +318,16 @@ const AuthPage = () => {
               onChange={(e) => setAdminPassword(e.target.value)}
               autoFocus
               autoComplete="off"
-              disabled={!user || adminLoading}
+              disabled={adminLoading}
             />
             <DialogFooter className="gap-2">
-              <Button type="button" variant="outline" onClick={() => setAdminOpen(false)}>Cancelar</Button>
-              <Button type="submit" disabled={!user || !adminPassword || adminLoading}>
+              <Button type="button" variant="outline" onClick={() => setAdminOpen(false)}>
+                Cancelar
+              </Button>
+              <Button
+                type="submit"
+                disabled={!adminUsername.trim() || !adminPassword || adminLoading}
+              >
                 {adminLoading ? 'Verificando...' : 'Acessar'}
               </Button>
             </DialogFooter>

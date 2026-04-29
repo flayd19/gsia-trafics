@@ -2,7 +2,13 @@ import { useEffect, useMemo, useState } from 'react';
 import { useAdminApi, type AdminPlayer } from '@/hooks/useAdminApi';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
-import { Search, Users, Plus, Minus, Save, Loader2, X } from 'lucide-react';
+import {
+  Search, Users, Plus, Minus, Save, Loader2, X, AlertTriangle, Trash2,
+} from 'lucide-react';
+import {
+  Dialog, DialogContent, DialogHeader, DialogTitle,
+  DialogDescription, DialogFooter,
+} from '@/components/ui/dialog';
 import { toast } from 'sonner';
 
 const fmt = (n: number) =>
@@ -10,9 +16,19 @@ const fmt = (n: number) =>
 
 export function AdminPlayersTab() {
   const api = useAdminApi();
-  const [players, setPlayers] = useState<AdminPlayer[]>([]);
-  const [loading, setLoading] = useState(true);
-  const [search,  setSearch]  = useState('');
+  const [players,    setPlayers]    = useState<AdminPlayer[]>([]);
+  const [loading,    setLoading]    = useState(true);
+  const [search,     setSearch]     = useState('');
+  const [dedupeOpen, setDedupeOpen] = useState(false);
+  const [duplicates, setDuplicates] = useState<Array<{
+    category:        string;
+    email:           string;
+    count:           number;
+    oldest_user_id:  string;
+    newest_user_id:  string;
+  }>>([]);
+  const [dedupeBusy, setDedupeBusy] = useState(false);
+  const [confirmText, setConfirmText] = useState('');
 
   const load = async () => {
     setLoading(true);
@@ -21,6 +37,33 @@ export function AdminPlayersTab() {
   };
 
   useEffect(() => { void load(); }, []);
+
+  const openDedupe = async () => {
+    setDedupeOpen(true);
+    setConfirmText('');
+    setDuplicates(await api.listDuplicateAccounts());
+  };
+
+  const handleDedupe = async () => {
+    if (confirmText !== 'OK') return;
+    setDedupeBusy(true);
+    try {
+      const result = await api.dedupeAccounts();
+      if (result) {
+        toast.success(
+          `Limpeza concluída: ${result.duplicateUsersDeleted} contas duplicadas, ` +
+          `${result.orphanProfilesDeleted} perfis órfãos, ` +
+          `${result.orphanProgressDeleted} saves órfãos removidos.`,
+        );
+        setDedupeOpen(false);
+        await load();
+      }
+    } catch {
+      toast.error('Falha ao executar limpeza — veja a aba Erros.');
+    } finally {
+      setDedupeBusy(false);
+    }
+  };
 
   const filtered = useMemo(() => {
     const q = search.trim().toLowerCase();
@@ -42,9 +85,19 @@ export function AdminPlayersTab() {
             {players.length} jogadores · ajuste saldo via SET (valor exato) ou ADJUST (delta).
           </p>
         </div>
-        <Button size="sm" variant="outline" onClick={load} disabled={loading}>
-          {loading ? <Loader2 size={13} className="animate-spin" /> : 'Atualizar'}
-        </Button>
+        <div className="flex gap-1.5 flex-wrap">
+          <Button
+            size="sm"
+            variant="outline"
+            onClick={() => void openDedupe()}
+            className="gap-1.5 text-amber-500 border-amber-500/30 hover:bg-amber-500/10"
+          >
+            <AlertTriangle size={13} /> Limpar duplicatas
+          </Button>
+          <Button size="sm" variant="outline" onClick={load} disabled={loading}>
+            {loading ? <Loader2 size={13} className="animate-spin" /> : 'Atualizar'}
+          </Button>
+        </div>
       </div>
 
       <div className="relative">
@@ -102,6 +155,83 @@ export function AdminPlayersTab() {
           ))}
         </div>
       )}
+
+      {/* Dialog: limpar contas duplicadas */}
+      <Dialog open={dedupeOpen} onOpenChange={setDedupeOpen}>
+        <DialogContent className="max-w-lg max-h-[80vh] overflow-y-auto">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              <AlertTriangle size={16} className="text-amber-500" />
+              Limpar contas duplicadas e órfãs
+            </DialogTitle>
+            <DialogDescription className="text-xs">
+              Para cada email com múltiplas contas em <code>auth.users</code>, mantém a mais antiga
+              e mescla o maior saldo. Remove perfis e progresso órfãos. Para confirmar digite{' '}
+              <code>OK</code>:
+            </DialogDescription>
+          </DialogHeader>
+
+          <div className="space-y-2">
+            <div className="text-[11px] uppercase tracking-wider text-muted-foreground font-semibold">
+              Itens detectados ({duplicates.length})
+            </div>
+            {duplicates.length === 0 ? (
+              <div className="ios-surface rounded-[10px] p-4 text-center text-xs text-muted-foreground">
+                ✨ Nenhuma duplicata ou órfão encontrado.
+              </div>
+            ) : (
+              <div className="space-y-1 max-h-[240px] overflow-y-auto">
+                {duplicates.map((d, i) => (
+                  <div
+                    key={i}
+                    className="flex items-center gap-2 ios-surface rounded-[8px] p-2 text-xs"
+                  >
+                    <span className={`text-[9px] font-bold px-1.5 py-0.5 rounded ${
+                      d.category === 'duplicate_email'
+                        ? 'bg-red-500/15 text-red-400'
+                        : 'bg-amber-500/15 text-amber-500'
+                    }`}>
+                      {d.category === 'duplicate_email' ? 'DUPLICATA' :
+                       d.category === 'orphan_profile' ? 'PERFIL ÓRFÃO' :
+                       'PROGRESSO ÓRFÃO'}
+                    </span>
+                    <span className="flex-1 min-w-0 truncate font-mono text-[10px]">
+                      {d.email}
+                    </span>
+                    {d.count > 1 && (
+                      <span className="text-[10px] text-muted-foreground tabular-nums">
+                        {d.count}x
+                      </span>
+                    )}
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+
+          <Input
+            placeholder="OK"
+            value={confirmText}
+            onChange={e => setConfirmText(e.target.value.toUpperCase())}
+            disabled={dedupeBusy}
+          />
+
+          <DialogFooter className="gap-2">
+            <Button variant="outline" onClick={() => setDedupeOpen(false)} disabled={dedupeBusy}>
+              Cancelar
+            </Button>
+            <Button
+              variant="destructive"
+              disabled={confirmText !== 'OK' || dedupeBusy || duplicates.length === 0}
+              onClick={() => void handleDedupe()}
+              className="gap-1.5"
+            >
+              {dedupeBusy ? <Loader2 size={13} className="animate-spin" /> : <Trash2 size={13} />}
+              Executar limpeza
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }

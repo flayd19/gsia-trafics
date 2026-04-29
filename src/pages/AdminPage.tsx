@@ -11,8 +11,12 @@
 // =====================================================================
 import { useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { useAuth } from '@/hooks/useAuth';
-import { hasAdminToken, clearAdminToken } from '@/lib/adminAuth';
+import {
+  hasAdminToken, clearAdminToken, getAdminTokenString,
+} from '@/lib/adminAuth';
+import {
+  getAdminClient, resetAdminClient,
+} from '@/integrations/supabase/admin-client';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Button } from '@/components/ui/button';
 import { LogOut, ShieldAlert } from 'lucide-react';
@@ -22,27 +26,31 @@ import { AdminCarsTab }       from '@/components/admin/AdminCarsTab';
 import { AdminCategoriesTab } from '@/components/admin/AdminCategoriesTab';
 import { AdminErrorsTab }     from '@/components/admin/AdminErrorsTab';
 
-export default function AdminPage() {
+export default function AdminPage(): JSX.Element {
   const navigate = useNavigate();
-  const { user, loading } = useAuth();
 
   useEffect(() => {
-    if (loading) return;
-    if (!user) {
-      navigate('/auth');
-      return;
-    }
+    // Acesso INDEPENDENTE do login do jogo — só precisa do admin token
     if (!hasAdminToken()) {
       navigate('/auth');
     }
-  }, [user, loading, navigate]);
+  }, [navigate]);
 
-  const handleLogout = () => {
+  /* eslint-disable @typescript-eslint/no-explicit-any */
+  const handleLogout = async () => {
+    const token = getAdminTokenString();
+    if (token) {
+      try {
+        await (getAdminClient() as any).rpc('admin_logout', { p_token: token });
+      } catch { /* silencioso */ }
+    }
     clearAdminToken();
+    resetAdminClient();
     navigate('/auth');
   };
+  /* eslint-enable @typescript-eslint/no-explicit-any */
 
-  if (loading || !user || !hasAdminToken()) {
+  if (!hasAdminToken()) {
     return (
       <div className="min-h-screen flex items-center justify-center bg-background">
         <div className="text-center text-muted-foreground text-sm">Verificando acesso...</div>
@@ -61,10 +69,10 @@ export default function AdminPage() {
               Painel administrativo
             </h1>
             <p className="text-xs text-muted-foreground mt-0.5">
-              Logado: <strong>{user.email}</strong>
+              Sessão admin independente — token expira em 8h.
             </p>
           </div>
-          <Button variant="outline" size="sm" onClick={handleLogout} className="gap-1.5">
+          <Button variant="outline" size="sm" onClick={() => void handleLogout()} className="gap-1.5">
             <LogOut size={13} /> Sair do painel
           </Button>
         </div>

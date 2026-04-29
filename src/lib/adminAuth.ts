@@ -1,19 +1,16 @@
 // =====================================================================
-// adminAuth — utilitários para validar acesso ao painel admin no client.
+// adminAuth — gerenciamento do token de sessão admin (independente
+// do auth.uid() do jogo).
 //
-// O token é GRAVADO em sessionStorage após verify_admin_password retornar
-// true. Ele é apenas um "selo" client-side — toda RPC sensível ainda
-// chama is_admin() server-side via SECURITY DEFINER, então mesmo que
-// alguém forge o token, não consegue executar ações privilegiadas.
+// O token é um UUID retornado por admin_login(username, password) e
+// validado server-side via header HTTP `x-admin-token` que o
+// useAdminApi inclui em toda chamada.
 // =====================================================================
-export const ADMIN_TOKEN_KEY = 'gsia_admin_token_v1';
-
-/** Validade do token em ms (8h). */
-const ADMIN_TOKEN_TTL_MS = 8 * 60 * 60 * 1000;
+export const ADMIN_TOKEN_KEY = 'gsia_admin_token_v2';
 
 interface AdminTokenPayload {
-  uid: string;
-  ts:  number;
+  token:      string;
+  expiresAt:  number;
 }
 
 export function getAdminToken(): AdminTokenPayload | null {
@@ -21,15 +18,21 @@ export function getAdminToken(): AdminTokenPayload | null {
     const raw = sessionStorage.getItem(ADMIN_TOKEN_KEY);
     if (!raw) return null;
     const parsed = JSON.parse(raw) as Partial<AdminTokenPayload>;
-    if (typeof parsed.uid !== 'string' || typeof parsed.ts !== 'number') return null;
-    if (Date.now() - parsed.ts > ADMIN_TOKEN_TTL_MS) {
+    if (typeof parsed.token !== 'string' || typeof parsed.expiresAt !== 'number') return null;
+    if (Date.now() >= parsed.expiresAt) {
       sessionStorage.removeItem(ADMIN_TOKEN_KEY);
       return null;
     }
-    return { uid: parsed.uid, ts: parsed.ts };
+    return { token: parsed.token, expiresAt: parsed.expiresAt };
   } catch {
     return null;
   }
+}
+
+export function setAdminToken(token: string, expiresAtIso: string): void {
+  const expiresAt = new Date(expiresAtIso).getTime();
+  if (!Number.isFinite(expiresAt)) return;
+  sessionStorage.setItem(ADMIN_TOKEN_KEY, JSON.stringify({ token, expiresAt }));
 }
 
 export function clearAdminToken(): void {
@@ -38,4 +41,9 @@ export function clearAdminToken(): void {
 
 export function hasAdminToken(): boolean {
   return getAdminToken() !== null;
+}
+
+/** Retorna apenas a string do token, ou null se não houver/expirou. */
+export function getAdminTokenString(): string | null {
+  return getAdminToken()?.token ?? null;
 }

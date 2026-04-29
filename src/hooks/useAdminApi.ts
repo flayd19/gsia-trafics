@@ -5,11 +5,11 @@
 // — mas as RPCs também checam server-side, então é defesa em profundidade.
 // =====================================================================
 import { useCallback } from 'react';
-import { supabase } from '@/integrations/supabase/client';
+import { getAdminClient } from '@/integrations/supabase/admin-client';
 import { logRpcError } from '@/lib/errorLogger';
 
 /* eslint-disable @typescript-eslint/no-explicit-any */
-const db = () => supabase as any;
+const db = () => getAdminClient() as any;
 /* eslint-enable @typescript-eslint/no-explicit-any */
 
 export interface AdminPlayer {
@@ -103,6 +103,48 @@ export function useAdminApi() {
       throw error;
     }
     return data as number;
+  }, []);
+
+  // ── Dedupe de contas ─────────────────────────────────────────
+  const listDuplicateAccounts = useCallback(async (): Promise<Array<{
+    category:        string;
+    email:           string;
+    count:           number;
+    oldest_user_id:  string;
+    newest_user_id:  string;
+  }>> => {
+    const { data, error } = await db().rpc('admin_list_duplicate_accounts');
+    if (error) {
+      logRpcError('admin_list_duplicate_accounts', error);
+      return [];
+    }
+    return (data ?? []) as Array<{
+      category:        string;
+      email:           string;
+      count:           number;
+      oldest_user_id:  string;
+      newest_user_id:  string;
+    }>;
+  }, []);
+
+  const dedupeAccounts = useCallback(async (): Promise<{
+    emailsProcessed:        number;
+    duplicateUsersDeleted:  number;
+    orphanProfilesDeleted:  number;
+    orphanProgressDeleted:  number;
+  } | null> => {
+    const { data, error } = await db().rpc('admin_dedupe_accounts');
+    if (error) {
+      logRpcError('admin_dedupe_accounts', error);
+      throw error;
+    }
+    const obj = (data ?? {}) as Record<string, number>;
+    return {
+      emailsProcessed:        obj.emails_processed        ?? 0,
+      duplicateUsersDeleted:  obj.duplicate_users_deleted ?? 0,
+      orphanProfilesDeleted:  obj.orphan_profiles_deleted ?? 0,
+      orphanProgressDeleted:  obj.orphan_progress_deleted ?? 0,
+    };
   }, []);
 
   // ── Mercado ──────────────────────────────────────────────────
@@ -249,6 +291,8 @@ export function useAdminApi() {
     listPlayers,
     setPlayerMoney,
     adjustPlayerMoney,
+    listDuplicateAccounts,
+    dedupeAccounts,
     // Mercado
     getMarketOverview,
     forceMarketRefresh,
