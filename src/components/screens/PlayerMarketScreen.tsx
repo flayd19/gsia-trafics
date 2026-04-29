@@ -346,28 +346,28 @@ function ListingCard({
 
       {/* Ações */}
       {isActive && (
-        <div className="flex gap-1.5 px-2.5 pb-2.5 pt-1">
-          {carData && (
-            <CarPerformanceDialog car={carData} />
-          )}
+        <div className="flex flex-col gap-1.5 px-2.5 pb-2.5 pt-1">
           {isOwn ? (
             <Button
               variant="outline"
               size="sm"
-              className="flex-1 text-[11px] text-red-500 border-red-500/30 px-2"
+              className="w-full text-[11px] text-red-500 border-red-500/30"
               onClick={onCancel}
             >
-              Cancelar
+              Cancelar anúncio
             </Button>
           ) : (
             <Button
               size="sm"
-              className="flex-1 text-[11px] px-2"
+              className="w-full text-[11px]"
               disabled={!canAfford || !hasGarageSpace}
               onClick={onBuy}
             >
               Comprar
             </Button>
+          )}
+          {carData && (
+            <CarPerformanceDialog car={carData} />
           )}
         </div>
       )}

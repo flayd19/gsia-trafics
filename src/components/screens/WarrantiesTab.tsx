@@ -99,9 +99,6 @@ export function WarrantiesTab({ gameState, onPayClaim, onRefuseClaim, onDismissC
         <div className="ios-surface rounded-[16px] p-6 text-center space-y-2">
           <div className="text-4xl">😌</div>
           <div className="text-[13px] font-semibold text-foreground">Sem reclamações</div>
-          <div className="text-[11px] text-muted-foreground">
-            Vendendo carros com boa condição (≥ 60%), nenhum cliente reclama.
-          </div>
         </div>
       ) : (
         <div className="space-y-2.5">

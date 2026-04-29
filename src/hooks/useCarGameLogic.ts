@@ -35,10 +35,9 @@ import {
   type HiredEmployee,
 } from '@/types/employees';
 import {
-  WARRANTY_CLAIM_CHANCE,
   WARRANTY_MIN_LEVEL,
   WARRANTY_CONDITION_THRESHOLD,
-  WARRANTY_CLAIM_TTL_MS,
+  warrantyClaimChance,
   type WarrantyClaim,
 } from '@/types/warranty';
 import { supabase } from '@/integrations/supabase/client';
@@ -60,19 +59,31 @@ function generateId(): string {
  * Decide se uma venda dispara claim de garantia e, em caso positivo,
  * gera o claim pronto para ser persistido. Retorna `null` se:
  *   • Jogador abaixo do nível mínimo (Lv 8)
- *   • Carro tinha condição >= 60%
- *   • RNG não premiou (50% de chance)
+ *   • Carro tinha condição ≥ 60% (chance 0%)
+ *   • RNG não premiou
  *   • Não há reparos disponíveis no atributo afetado
+ *
+ * Probabilidade escala com a condição:
+ *   • 60% → 0% chance
+ *   • 40% → 50% chance (linear)
+ *   • 20% → 100% chance (garantido)
+ *
+ * O claim expira no PRÓXIMO ciclo de compradores (nextBuyerCycleAt) —
+ * sincroniza a renovação dos NPCs com a renovação dos claims.
  */
 function maybeGenerateWarrantyClaim(
   car: OwnedCar,
   buyerName: string,
   salePrice: number,
   playerLevel: number,
+  nextCycleAt: number,
 ): WarrantyClaim | null {
   if (playerLevel < WARRANTY_MIN_LEVEL) return null;
   if (car.condition >= WARRANTY_CONDITION_THRESHOLD) return null;
-  if (Math.random() >= WARRANTY_CLAIM_CHANCE) return null;
+
+  const chance = warrantyClaimChance(car.condition);
+  if (chance <= 0) return null;
+  if (Math.random() >= chance) return null;
 
   // Pega reparo aleatório disponível (não conta lavagem)
   const availableRepairs = REPAIR_TYPES.filter(r => !r.isAlwaysAvailable);
@@ -91,7 +102,8 @@ function maybeGenerateWarrantyClaim(
     repairIcon:   picked.icon,
     repairCost:   picked.baseCost,
     attribute:    picked.attribute,
-    expiresAt:    Date.now() + WARRANTY_CLAIM_TTL_MS,
+    // Sincroniza com o próximo ciclo de compradores
+    expiresAt:    nextCycleAt,
   };
 }
 
@@ -1137,7 +1149,7 @@ export function useCarGameLogic() {
 
     // Garantia: chance de claim se carro tinha condição < 60% e jogador Lv 8+
     const warrantyClaim = maybeGenerateWarrantyClaim(
-      car, buyer.name, playerOfferSafe, state.reputation?.level ?? 1,
+      car, buyer.name, playerOfferSafe, state.reputation?.level ?? 1, state.nextBuyerCycleAt,
     );
 
     const slotIdx   = buyer.slotIndex ?? -1;
@@ -1277,7 +1289,7 @@ export function useCarGameLogic() {
 
     // Garantia: chance de claim se carro tinha condição < 60% e jogador Lv 8+
     const warrantyClaim = maybeGenerateWarrantyClaim(
-      car, buyer.name, counterPrice, state.reputation?.level ?? 1,
+      car, buyer.name, counterPrice, state.reputation?.level ?? 1, state.nextBuyerCycleAt,
     );
 
     // ── Aplicação do estado (updater puro) ─────────────────────────────

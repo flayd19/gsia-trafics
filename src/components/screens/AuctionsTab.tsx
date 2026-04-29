@@ -1,20 +1,29 @@
 // =====================================================================
 // AuctionsTab — Sub-aba "Leilões" dentro de Comprar
-// 25 carros por ciclo de 6h, lances livres, vence o maior lance ao final
+// 25 carros por ciclo de 6h, lances livres, vence o maior lance ao final.
+//
+// Cada card já mostra TUDO inline:
+//   • Thumbnail + identidade do carro
+//   • FIPE + Condição
+//   • Stats setoriais (vel.máx, accel, grip, stab) em mini-barras
+//   • Tempo restante + barra de progresso
+//   • Lance atual + input + botão Dar Lance (sem dialog)
+//   • Histórico de lances colapsível
 // =====================================================================
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useState, useCallback } from 'react';
 import {
   Gavel, Clock, TrendingUp, Trophy, Hammer, RefreshCw, CheckCircle2,
+  ChevronDown, ChevronUp, ListOrdered,
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
-import {
-  Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter, DialogTrigger,
-} from '@/components/ui/dialog';
 import { toast } from 'sonner';
 import type { GameState, OwnedCar } from '@/types/game';
-import { useAuctions, type AuctionItem } from '@/hooks/useAuctions';
+import { useAuctions, type AuctionItem, type AuctionBid } from '@/hooks/useAuctions';
 import { conditionLabel } from '@/data/cars';
+import { useCarImages } from '@/hooks/useCarImages';
+import { generateBasePerformance } from '@/lib/performanceEngine';
+import type { PerformanceStats } from '@/types/performance';
 
 interface AuctionsTabProps {
   gameState:        GameState;
@@ -41,6 +50,16 @@ function fmtTimeLeft(endsAtIso: string): { label: string; expired: boolean; pct:
       ? `${mins}m ${String(secs).padStart(2, '0')}s`
       : `${secs}s`;
   return { label, expired: false, pct };
+}
+
+function fmtBidTime(iso: string): string {
+  const diff = Date.now() - new Date(iso).getTime();
+  const min = Math.floor(diff / 60_000);
+  if (min < 1) return 'agora';
+  if (min < 60) return `${min}min`;
+  const h = Math.floor(min / 60);
+  if (h < 24) return `${h}h`;
+  return `${Math.floor(h / 24)}d`;
 }
 
 // ── Tela ────────────────────────────────────────────────────────────
@@ -70,7 +89,7 @@ export function AuctionsTab({ gameState, onAddCarToGarage }: AuctionsTabProps) {
             Leilões
           </h3>
           <p className="text-[11px] text-muted-foreground mt-0.5">
-            25 carros · ciclo de 6h · vence o maior lance ao encerrar.
+            25 carros · ciclo de 6h · sem lance mínimo · maior lance ao encerrar vence.
           </p>
         </div>
         <Button
@@ -143,6 +162,7 @@ export function AuctionsTab({ gameState, onAddCarToGarage }: AuctionsTabProps) {
               myUserId={auctionsHook.myUserId}
               currentMoney={gameState.money}
               overdraftLimit={gameState.overdraftLimit}
+              loadBids={auctionsHook.loadBids}
               onPlaceBid={async (amount) => {
                 const r = await auctionsHook.placeBid(a.id, amount);
                 if (r.success) toast.success(r.message);
@@ -157,229 +177,305 @@ export function AuctionsTab({ gameState, onAddCarToGarage }: AuctionsTabProps) {
   );
 }
 
-// ── Card individual de leilão ──────────────────────────────────────
+// ── Card individual de leilão (tudo inline) ──────────────────────────
 function AuctionCard({
-  auction, myUserId, currentMoney, overdraftLimit, onPlaceBid,
+  auction, myUserId, currentMoney, overdraftLimit, loadBids, onPlaceBid,
 }: {
   auction:        AuctionItem;
   myUserId:       string | null;
   currentMoney:   number;
   overdraftLimit: number;
+  loadBids:       (auctionId: string) => Promise<AuctionBid[]>;
   onPlaceBid:     (amount: number) => Promise<boolean>;
 }) {
+  const { getImgForInstance } = useCarImages();
+  const imgUrl = getImgForInstance(auction.modelId, auction.id);
   const time = fmtTimeLeft(auction.endsAt);
   const isLeading = myUserId && auction.highestBidderId === myUserId;
-  // Sem lance mínimo: lance inicial = R$ 1; lance subsequente = highest + R$ 1
   const minNextBid = auction.highestBid != null
     ? Math.floor(auction.highestBid) + 1
     : 1;
-
-  return (
-    <div className={`ios-surface rounded-[14px] p-3 space-y-2 ${
-      isLeading ? 'border border-emerald-500/40 bg-emerald-500/5' : ''
-    }`}>
-      <div className="flex items-start gap-3">
-        <span className="text-2xl shrink-0">{auction.icon}</span>
-        <div className="flex-1 min-w-0">
-          <div className="text-[13px] font-bold text-foreground truncate">
-            {auction.brand} {auction.model} {auction.trim}
-          </div>
-          <div className="text-[10px] text-muted-foreground">
-            {auction.year} · Cond. <span className="font-semibold">{conditionLabel(auction.condition)} {auction.condition}%</span>
-            {auction.mileage > 0 && ` · ${auction.mileage.toLocaleString('pt-BR')} km`}
-          </div>
-          <div className="text-[10px] text-muted-foreground mt-0.5">
-            FIPE de referência: <span className="font-semibold">{fmt(auction.fipePrice)}</span>
-          </div>
-        </div>
-        {isLeading && (
-          <span className="text-[9px] font-bold text-emerald-400 px-1.5 py-0.5 rounded-full bg-emerald-500/20 shrink-0 flex items-center gap-1">
-            <Trophy size={9} /> Você lidera
-          </span>
-        )}
-      </div>
-
-      {/* Lance atual + tempo */}
-      <div className="grid grid-cols-2 gap-2">
-        <div className="ios-surface rounded-[10px] p-2 !shadow-none bg-muted/30">
-          <div className="text-[9px] uppercase tracking-wider text-muted-foreground font-semibold">
-            Lance atual
-          </div>
-          {auction.highestBid != null ? (
-            <>
-              <div className="text-[14px] font-bold text-foreground tabular-nums">
-                {fmt(auction.highestBid)}
-              </div>
-              <div className="text-[9px] text-muted-foreground truncate">
-                por {auction.highestBidderName ?? '—'} · {auction.bidCount} lances
-              </div>
-            </>
-          ) : (
-            <>
-              <div className="text-[14px] font-bold text-muted-foreground italic">Sem lances</div>
-              <div className="text-[9px] text-muted-foreground">
-                Aceita qualquer valor
-              </div>
-            </>
-          )}
-        </div>
-        <div className="ios-surface rounded-[10px] p-2 !shadow-none bg-muted/30">
-          <div className="text-[9px] uppercase tracking-wider text-muted-foreground font-semibold flex items-center gap-1">
-            <Clock size={9} /> Encerra em
-          </div>
-          <div className={`text-[14px] font-mono font-bold tabular-nums ${
-            time.expired ? 'text-red-400'
-            : time.pct > 90 ? 'text-amber-400'
-            : 'text-foreground'
-          }`}>
-            {time.label}
-          </div>
-          <div className="h-1 rounded-full bg-muted mt-1 overflow-hidden">
-            <div
-              className={`h-full ${time.pct > 90 ? 'bg-amber-400' : 'bg-primary'}`}
-              style={{ width: `${time.pct}%` }}
-            />
-          </div>
-        </div>
-      </div>
-
-      {/* Ação: dar lance */}
-      <BidDialog
-        auction={auction}
-        minNextBid={minNextBid}
-        currentMoney={currentMoney}
-        overdraftLimit={overdraftLimit}
-        onPlaceBid={onPlaceBid}
-        disabled={time.expired}
-      />
-    </div>
-  );
-}
-
-// ── Dialog de lance ─────────────────────────────────────────────────
-function BidDialog({
-  auction, minNextBid, currentMoney, overdraftLimit, onPlaceBid, disabled,
-}: {
-  auction:        AuctionItem;
-  minNextBid:     number;
-  currentMoney:   number;
-  overdraftLimit: number;
-  onPlaceBid:     (amount: number) => Promise<boolean>;
-  disabled:       boolean;
-}) {
-  const [open, setOpen] = useState(false);
-  const [amount, setAmount] = useState('');
-  const [sending, setSending] = useState(false);
-
-  const numeric = parseInt(amount.replace(/\D/g, '') || '0', 10);
   const maxAffordable = currentMoney - overdraftLimit;
-  const valid = numeric >= minNextBid && numeric <= maxAffordable;
 
-  // Sugestões rápidas (frações da FIPE para servir de referência)
-  const suggestions = useMemo(() => {
-    const base = minNextBid;
-    return [
-      base,
-      Math.round(auction.fipePrice * 0.30),
-      Math.round(auction.fipePrice * 0.60),
-      Math.round(auction.fipePrice * 0.85),
-      Math.round(auction.fipePrice * 1.00),
-    ].filter((v, i, arr) => arr.indexOf(v) === i && v >= minNextBid && v <= maxAffordable);
-  }, [minNextBid, auction.fipePrice, maxAffordable]);
+  // Stats de performance — gerados a partir dos campos do leilão
+  const stats: PerformanceStats = useMemo(() => generateBasePerformance({
+    instanceId: auction.id,
+    modelId:    auction.modelId,
+    fipePrice:  auction.fipePrice,
+    condition:  auction.condition,
+  }), [auction.id, auction.modelId, auction.fipePrice, auction.condition]);
 
-  const handlePlace = async () => {
+  const [bidInput, setBidInput] = useState('');
+  const [sending,  setSending]  = useState(false);
+  const [showBids, setShowBids] = useState(false);
+  const [bids,     setBids]     = useState<AuctionBid[]>([]);
+  const [loadingBids, setLoadingBids] = useState(false);
+
+  const numeric = parseInt(bidInput.replace(/\D/g, '') || '0', 10);
+  const valid   = numeric >= minNextBid && numeric <= maxAffordable && !time.expired;
+
+  const handleBid = useCallback(async () => {
     if (!valid || sending) return;
     setSending(true);
     const ok = await onPlaceBid(numeric);
     setSending(false);
     if (ok) {
-      setOpen(false);
-      setAmount('');
+      setBidInput('');
+      // Recarrega histórico se aberto
+      if (showBids) {
+        const updated = await loadBids(auction.id);
+        setBids(updated);
+      }
     }
-  };
+  }, [valid, sending, numeric, onPlaceBid, showBids, loadBids, auction.id]);
+
+  const toggleBids = useCallback(async () => {
+    const next = !showBids;
+    setShowBids(next);
+    if (next && bids.length === 0) {
+      setLoadingBids(true);
+      try {
+        const list = await loadBids(auction.id);
+        setBids(list);
+      } finally {
+        setLoadingBids(false);
+      }
+    }
+  }, [showBids, bids.length, loadBids, auction.id]);
 
   return (
-    <Dialog open={open} onOpenChange={setOpen}>
-      <DialogTrigger asChild>
-        <Button
-          size="sm"
-          className="w-full gap-1.5 text-[12px]"
-          disabled={disabled}
-        >
-          <Hammer size={13} />
-          {disabled ? 'Encerrado' : 'Dar lance'}
-        </Button>
-      </DialogTrigger>
-      <DialogContent className="max-w-sm">
-        <DialogHeader>
-          <DialogTitle className="flex items-center gap-2">
-            <Hammer size={18} className="text-primary" />
-            Lance no leilão
-          </DialogTitle>
-          <DialogDescription className="text-[12px]">
-            <strong>{auction.brand} {auction.model}</strong> · FIPE {fmt(auction.fipePrice)} · Cond. {auction.condition}%
-          </DialogDescription>
-        </DialogHeader>
-        <div className="space-y-3">
-          <div className="ios-surface rounded-[12px] p-3 !shadow-none bg-muted/30">
-            <div className="grid grid-cols-2 gap-2 text-[11px]">
-              <div>
-                <div className="text-muted-foreground">
-                  {auction.highestBid != null ? 'Para superar' : 'Sem mínimo'}
+    <div className={`ios-surface rounded-[14px] overflow-hidden ${
+      isLeading ? 'border border-emerald-500/40 bg-emerald-500/5' : ''
+    }`}>
+      {/* Thumbnail */}
+      <div className="relative w-full bg-muted flex items-center justify-center overflow-hidden" style={{ height: 110 }}>
+        {imgUrl ? (
+          <img
+            src={imgUrl}
+            alt={`${auction.brand} ${auction.model}`}
+            className="w-full h-full object-cover"
+            onError={(e) => {
+              e.currentTarget.style.display = 'none';
+              const fallback = e.currentTarget.nextElementSibling as HTMLElement | null;
+              if (fallback) fallback.style.display = 'flex';
+            }}
+          />
+        ) : null}
+        <span
+          className="text-[52px] items-center justify-center"
+          style={{ display: imgUrl ? 'none' : 'flex' }}
+        >{auction.icon}</span>
+
+        {/* Badges */}
+        {isLeading && (
+          <div className="absolute top-2 left-2 px-1.5 py-0.5 rounded-full text-[9px] font-bold text-white bg-emerald-500 flex items-center gap-0.5">
+            <Trophy size={9} /> Você lidera
+          </div>
+        )}
+        <div className={`absolute top-2 right-2 px-1.5 py-0.5 rounded-full text-[9px] font-bold text-white ${
+          time.expired ? 'bg-red-500' : time.pct > 80 ? 'bg-amber-500' : 'bg-primary'
+        } flex items-center gap-1`}>
+          <Clock size={9} /> {time.label}
+        </div>
+      </div>
+
+      {/* Body */}
+      <div className="p-3 space-y-2.5">
+        {/* Identidade do carro */}
+        <div>
+          <div className="text-[14px] font-bold text-foreground truncate">
+            {auction.brand} {auction.model} <span className="text-muted-foreground font-normal">{auction.trim}</span>
+          </div>
+          <div className="text-[11px] text-muted-foreground">
+            {auction.year} · <span className="font-semibold">{conditionLabel(auction.condition)} {auction.condition}%</span>
+            {auction.mileage > 0 && ` · ${auction.mileage.toLocaleString('pt-BR')} km`}
+          </div>
+          <div className="text-[11px] text-muted-foreground">
+            FIPE de referência: <span className="font-semibold text-foreground">{fmt(auction.fipePrice)}</span>
+          </div>
+        </div>
+
+        {/* Stats de desempenho — 4 mini-barras */}
+        <div className="grid grid-cols-2 gap-x-2 gap-y-1 bg-muted/30 rounded-[10px] p-2">
+          <MiniStat label="Vel. máx" value={stats.topSpeed} />
+          <MiniStat label="Aceler."  value={stats.acceleration} />
+          <MiniStat label="Aderência" value={stats.grip} />
+          <MiniStat label="Estab."   value={stats.stability} />
+          <div className="col-span-2 flex items-center justify-between text-[10px] mt-1 pt-1 border-t border-border/30">
+            <span className="text-muted-foreground">IGP geral</span>
+            <span className="font-mono font-bold text-foreground tabular-nums">{stats.igp}/100</span>
+          </div>
+        </div>
+
+        {/* Lance atual */}
+        <div className="flex items-center justify-between bg-muted/30 rounded-[10px] p-2">
+          <div className="min-w-0">
+            <div className="text-[9px] uppercase tracking-wider text-muted-foreground font-semibold">
+              Lance atual
+            </div>
+            {auction.highestBid != null ? (
+              <>
+                <div className="text-[15px] font-bold text-foreground tabular-nums">
+                  {fmt(auction.highestBid)}
                 </div>
-                <div className="font-mono font-bold tabular-nums">
-                  {auction.highestBid != null ? fmt(minNextBid) : '—'}
+                <div className="text-[9px] text-muted-foreground truncate">
+                  por {auction.highestBidderName} · {auction.bidCount} lance{auction.bidCount !== 1 ? 's' : ''}
                 </div>
+              </>
+            ) : (
+              <div className="text-[14px] font-bold text-muted-foreground italic">
+                Sem lances · aceita qualquer valor
               </div>
-              <div>
-                <div className="text-muted-foreground">Seu saldo</div>
-                <div className="font-mono font-bold tabular-nums">{fmt(currentMoney)}</div>
-              </div>
+            )}
+          </div>
+          {/* Barra de tempo */}
+          <div className="w-20 shrink-0">
+            <div className="h-1.5 rounded-full bg-muted overflow-hidden">
+              <div
+                className={`h-full ${time.pct > 80 ? 'bg-amber-400' : 'bg-primary'}`}
+                style={{ width: `${time.pct}%` }}
+              />
             </div>
           </div>
-          <div>
-            <label className="text-[11px] uppercase tracking-wider text-muted-foreground font-semibold">Valor do lance</label>
+        </div>
+
+        {/* Input de lance + botão (inline, sem dialog) */}
+        <div className="space-y-1.5">
+          <div className="flex gap-2">
             <Input
               type="text"
               inputMode="numeric"
-              placeholder={String(minNextBid)}
-              value={amount}
-              onChange={e => setAmount(e.target.value)}
-              className="text-[16px] font-mono mt-1"
+              placeholder={auction.highestBid != null ? `> ${fmt(minNextBid)}` : 'Qualquer valor'}
+              value={bidInput}
+              onChange={e => setBidInput(e.target.value)}
+              disabled={time.expired || sending}
+              className="text-[14px] font-mono flex-1"
+              onKeyDown={e => { if (e.key === 'Enter') void handleBid(); }}
             />
-            {amount && !valid && (
-              <div className="text-[10px] text-red-400 mt-1">
-                {numeric < minNextBid
-                  ? (auction.highestBid != null
-                      ? `Precisa superar o lance atual (${fmt(minNextBid)})`
-                      : 'Lance precisa ser positivo.')
-                  : 'Acima do que você pode pagar.'}
-              </div>
-            )}
-            <div className="flex gap-1 mt-1.5 flex-wrap">
-              {suggestions.slice(0, 5).map(v => (
-                <button
-                  key={v}
-                  onClick={() => setAmount(String(v))}
-                  className="px-2 py-0.5 rounded-[8px] text-[11px] bg-muted hover:bg-muted/70"
-                >
-                  {fmt(v)}
-                </button>
-              ))}
-            </div>
+            <Button
+              size="sm"
+              className="px-3 gap-1 shrink-0"
+              disabled={!valid || sending}
+              onClick={() => void handleBid()}
+            >
+              <Hammer size={13} />
+              {sending ? '...' : 'Dar lance'}
+            </Button>
           </div>
-          <div className="text-[10px] text-muted-foreground italic flex items-start gap-1">
-            <TrendingUp size={11} className="shrink-0 mt-0.5" />
-            <span>O valor só é cobrado se você vencer o leilão. Se outro jogador der lance maior, sua reserva é liberada.</span>
+          {bidInput && !valid && (
+            <div className="text-[10px] text-red-400">
+              {numeric < minNextBid
+                ? (auction.highestBid != null
+                    ? `Precisa superar ${fmt(minNextBid)}`
+                    : 'Lance precisa ser positivo')
+                : 'Acima do que você pode pagar'}
+            </div>
+          )}
+          {!bidInput && (
+            <div className="flex flex-wrap gap-1">
+              {[
+                Math.round(auction.fipePrice * 0.30),
+                Math.round(auction.fipePrice * 0.60),
+                Math.round(auction.fipePrice * 0.85),
+                Math.round(auction.fipePrice * 1.00),
+              ].filter((v, i, arr) => arr.indexOf(v) === i && v >= minNextBid && v <= maxAffordable)
+                .map(v => (
+                  <button
+                    key={v}
+                    onClick={() => setBidInput(String(v))}
+                    className="px-2 py-0.5 rounded-[8px] text-[10px] bg-muted hover:bg-muted/70 text-muted-foreground"
+                  >
+                    {fmt(v)}
+                  </button>
+                ))}
+            </div>
+          )}
+          <div className="text-[9px] text-muted-foreground italic flex items-start gap-1">
+            <TrendingUp size={9} className="shrink-0 mt-0.5" />
+            <span>Valor só é cobrado se você vencer o leilão.</span>
           </div>
         </div>
-        <DialogFooter className="gap-2">
-          <Button variant="outline" onClick={() => setOpen(false)}>Cancelar</Button>
-          <Button onClick={() => void handlePlace()} disabled={!valid || sending}>
-            {sending ? 'Enviando...' : valid ? `Dar lance ${fmt(numeric)}` : 'Insira valor'}
-          </Button>
-        </DialogFooter>
-      </DialogContent>
-    </Dialog>
+
+        {/* Histórico de lances colapsível */}
+        <button
+          onClick={() => void toggleBids()}
+          className="w-full flex items-center justify-between text-[11px] text-muted-foreground hover:text-foreground py-1.5 px-1 transition-colors"
+        >
+          <span className="flex items-center gap-1.5 font-semibold">
+            <ListOrdered size={12} />
+            Histórico de lances
+            {auction.bidCount > 0 && (
+              <span className="text-[9px] bg-muted px-1.5 py-0.5 rounded-full">
+                {auction.bidCount}
+              </span>
+            )}
+          </span>
+          {showBids ? <ChevronUp size={13} /> : <ChevronDown size={13} />}
+        </button>
+        {showBids && (
+          <div className="space-y-1 max-h-44 overflow-y-auto pr-1">
+            {loadingBids ? (
+              <div className="text-[11px] text-muted-foreground text-center py-2">Carregando...</div>
+            ) : bids.length === 0 ? (
+              <div className="text-[11px] text-muted-foreground italic text-center py-2">
+                Nenhum lance ainda. Seja o primeiro!
+              </div>
+            ) : (
+              bids.map((b, idx) => {
+                const isMyBid = myUserId && b.bidderId === myUserId;
+                const isWinning = idx === 0;
+                return (
+                  <div key={b.id} className={`flex items-center gap-2 px-2 py-1 rounded-[8px] text-[11px] ${
+                    isWinning ? 'bg-emerald-500/10 border border-emerald-500/20' : 'bg-muted/30'
+                  }`}>
+                    <span className={`shrink-0 w-5 text-center font-bold ${
+                      isWinning ? 'text-emerald-400' : 'text-muted-foreground'
+                    }`}>
+                      {idx + 1}º
+                    </span>
+                    <div className="flex-1 min-w-0">
+                      <div className="flex items-center gap-1">
+                        <span className="font-semibold text-foreground truncate">
+                          {isMyBid ? 'Você' : b.bidderName}
+                        </span>
+                        {isMyBid && (
+                          <span className="text-[8px] font-bold text-primary bg-primary/10 px-1 rounded">
+                            você
+                          </span>
+                        )}
+                      </div>
+                      <div className="text-[9px] text-muted-foreground">{fmtBidTime(b.createdAt)}</div>
+                    </div>
+                    <span className={`font-mono font-bold tabular-nums shrink-0 ${
+                      isWinning ? 'text-emerald-400' : 'text-foreground'
+                    }`}>
+                      {fmt(b.amount)}
+                    </span>
+                  </div>
+                );
+              })
+            )}
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}
+
+// ── Mini-barra de stat ───────────────────────────────────────────────
+function MiniStat({ label, value }: { label: string; value: number }) {
+  const safe = Math.max(0, Math.min(100, Math.round(value)));
+  const color = safe >= 75 ? 'bg-emerald-500'
+              : safe >= 50 ? 'bg-amber-500'
+              : safe >= 30 ? 'bg-orange-500'
+              : 'bg-red-500';
+  return (
+    <div className="flex items-center gap-1.5">
+      <span className="text-[9px] text-muted-foreground w-12 shrink-0">{label}</span>
+      <div className="flex-1 h-1 bg-muted rounded-full overflow-hidden">
+        <div className={`h-full ${color}`} style={{ width: `${safe}%` }} />
+      </div>
+      <span className="text-[9px] font-mono font-bold text-foreground tabular-nums w-6 text-right">{safe}</span>
+    </div>
   );
 }

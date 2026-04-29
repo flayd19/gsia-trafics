@@ -59,6 +59,15 @@ export interface AuctionWinning {
   createdAt:    string;
 }
 
+export interface AuctionBid {
+  id:         string;
+  auctionId:  string;
+  bidderId:   string;
+  bidderName: string;
+  amount:     number;
+  createdAt:  string;
+}
+
 export interface UseAuctionsResult {
   auctions:        AuctionItem[];
   winnings:        AuctionWinning[];
@@ -67,6 +76,8 @@ export interface UseAuctionsResult {
   refresh:         () => Promise<void>;
   placeBid:        (auctionId: string, amount: number) => Promise<{ success: boolean; message: string }>;
   claimWinning:    (winningId: string) => Promise<{ success: boolean; message: string }>;
+  /** Carrega histórico de lances de um leilão específico (mais recente primeiro). */
+  loadBids:        (auctionId: string) => Promise<AuctionBid[]>;
 }
 
 // ── Mapeamento de rows → tipos ────────────────────────────────────
@@ -293,6 +304,27 @@ export function useAuctions(opts: UseAuctionsOptions): UseAuctionsResult {
     }
   }, [loadAuctions]);
 
+  const loadBids = useCallback(async (auctionId: string): Promise<AuctionBid[]> => {
+    try {
+      const { data } = await db()
+        .from('auction_bids')
+        .select('*')
+        .eq('auction_id', auctionId)
+        .order('amount', { ascending: false })
+        .limit(50);
+      return (data ?? []).map((row: Record<string, unknown>) => ({
+        id:         row['id']           as string,
+        auctionId:  row['auction_id']   as string,
+        bidderId:   row['bidder_id']    as string,
+        bidderName: (row['bidder_name'] as string) ?? 'Jogador',
+        amount:     Number(row['amount'] ?? 0),
+        createdAt:  row['created_at']   as string,
+      }));
+    } catch {
+      return [];
+    }
+  }, []);
+
   const claimWinning = useCallback(async (winningId: string) => {
     try {
       const { data, error } = await db().rpc('claim_auction_winning', { p_winning_id: winningId });
@@ -344,5 +376,6 @@ export function useAuctions(opts: UseAuctionsOptions): UseAuctionsResult {
     refresh,
     placeBid,
     claimWinning,
+    loadBids,
   };
 }
