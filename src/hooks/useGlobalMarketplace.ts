@@ -40,9 +40,20 @@ interface MarketplaceRow {
   batch_id: number;
 }
 
-const REFRESH_MS =  6 * 60 * 60_000; // 6h entre refreshes de inventário
-const POLL_MS    =  5 * 60 * 1_000;  // poll a cada 5 min (fallback p/ Realtime)
+const REFRESH_MS   = 6 * 60 * 60_000; // 6h entre refreshes de inventário
+const POLL_MS      = 5 * 60 * 1_000;  // poll a cada 5 min (fallback p/ Realtime)
+const LS_REFRESH_KEY = 'gflow_market_last_refresh'; // backup local para cooldown
 const db = () => supabase as any;
+
+/** Lê timestamp do localStorage (retorna 0 se ausente/inválido). */
+function lsGetLastRefresh(): number {
+  try { return parseInt(localStorage.getItem(LS_REFRESH_KEY) ?? '0', 10) || 0; }
+  catch { return 0; }
+}
+/** Persiste timestamp no localStorage. */
+function lsSetLastRefresh(ms = Date.now()): void {
+  try { localStorage.setItem(LS_REFRESH_KEY, String(ms)); } catch { /* ignore */ }
+}
 
 function rowToGlobalCar(row: MarketplaceRow): GlobalCar {
   return {
@@ -133,11 +144,17 @@ export function useGlobalMarketplace() {
 
       if (metaErr) throw metaErr;
 
-      const lastMs = meta?.last_refresh ? new Date(meta.last_refresh).getTime() : 0;
-      // Cliente verifica antes de chamar a RPC para economizar round-trip,
-      // mas o servidor é a FONTE DA VERDADE: se o cliente acha que está stale
-      // mas o servidor diz que não, respeita o servidor (cooldown_active).
-      const stale  = Date.now() - lastMs >= REFRESH_MS || !meta;
+      const lastMs   = meta?.last_refresh ? new Date(meta.last_refresh).getTime() : 0;
+      const lsLastMs = lsGetLastRefresh();
+      // Dois guardas contra refresh prematuro:
+      //  1. O servidor informa o último refresh (last_refresh no Supabase).
+      //  2. O localStorage guarda o timestamp do último refresh bem-sucedido desta
+      //     sessão de browser, prevenindo disparos repetidos quando a query meta
+      //     retorna null por falha temporária de rede.
+      // Só tenta refresh se AMBOS indicam que já passou o cooldown.
+      const dbStale  = !meta || Date.now() - lastMs  >= REFRESH_MS;
+      const lsStale  = Date.now() - lsLastMs >= REFRESH_MS;
+      const stale    = dbStale && lsStale;
 
       if (stale) {
         const freshCars = buildMarketplaceInventory();
@@ -157,10 +174,15 @@ export function useGlobalMarketplace() {
           remaining_secs?: number;
         };
 
-        if (!result.claimed) {
-          // Servidor rejeitou: pode ser cooldown ativo (próximo refresh ainda
-          // não disponível) OU outro cliente concorrente. Em ambos os casos
-          // apenas relê o estado atual — não tenta forçar regeneração.
+        if (result.claimed) {
+          // Atualiza o backup local para evitar disparos repetidos enquanto
+          // o Supabase propaga o novo last_refresh para outros clientes.
+          lsSetLastRefresh();
+        } else {
+          // Servidor rejeitou: cooldown ativo ou concorrência. Relê o estado
+          // atual sem forçar regeneração. Usa o timestamp real do servidor
+          // para corrigir o localStorage se estiver adiantado.
+          if (lastMs > 0) lsSetLastRefresh(lastMs);
         }
       }
 

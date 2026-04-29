@@ -13,6 +13,7 @@ import { RachaScreen } from '@/components/screens/RachaScreen';
 import { ChatScreen } from '@/components/screens/ChatScreen';
 import { EmployeesScreen } from '@/components/screens/EmployeesScreen';
 import { useCarGameLogic } from '@/hooks/useCarGameLogic';
+import { useChatMoneySync } from '@/hooks/useChatMoneySync';
 import type { TuneUpgrade } from '@/types/performance';
 import { useGlobalMarketplace, type GlobalCar } from '@/hooks/useGlobalMarketplace';
 import { supabase } from '@/integrations/supabase/client';
@@ -64,6 +65,8 @@ const Index = () => {
     dismissBuyer,
     addMoney,
     spendMoney,
+    applyIncomingChatMoney,
+    applyOutgoingChatMoney,
     addAsyncRaceWon,
     saveGame,
     resetGame,
@@ -80,6 +83,16 @@ const Index = () => {
     refuseWarrantyClaim,
     dismissWarrantyClaim,
   } = useCarGameLogic();
+
+  // ── Sync de transferências de $ via chat (background, sempre ativo) ──
+  // Aplica créditos/débitos idempotentes via _processedChatMoneyIds antes
+  // que o autosave possa sobrescrever a coluna money do servidor com saldo
+  // antigo do JSONB. Roda mesmo quando a tela de chat não está aberta.
+  useChatMoneySync({
+    enabled: gameLoaded,
+    onIncomingChatMoney: applyIncomingChatMoney,
+    onOutgoingChatMoney: applyOutgoingChatMoney,
+  });
 
   const {
     listings: globalCars,
@@ -328,6 +341,8 @@ const Index = () => {
         return (
           <ChatScreen
             gameState={gameState}
+            onIncomingChatMoney={applyIncomingChatMoney}
+            onOutgoingChatMoney={applyOutgoingChatMoney}
             onMoneyDeducted={(amount) => spendMoney(amount)}
             onMoneyReceived={(amount) => addMoney(amount)}
             onCarRemoved={(carInstanceId) => removeCarFromGarage(carInstanceId)}

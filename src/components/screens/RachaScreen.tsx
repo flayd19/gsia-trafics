@@ -962,7 +962,7 @@ function TrackSVG({
   ];
 
   return (
-    <svg viewBox="0 0 360 210" className="w-full select-none">
+    <svg viewBox="18 4 292 200" className="w-full select-none">
       {/* Fundo grama */}
       <rect width={360} height={210} fill="#0f1a0f" rx={14} />
 
@@ -1204,7 +1204,7 @@ function eventOverlayLabel(type: string): { emoji: string; text: string } | null
 
 function RacingView({ players, myUserId, onFinish, totalLaps }: RacingViewProps) {
   // ── Tempo de chegada por carro ────────────────────────────────────
-  const BASE_LAP_MS = 6_000;
+  const BASE_LAP_MS = 10_000;
   const leaderMs    = BASE_LAP_MS * totalLaps;
 
   const maxScore   = Math.max(...players.map(p => p.score), 1);

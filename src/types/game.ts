@@ -350,6 +350,14 @@ export interface GameState {
 
   /** Claims de garantia pendentes (cliente pediu pagamento de reparo). */
   warrantyClaims?: import('./warranty').WarrantyClaim[];
+
+  /**
+   * IDs de mensagens de chat do tipo `money_sent` que já foram aplicadas
+   * (créditos OU débitos) ao saldo local. Garante idempotência: ao reconciliar
+   * mensagens no carregamento ou via realtime, mensagens já processadas são
+   * puladas para evitar duplo crédito/débito.
+   */
+  _processedChatMoneyIds?: Record<string, true>;
 }
 
 // ── Helpers de tipo ───────────────────────────────────────────────
@@ -390,5 +398,6 @@ export function ensureGameState(raw: Partial<GameState>): GameState {
     employees:        raw.employees        ?? [],
     lastEmployeePayDay: raw.lastEmployeePayDay ?? 0,
     warrantyClaims:   raw.warrantyClaims   ?? [],
+    _processedChatMoneyIds: raw._processedChatMoneyIds ?? {},
   };
 }

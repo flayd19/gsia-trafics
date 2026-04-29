@@ -1,0 +1,25 @@
+-- =====================================================================
+-- Migration: NO-OP placeholder (substituído por reconciliação client-side)
+--
+-- A versão anterior desta migração tentava sincronizar
+-- `car_game_data->'money'` no servidor durante `send_money_to_player`.
+-- Esse approach foi descartado porque combinado com a reconciliação
+-- idempotente no cliente (`_processedChatMoneyIds`) gerava duplo crédito —
+-- o servidor patchear o JSONB E o cliente aplicar via realtime/reconcile
+-- somava o crédito duas vezes.
+--
+-- A correção atual vive 100% no cliente:
+--   • Hook useChat é montado globalmente em Index.tsx
+--   • Toda mensagem money_sent envolvendo o usuário tem seu ID rastreado
+--     em GameState._processedChatMoneyIds — créditos/débitos só são
+--     aplicados uma vez ao saldo local
+--   • Reconciliação roda automaticamente no mount, recuperando mensagens
+--     que chegaram enquanto o jogador estava offline
+--
+-- O RPC `send_money_to_player` permanece como na migração de
+-- 20260427100000 (apenas atualiza coluna `money`, sem tocar JSONB).
+-- =====================================================================
+
+-- Sem alterações no schema. Arquivo mantido para preservar histórico de
+-- migrações sem buracos numéricos.
+SELECT 1;

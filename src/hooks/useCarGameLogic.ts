@@ -1372,6 +1372,67 @@ export function useCarGameLogic() {
     setGameState(prev => ({ ...prev, money: isFinite(prev.money) ? prev.money + safe : safe }));
   }, []);
 
+  /**
+   * Aplica crédito (recebimento) de uma mensagem de chat money_sent ao saldo
+   * local. Idempotente: usa `_processedChatMoneyIds` para garantir que cada
+   * messageId só é creditado uma vez, mesmo se chamado múltiplas vezes via
+   * realtime + reconciliação no mount.
+   */
+  const applyIncomingChatMoney = useCallback((messageId: string, amount: number) => {
+    if (!messageId) return;
+    const safe = Number.isFinite(amount) ? amount : 0;
+    if (safe <= 0) return;
+    setGameState(prev => {
+      const processed = prev._processedChatMoneyIds ?? {};
+      if (processed[messageId]) return prev;
+      const currentMoney = Number.isFinite(prev.money) ? prev.money : 0;
+      return {
+        ...prev,
+        money: currentMoney + safe,
+        _processedChatMoneyIds: { ...processed, [messageId]: true },
+      };
+    });
+    // Salva imediatamente para reduzir janela de race com autosave
+    setTimeout(() => void saveGame(), 200);
+  }, [saveGame]);
+
+  /**
+   * Aplica débito (envio) de uma mensagem de chat money_sent ao saldo local.
+   * Idempotente. Usado quando o RPC `send_money_to_player` retorna o
+   * messageId — registramos a aplicação para que reconciliações futuras
+   * não re-debitem o saldo.
+   */
+  const applyOutgoingChatMoney = useCallback((messageId: string, amount: number) => {
+    if (!messageId) return;
+    const safe = Number.isFinite(amount) ? amount : 0;
+    if (safe <= 0) return;
+    setGameState(prev => {
+      const processed = prev._processedChatMoneyIds ?? {};
+      if (processed[messageId]) return prev;
+      const currentMoney = Number.isFinite(prev.money) ? prev.money : 0;
+      return {
+        ...prev,
+        money: currentMoney - safe,
+        _processedChatMoneyIds: { ...processed, [messageId]: true },
+      };
+    });
+    setTimeout(() => void saveGame(), 200);
+  }, [saveGame]);
+
+  /** Marca um messageId como já processado, sem alterar o saldo. Usado quando
+   *  o débito local já foi feito por outro caminho (compatibilidade). */
+  const markChatMoneyProcessed = useCallback((messageId: string) => {
+    if (!messageId) return;
+    setGameState(prev => {
+      const processed = prev._processedChatMoneyIds ?? {};
+      if (processed[messageId]) return prev;
+      return {
+        ...prev,
+        _processedChatMoneyIds: { ...processed, [messageId]: true },
+      };
+    });
+  }, []);
+
   const spendMoney = useCallback((amount: number): boolean => {
     if (!isFinite(amount) || amount <= 0) return false;
     const state = stateRef.current;
@@ -1650,6 +1711,9 @@ export function useCarGameLogic() {
     refreshMarketplace,
     addMoney,
     spendMoney,
+    applyIncomingChatMoney,
+    applyOutgoingChatMoney,
+    markChatMoneyProcessed,
     addAsyncRaceWon,
     saveGame,
     resetGame,

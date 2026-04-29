@@ -86,13 +86,33 @@ function rowToThread(row: Record<string, unknown>): ChatThread {
 export interface UseChatOptions {
   /** Saldo atual do jogador — para validar envios antes de chamar a RPC. */
   currentMoney: number;
-  /** Callback após enviar dinheiro: ajusta saldo local imediatamente. */
+  /**
+   * Callback IDEMPOTENTE para crédito recebido. Aplica `amount` ao saldo local
+   * SOMENTE se `messageId` ainda não foi processado. Usado tanto via realtime
+   * (mensagem nova) quanto via reconciliação no mount (mensagens recebidas
+   * enquanto o jogador estava offline).
+   */
+  onIncomingChatMoney?: (messageId: string, amount: number) => void;
+  /**
+   * Callback IDEMPOTENTE para débito enviado. Aplica `-amount` ao saldo local
+   * SOMENTE se `messageId` ainda não foi processado. Substitui `onMoneyDeducted`
+   * para garantir consistência mesmo após reload/crash do remetente.
+   */
+  onOutgoingChatMoney?: (messageId: string, amount: number) => void;
+  /**
+   * @deprecated Mantido para compatibilidade. Prefira `onOutgoingChatMoney` que
+   * aceita `messageId` e garante idempotência. Esse callback é chamado APENAS
+   * se o RPC não retornar messageId (caso degenerado).
+   */
   onMoneyDeducted: (amount: number) => void;
   /** Callback após enviar carro: remove carro da garagem local. */
   onCarRemoved: (carInstanceId: string) => void;
   /** Callback ao reclamar carro: adiciona à garagem local. */
   onCarClaimed: (car: OwnedCar) => { success: boolean; message: string };
-  /** Callback ao reclamar dinheiro/notificação: ajusta saldo se receber dinheiro novo. */
+  /**
+   * @deprecated Mantido para compatibilidade. Use `onIncomingChatMoney` para
+   * tracking idempotente — ele recebe o messageId.
+   */
   onMoneyReceived?: (amount: number) => void;
 }
 
@@ -230,10 +250,46 @@ export function useChat(opts: UseChatOptions): UseChatResult {
     await Promise.all([loadAllPlayers(), loadThreads()]);
   }, [loadAllPlayers, loadThreads]);
 
+  // ── Reconciliação de transferências de dinheiro ───────────────
+  // Busca as últimas mensagens money_sent envolvendo o usuário e dispara
+  // os callbacks idempotentes — recupera créditos/débitos perdidos quando
+  // o jogador estava offline ou o autosave correu antes do realtime chegar.
+  const reconcileMoneyMessages = useCallback(async () => {
+    const uid = myUserIdRef.current;
+    if (!uid) return;
+    try {
+      const { data } = await db()
+        .from('chat_messages')
+        .select('id, sender_id, receiver_id, payload, created_at')
+        .eq('type', 'money_sent')
+        .or(`sender_id.eq.${uid},receiver_id.eq.${uid}`)
+        .order('created_at', { ascending: false })
+        .limit(100);
+      const rows = (data ?? []) as Array<Record<string, unknown>>;
+      for (const row of rows) {
+        const id     = row['id'] as string | undefined;
+        const sender = row['sender_id'] as string | undefined;
+        const recv   = row['receiver_id'] as string | undefined;
+        const payload = row['payload'] as { amount?: number } | null;
+        const amount = Number(payload?.amount ?? 0);
+        if (!id || !amount || !Number.isFinite(amount) || amount <= 0) continue;
+        if (recv === uid) {
+          optsRef.current.onIncomingChatMoney?.(id, amount);
+        } else if (sender === uid) {
+          optsRef.current.onOutgoingChatMoney?.(id, amount);
+        }
+      }
+    } catch {
+      /* silencioso — reconciliação é best-effort */
+    }
+  }, []);
+
   // ── Mount: carrega tudo + subscription realtime ────────────────
   useEffect(() => {
     if (!myUserId) return;
     void refresh();
+    // Reconcilia transferências de $ pendentes (créditos/débitos perdidos)
+    void reconcileMoneyMessages();
 
     // Subscription: nova mensagem onde o usuário é remetente OU destinatário
     const channel = db()
@@ -256,9 +312,14 @@ export function useChat(opts: UseChatOptions): UseChatResult {
             }
           }
 
-          // Atualiza saldo se chegou dinheiro
+          // Atualiza saldo se chegou dinheiro (idempotente via messageId)
           if (msg.type === 'money_sent' && msg.receiverId === myUserId && msg.payload?.amount) {
-            optsRef.current.onMoneyReceived?.(msg.payload.amount);
+            if (optsRef.current.onIncomingChatMoney) {
+              optsRef.current.onIncomingChatMoney(msg.id, msg.payload.amount);
+            } else {
+              // Fallback legado (sem idempotência)
+              optsRef.current.onMoneyReceived?.(msg.payload.amount);
+            }
           }
 
           // Sempre recarrega threads para atualizar última mensagem + badges
@@ -279,7 +340,7 @@ export function useChat(opts: UseChatOptions): UseChatResult {
     return () => {
       void db().removeChannel(channel);
     };
-  }, [myUserId, refresh, loadThreads, loadMessages]);
+  }, [myUserId, refresh, loadThreads, loadMessages, reconcileMoneyMessages]);
 
   // ── Ações ──────────────────────────────────────────────────────
   const openConversation = useCallback(async (otherUserId: string, otherName: string) => {
@@ -324,7 +385,7 @@ export function useChat(opts: UseChatOptions): UseChatResult {
     if (amount > optsRef.current.currentMoney) return { success: false, message: 'Saldo insuficiente.' };
 
     try {
-      const { error } = await db().rpc('send_money_to_player', {
+      const { data, error } = await db().rpc('send_money_to_player', {
         p_receiver_id: other,
         p_amount:      amount,
         p_message:     message ?? null,
@@ -336,8 +397,14 @@ export function useChat(opts: UseChatOptions): UseChatResult {
         if (msg.includes('receiver_not_found'))   return { success: false, message: 'Destinatário não encontrado.' };
         return { success: false, message: 'Falha ao enviar dinheiro.' };
       }
-      // Ajusta saldo local
-      optsRef.current.onMoneyDeducted(amount);
+      // RPC retorna o messageId — use caminho idempotente quando disponível
+      const messageId = typeof data === 'string' ? data : null;
+      if (messageId && optsRef.current.onOutgoingChatMoney) {
+        optsRef.current.onOutgoingChatMoney(messageId, amount);
+      } else {
+        // Fallback (RPC antigo ou sem messageId): apenas debita localmente
+        optsRef.current.onMoneyDeducted(amount);
+      }
       return { success: true, message: 'Dinheiro enviado!' };
     } catch {
       return { success: false, message: 'Erro de conexão.' };

@@ -28,6 +28,10 @@ interface ChatScreenProps {
   onCarRemoved:    (carInstanceId: string) => void;
   onCarClaimed:    (car: OwnedCar) => { success: boolean; message: string };
   onMoneyReceived?: (amount: number) => void;
+  /** Idempotente: aplica crédito e marca messageId como processado. */
+  onIncomingChatMoney?: (messageId: string, amount: number) => void;
+  /** Idempotente: aplica débito e marca messageId como processado. */
+  onOutgoingChatMoney?: (messageId: string, amount: number) => void;
 }
 
 const fmt = (v: number) =>
@@ -50,6 +54,8 @@ export function ChatScreen({
   onCarRemoved,
   onCarClaimed,
   onMoneyReceived,
+  onIncomingChatMoney,
+  onOutgoingChatMoney,
 }: ChatScreenProps) {
   const chat = useChat({
     currentMoney: gameState.money,
@@ -57,6 +63,8 @@ export function ChatScreen({
     onCarRemoved,
     onCarClaimed,
     onMoneyReceived,
+    onIncomingChatMoney,
+    onOutgoingChatMoney,
   });
 
   const carsInGarage = useMemo(

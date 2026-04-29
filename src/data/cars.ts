@@ -2963,18 +2963,22 @@ const MAX_SAME_MODEL = 4;
 
 /**
  * Gera um único veículo aleatório a partir de um modelo.
- * Condições ponderadas: 30% bom-ótimo · 40% regular · 25% ruim · 5% sucata.
+ * Condições ponderadas (viés para faixa jogável 40–85%):
+ *   20% ótimo   (80–95)
+ *   45% bom     (55–80)
+ *   25% regular (40–55)
+ *   10% ruim    (20–40)
  */
 function buildOneCar(model: CarModel): MarketplaceCar {
   const variant = model.variants[Math.floor(Math.random() * model.variants.length)];
   const roll = Math.random();
-  const condition = roll > 0.70
-    ? Math.floor(70 + Math.random() * 25)  // 70-95  (bom-ótimo)  30%
-    : roll > 0.30
-    ? Math.floor(40 + Math.random() * 30)  // 40-70  (regular)    40%
-    : roll > 0.05
-    ? Math.floor(15 + Math.random() * 25)  // 15-40  (ruim)       25%
-    : Math.floor(1  + Math.random() * 15); //  1-15  (sucata)      5%
+  const condition = roll > 0.80
+    ? Math.floor(80 + Math.random() * 15)  // 80-95  (ótimo)      20%
+    : roll > 0.35
+    ? Math.floor(55 + Math.random() * 25)  // 55-80  (bom)        45%
+    : roll > 0.10
+    ? Math.floor(40 + Math.random() * 15)  // 40-55  (regular)    25%
+    : Math.floor(20 + Math.random() * 20); // 20-40  (ruim)       10%
 
   // Quilometragem baseada na idade do veículo (~15.000 km/ano) com variação ±60%
   // Carros em pior condição tendem a ter mais km
