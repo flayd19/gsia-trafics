@@ -11,6 +11,7 @@
 // =====================================================================
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { supabase } from '@/integrations/supabase/client';
+import { logRpcError } from '@/lib/errorLogger';
 import type { OwnedCar } from '@/types/game';
 
 // ── Tipos públicos ────────────────────────────────────────────────────
@@ -391,6 +392,7 @@ export function useChat(opts: UseChatOptions): UseChatResult {
         p_message:     message ?? null,
       });
       if (error) {
+        logRpcError('send_money_to_player', error, { amount, hasMessage: !!message });
         const msg = (error.message ?? '').toLowerCase();
         if (msg.includes('insufficient_balance')) return { success: false, message: 'Saldo insuficiente.' };
         if (msg.includes('cannot_send_to_self'))  return { success: false, message: 'Não é possível enviar para si mesmo.' };
@@ -424,6 +426,7 @@ export function useChat(opts: UseChatOptions): UseChatResult {
         p_message:         message ?? null,
       });
       if (error) {
+        logRpcError('send_car_to_player', error, { carInstanceId: car.instanceId });
         return { success: false, message: 'Falha ao enviar carro.' };
       }
       // Remove o carro da garagem local APÓS confirmação do servidor

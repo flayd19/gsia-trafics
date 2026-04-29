@@ -7,6 +7,8 @@ import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { Routes, Route } from "react-router-dom";
 import { useAuth } from './hooks/useAuth';
 import Index from "./pages/Index";
+import AuthPage from "./pages/Auth";
+import AdminPage from "./pages/AdminPage";
 import NotFound from "./pages/NotFound";
 
 const queryClient = new QueryClient();
@@ -15,9 +17,11 @@ const AppContent = () => {
   const { user, loading } = useAuth();
   const navigate = useNavigate();
 
-  // Redirect unauthenticated users to auth page
+  // Redirect unauthenticated users to auth page (exceto se já estiver em /auth ou /admin)
   useEffect(() => {
-    if (!loading && !user) {
+    if (loading) return;
+    const path = window.location.pathname;
+    if (!user && path !== '/auth') {
       navigate('/auth');
     }
   }, [user, loading, navigate]);
@@ -35,8 +39,10 @@ const AppContent = () => {
 
   return (
     <Routes>
-      <Route path="/" element={<Index />} />
-      <Route path="*" element={<NotFound />} />
+      <Route path="/"      element={<Index />} />
+      <Route path="/auth"  element={<AuthPage />} />
+      <Route path="/admin" element={<AdminPage />} />
+      <Route path="*"      element={<NotFound />} />
     </Routes>
   );
 };

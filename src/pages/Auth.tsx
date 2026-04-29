@@ -7,6 +7,13 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Badge } from '@/components/ui/badge';
+import {
+  Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter,
+} from '@/components/ui/dialog';
+import { Lock } from 'lucide-react';
+import { supabase } from '@/integrations/supabase/client';
+import { toast } from 'sonner';
+import { ADMIN_TOKEN_KEY } from '@/lib/adminAuth';
 
 const AuthPage = () => {
   const { user, signIn, signUp, loading } = useAuth();
@@ -21,6 +28,40 @@ const AuthPage = () => {
   const [signupPassword, setSignupPassword] = useState('');
   const [displayName, setDisplayName] = useState('');
   const [signupNotice, setSignupNotice] = useState<string | null>(null);
+
+  // Admin gate (cadeado oculto)
+  const [adminOpen, setAdminOpen]         = useState(false);
+  const [adminPassword, setAdminPassword] = useState('');
+  const [adminLoading, setAdminLoading]   = useState(false);
+
+  /* eslint-disable @typescript-eslint/no-explicit-any */
+  const handleAdminSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!user) {
+      toast.error('Faça login na sua conta antes de acessar o painel admin.');
+      return;
+    }
+    if (!adminPassword) return;
+    setAdminLoading(true);
+    try {
+      const { data, error } = await (supabase as any).rpc('verify_admin_password', {
+        p_password: adminPassword,
+      });
+      if (error || data !== true) {
+        toast.error('Senha incorreta ou usuário sem permissão.');
+        setAdminPassword('');
+        return;
+      }
+      sessionStorage.setItem(ADMIN_TOKEN_KEY, JSON.stringify({ uid: user.id, ts: Date.now() }));
+      toast.success('Acesso concedido — entrando no painel.');
+      navigate('/admin');
+    } catch {
+      toast.error('Erro de conexão.');
+    } finally {
+      setAdminLoading(false);
+    }
+  };
+  /* eslint-enable @typescript-eslint/no-explicit-any */
 
   // Redirect authenticated users to home
   useEffect(() => {
@@ -218,6 +259,49 @@ const AuthPage = () => {
           </div>
         </CardContent>
       </Card>
+
+      {/* Cadeado oculto — clique abre modal de admin */}
+      <button
+        type="button"
+        aria-label="Painel administrativo"
+        onClick={() => setAdminOpen(true)}
+        className="fixed bottom-3 right-3 w-7 h-7 rounded-full opacity-25 hover:opacity-100 transition-opacity flex items-center justify-center bg-muted/40 hover:bg-muted text-muted-foreground"
+        tabIndex={-1}
+      >
+        <Lock size={12} />
+      </button>
+
+      <Dialog open={adminOpen} onOpenChange={(o) => { setAdminOpen(o); if (!o) setAdminPassword(''); }}>
+        <DialogContent className="max-w-sm">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              <Lock size={16} /> Painel administrativo
+            </DialogTitle>
+            <DialogDescription className="text-xs">
+              {user
+                ? <>Logado como <strong>{user.email}</strong>. Informe a senha de admin.</>
+                : 'Faça login na sua conta primeiro.'}
+            </DialogDescription>
+          </DialogHeader>
+          <form onSubmit={handleAdminSubmit} className="space-y-3">
+            <Input
+              type="password"
+              placeholder="Senha admin"
+              value={adminPassword}
+              onChange={(e) => setAdminPassword(e.target.value)}
+              autoFocus
+              autoComplete="off"
+              disabled={!user || adminLoading}
+            />
+            <DialogFooter className="gap-2">
+              <Button type="button" variant="outline" onClick={() => setAdminOpen(false)}>Cancelar</Button>
+              <Button type="submit" disabled={!user || !adminPassword || adminLoading}>
+                {adminLoading ? 'Verificando...' : 'Acessar'}
+              </Button>
+            </DialogFooter>
+          </form>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 };

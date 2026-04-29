@@ -3033,59 +3033,73 @@ function pickModels(pool: CarModel[], count: number): CarModel[] {
   return picked;
 }
 
+export interface BuildInventoryOptions {
+  /** Carros customizados a juntar ao catálogo estático. Default: []. */
+  customCars?:       CarModel[];
+  /** Pesos % por categoria. Quando passados, SUBSTITUI a lógica antiga. Soma esperada: ~100. */
+  categoryWeights?:  Partial<Record<CarCategory, number>>;
+  /** Mínimo de carros por ciclo (default MARKET_MIN_BATCH). */
+  minBatch?:         number;
+  /** Máximo de carros por ciclo (default MARKET_MAX_BATCH). */
+  maxBatch?:         number;
+  /** Limite de repetições do mesmo modelo (default MAX_SAME_MODEL). */
+  maxSameModel?:     number;
+}
+
 /**
- * Gera o inventário do mercado global para um ciclo de 24h.
+ * Gera o inventário do mercado global para um ciclo.
  *
- * Distribuição por ciclo:
- *   • Total: 500–600 veículos (aleatório)
- *   • ≥ 40 % populares
- *   • 1 garantido de cada outra categoria (medio / suv / pickup / esportivo / eletrico / jdm / supercar)
- *   • Restante: preenchimento aleatório de qualquer categoria
- *   • Máximo de 4 aparições do mesmo modelo por ciclo
+ * SEM `categoryWeights`: usa lógica legada (40%+ populares, 1 garantido por
+ * categoria não-popular, resto random).
+ *
+ * COM `categoryWeights`: sorteia EXATAMENTE segundo as %s configuradas pelo
+ * admin. Categorias com peso 0 são puladas. Soma deve ~100; é normalizada
+ * defensivamente caso contrário.
  */
-export function buildMarketplaceInventory(): MarketplaceCar[] {
-  // Agrupa modelos por categoria
+export function buildMarketplaceInventory(opts: BuildInventoryOptions = {}): MarketplaceCar[] {
+  const customCars   = opts.customCars ?? [];
+  const allModels    = [...CAR_MODELS, ...customCars];
+  const minBatch     = Math.max(1, opts.minBatch ?? MARKET_MIN_BATCH);
+  const maxBatch     = Math.max(minBatch, opts.maxBatch ?? MARKET_MAX_BATCH);
+  const maxSame      = Math.max(1, opts.maxSameModel ?? MAX_SAME_MODEL);
+
+  // Agrupa modelos por categoria (estáticos + custom)
   const byCategory = new Map<CarCategory, CarModel[]>();
-  for (const m of CAR_MODELS) {
+  for (const m of allModels) {
     const list = byCategory.get(m.category) ?? [];
     list.push(m);
     byCategory.set(m.category, list);
   }
 
-  const nonPopularCategories = (
-    ['medio', 'suv', 'pickup', 'esportivo', 'eletrico', 'classico', 'luxo', 'jdm', 'supercar'] as CarCategory[]
-  ).filter(c => byCategory.has(c));
+  // Total do ciclo: minBatch..maxBatch (aleatório)
+  const total = minBatch + Math.floor(Math.random() * (maxBatch - minBatch + 1));
 
-  // Total do ciclo: 80–110
-  const total = MARKET_MIN_BATCH
-    + Math.floor(Math.random() * (MARKET_MAX_BATCH - MARKET_MIN_BATCH + 1));
+  let selected: CarModel[];
+  if (opts.categoryWeights && Object.keys(opts.categoryWeights).length > 0) {
+    // ── Modo: pesos % do admin ──────────────────────────────────────
+    selected = pickByWeights(byCategory, opts.categoryWeights, total, maxSame);
+  } else {
+    // ── Modo legado ─────────────────────────────────────────────────
+    const nonPopularCategories = (
+      ['medio', 'suv', 'pickup', 'esportivo', 'eletrico', 'classico', 'luxo', 'jdm', 'supercar'] as CarCategory[]
+    ).filter(c => byCategory.has(c));
 
-  // Quota de populares (mínimo 40 %)
-  const popularCount = Math.max(Math.ceil(total * POPULAR_MIN_RATIO), 1);
+    const popularCount = Math.max(Math.ceil(total * POPULAR_MIN_RATIO), 1);
+    const guaranteedOtherCount = nonPopularCategories.length;
+    const fillCount = Math.max(0, total - popularCount - guaranteedOtherCount);
 
-  // 1 garantido por categoria não-popular
-  const guaranteedOtherCount = nonPopularCategories.length;
-
-  // Preenchimento dinâmico do restante
-  const fillCount = Math.max(0, total - popularCount - guaranteedOtherCount);
-
-  const selected: CarModel[] = [];
-
-  // 1. Populares
-  const popularPool = byCategory.get('popular') ?? [];
-  selected.push(...pickModels(popularPool, popularCount));
-
-  // 2. 1 garantido por categoria
-  for (const cat of nonPopularCategories) {
-    const pool = byCategory.get(cat) ?? [];
-    if (pool.length > 0) {
-      selected.push(pool[Math.floor(Math.random() * pool.length)]);
+    selected = [];
+    const popularPool = byCategory.get('popular') ?? [];
+    selected.push(...pickModelsLimited(popularPool, popularCount, maxSame));
+    for (const cat of nonPopularCategories) {
+      const pool = byCategory.get(cat) ?? [];
+      if (pool.length > 0) {
+        selected.push(pool[Math.floor(Math.random() * pool.length)]);
+      }
     }
-  }
-
-  // 3. Preenchimento aleatório (qualquer categoria)
-  if (fillCount > 0) {
-    selected.push(...pickModels(CAR_MODELS, fillCount));
+    if (fillCount > 0) {
+      selected.push(...pickModelsLimited(allModels, fillCount, maxSame));
+    }
   }
 
   // Embaralha para não agrupar por categoria na UI
@@ -3095,6 +3109,63 @@ export function buildMarketplaceInventory(): MarketplaceCar[] {
   }
 
   return selected.map(buildOneCar);
+}
+
+/**
+ * Sorteia `total` modelos respeitando pesos % por categoria.
+ * Categorias sem modelos são puladas (peso é redistribuído proporcionalmente).
+ */
+function pickByWeights(
+  byCategory: Map<CarCategory, CarModel[]>,
+  weights:    Partial<Record<CarCategory, number>>,
+  total:      number,
+  maxSame:    number,
+): CarModel[] {
+  // Filtra categorias com peso > 0 E pool não vazio
+  const validEntries = (Object.entries(weights) as [CarCategory, number][])
+    .filter(([cat, w]) => Number.isFinite(w) && w > 0 && (byCategory.get(cat)?.length ?? 0) > 0);
+
+  if (validEntries.length === 0) {
+    // Nenhuma categoria válida — fallback: distribui uniformemente em tudo
+    const all: CarModel[] = [];
+    for (const list of byCategory.values()) all.push(...list);
+    return pickModelsLimited(all, total, maxSame);
+  }
+
+  const sumW = validEntries.reduce((s, [, w]) => s + w, 0);
+  const selected: CarModel[] = [];
+
+  for (let i = 0; i < validEntries.length; i++) {
+    const [cat, w] = validEntries[i];
+    const isLast = i === validEntries.length - 1;
+    // Conta exata para esta categoria; última pega o resto pra fechar `total`.
+    const count = isLast
+      ? Math.max(0, total - selected.length)
+      : Math.round((w / sumW) * total);
+    const pool = byCategory.get(cat) ?? [];
+    selected.push(...pickModelsLimited(pool, count, maxSame));
+  }
+
+  return selected;
+}
+
+/** Versão de pickModels parametrizada por maxSame. */
+function pickModelsLimited(pool: CarModel[], count: number, maxSame: number): CarModel[] {
+  if (pool.length === 0 || count <= 0) return [];
+  const picked: CarModel[] = [];
+  const usage = new Map<string, number>();
+
+  for (let attempts = 0; attempts < count * 12 && picked.length < count; attempts++) {
+    const m = pool[Math.floor(Math.random() * pool.length)];
+    if ((usage.get(m.id) ?? 0) < maxSame) {
+      picked.push(m);
+      usage.set(m.id, (usage.get(m.id) ?? 0) + 1);
+    }
+  }
+  while (picked.length < count) {
+    picked.push(pool[Math.floor(Math.random() * pool.length)]);
+  }
+  return picked;
 }
 
 /** Vendedores fictícios para o marketplace */

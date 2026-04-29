@@ -382,6 +382,94 @@ function pushUnique(modelId: string, url: string): void {
   }
 }
 
+/**
+ * Registra carros customizados (admin_custom_cars) no serviço de fotos.
+ *
+ * Para cada carro:
+ *   • Se `imageUrls` veio preenchido (override manual), popula cache
+ *     diretamente (não chama API).
+ *   • Caso contrário, adiciona o título wiki ao MODEL_WIKI runtime e
+ *     dispara um fetch isolado pela API (PT → EN → Commons), igual aos
+ *     carros estáticos.
+ *
+ * Idempotente: chamadas repetidas com o mesmo ID não duplicam URLs nem
+ * disparam fetches paralelos.
+ */
+export async function registerCustomCarImages(
+  cars: Array<{
+    id:         string;
+    wiki_pt:    string | null;
+    wiki_en:    string | null;
+    image_urls: string[] | null;
+  }>,
+): Promise<void> {
+  const toFetch: string[] = [];
+
+  for (const c of cars) {
+    if (!c.id) continue;
+
+    // 1. URLs manuais têm prioridade absoluta — populam cache direto
+    if (c.image_urls && c.image_urls.length > 0) {
+      for (const u of c.image_urls) {
+        if (typeof u === 'string') pushUnique(c.id, u);
+      }
+    }
+
+    // 2. Registra no MODEL_WIKI para que estágios futuros conheçam o carro
+    if (!MODEL_WIKI[c.id]) {
+      MODEL_WIKI[c.id] = [c.wiki_pt ?? null, c.wiki_en ?? null];
+    }
+
+    // 3. Se não tem foto ainda E tem ao menos 1 título wiki, vai p/ fetch
+    const hasFoto    = (imageCache.get(c.id)?.length ?? 0) > 0;
+    const hasWiki    = !!(c.wiki_pt || c.wiki_en);
+    if (!hasFoto && hasWiki) toFetch.push(c.id);
+  }
+
+  notify();
+  if (toFetch.length === 0) return;
+
+  // Dispara um pipeline simplificado para os IDs novos:
+  //   PT → EN → Commons (sem etapa de Wikidata pois é cara em batch pequeno)
+  const titlesPt = new Map<string, string[]>();
+  const titlesEn = new Map<string, string[]>();
+  for (const id of toFetch) {
+    const [pt, en] = MODEL_WIKI[id];
+    if (pt) {
+      if (!titlesPt.has(pt)) titlesPt.set(pt, []);
+      titlesPt.get(pt)!.push(id);
+    }
+    if (en) {
+      if (!titlesEn.has(en)) titlesEn.set(en, []);
+      titlesEn.get(en)!.push(id);
+    }
+  }
+
+  // PT
+  if (titlesPt.size > 0) {
+    const thumbs = await wikiThumbBatch('https://pt.wikipedia.org', [...titlesPt.keys()]);
+    for (const [title, url] of thumbs) {
+      for (const id of titlesPt.get(title) ?? []) pushUnique(id, url);
+    }
+    notify();
+  }
+
+  // EN (só pra quem ficou sem foto)
+  const stillMissing = toFetch.filter(id => (imageCache.get(id) ?? []).length === 0);
+  if (stillMissing.length > 0 && titlesEn.size > 0) {
+    const enTitles = stillMissing
+      .map(id => MODEL_WIKI[id]?.[1])
+      .filter((t): t is string => !!t);
+    if (enTitles.length > 0) {
+      const thumbs = await wikiThumbBatch('https://en.wikipedia.org', enTitles);
+      for (const [title, url] of thumbs) {
+        for (const id of titlesEn.get(title) ?? []) pushUnique(id, url);
+      }
+      notify();
+    }
+  }
+}
+
 // ── Tipos internos ────────────────────────────────────────────────────────────
 
 interface WikiThumbPage {

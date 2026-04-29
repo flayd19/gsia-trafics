@@ -10,6 +10,7 @@
 import { useState, useEffect, useCallback, useRef } from 'react';
 import { supabase } from '@/integrations/supabase/client';
 import { buildMarketplaceInventory } from '@/data/cars';
+import { useCustomCars } from '@/hooks/useCustomCars';
 import type { MarketplaceCar } from '@/types/game';
 
 export interface GlobalCar extends MarketplaceCar {
@@ -114,6 +115,13 @@ export function useGlobalMarketplace() {
   const nextRefreshRef                    = useRef<Date | null>(null);
   const listingsRef                       = useRef<GlobalCar[]>([]);
 
+  // Carros customizados + config dinâmica do admin
+  const { customCars, marketConfig } = useCustomCars();
+  const customCarsRef   = useRef(customCars);
+  const marketConfigRef = useRef(marketConfig);
+  useEffect(() => { customCarsRef.current   = customCars;   }, [customCars]);
+  useEffect(() => { marketConfigRef.current = marketConfig; }, [marketConfig]);
+
   // Mantem ref sincronizado para usar em callbacks
   useEffect(() => { listingsRef.current = listings; }, [listings]);
 
@@ -157,8 +165,17 @@ export function useGlobalMarketplace() {
       const stale    = dbStale && lsStale;
 
       if (stale) {
-        const freshCars = buildMarketplaceInventory();
-        const rows      = carsToRows(freshCars, 0);
+        // Usa carros custom + config dinâmica do admin (se disponível).
+        // Se ainda não carregou, cai no comportamento legado (sem custom, sem weights).
+        const cfg = marketConfigRef.current;
+        const freshCars = buildMarketplaceInventory({
+          customCars:      customCarsRef.current,
+          categoryWeights: cfg?.weights,
+          minBatch:        cfg?.minBatch,
+          maxBatch:        cfg?.maxBatch,
+          maxSameModel:    cfg?.maxSameModel,
+        });
+        const rows = carsToRows(freshCars, 0);
 
         const { data: rpcResult, error: rpcErr } = await db()
           .rpc('populate_marketplace_batch', { p_rows: rows });
