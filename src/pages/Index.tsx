@@ -75,6 +75,10 @@ const Index = () => {
     hireEmployee,
     fireEmployee,
     updateEmployeeConfig,
+
+    payWarrantyClaim,
+    refuseWarrantyClaim,
+    dismissWarrantyClaim,
   } = useCarGameLogic();
 
   const {
@@ -303,6 +307,9 @@ const Index = () => {
             onResolveDecision={handleResolveDecision}
             onResolveCounterOffer={handleResolveCounterOffer}
             onDismissBuyer={dismissBuyer}
+            onPayWarrantyClaim={payWarrantyClaim}
+            onRefuseWarrantyClaim={refuseWarrantyClaim}
+            onDismissWarrantyClaim={dismissWarrantyClaim}
           />
         );
 

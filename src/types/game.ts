@@ -347,6 +347,9 @@ export interface GameState {
   employees?: import('./employees').HiredEmployee[];
   /** Último dia in-game em que o salário dos funcionários foi cobrado. */
   lastEmployeePayDay?: number;
+
+  /** Claims de garantia pendentes (cliente pediu pagamento de reparo). */
+  warrantyClaims?: import('./warranty').WarrantyClaim[];
 }
 
 // ── Helpers de tipo ───────────────────────────────────────────────
@@ -386,5 +389,6 @@ export function ensureGameState(raw: Partial<GameState>): GameState {
     _reputationMigrationVersion: raw._reputationMigrationVersion,
     employees:        raw.employees        ?? [],
     lastEmployeePayDay: raw.lastEmployeePayDay ?? 0,
+    warrantyClaims:   raw.warrantyClaims   ?? [],
   };
 }

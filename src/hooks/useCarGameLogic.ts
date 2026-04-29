@@ -34,6 +34,13 @@ import {
   type EmployeeConfig,
   type HiredEmployee,
 } from '@/types/employees';
+import {
+  WARRANTY_CLAIM_CHANCE,
+  WARRANTY_MIN_LEVEL,
+  WARRANTY_CONDITION_THRESHOLD,
+  WARRANTY_CLAIM_TTL_MS,
+  type WarrantyClaim,
+} from '@/types/warranty';
 import { supabase } from '@/integrations/supabase/client';
 
 // ── Config ────────────────────────────────────────────────────────
@@ -47,6 +54,45 @@ const LOCAL_SAVE_KEY          = 'gsia_car_game_v1';
 
 function generateId(): string {
   return `${Date.now()}_${Math.random().toString(36).slice(2, 8)}`;
+}
+
+/**
+ * Decide se uma venda dispara claim de garantia e, em caso positivo,
+ * gera o claim pronto para ser persistido. Retorna `null` se:
+ *   • Jogador abaixo do nível mínimo (Lv 8)
+ *   • Carro tinha condição >= 60%
+ *   • RNG não premiou (50% de chance)
+ *   • Não há reparos disponíveis no atributo afetado
+ */
+function maybeGenerateWarrantyClaim(
+  car: OwnedCar,
+  buyerName: string,
+  salePrice: number,
+  playerLevel: number,
+): WarrantyClaim | null {
+  if (playerLevel < WARRANTY_MIN_LEVEL) return null;
+  if (car.condition >= WARRANTY_CONDITION_THRESHOLD) return null;
+  if (Math.random() >= WARRANTY_CLAIM_CHANCE) return null;
+
+  // Pega reparo aleatório disponível (não conta lavagem)
+  const availableRepairs = REPAIR_TYPES.filter(r => !r.isAlwaysAvailable);
+  if (availableRepairs.length === 0) return null;
+  const picked = availableRepairs[Math.floor(Math.random() * availableRepairs.length)]!;
+
+  return {
+    id:           generateId(),
+    createdAt:    Date.now(),
+    status:       'pending',
+    buyerName,
+    car:          { ...car }, // snapshot
+    salePrice,
+    repairTypeId: picked.id,
+    repairName:   picked.name,
+    repairIcon:   picked.icon,
+    repairCost:   picked.baseCost,
+    attribute:    picked.attribute,
+    expiresAt:    Date.now() + WARRANTY_CLAIM_TTL_MS,
+  };
 }
 
 /**
@@ -508,6 +554,35 @@ export function useCarGameLogic() {
           } else {
             next = { ...next, lastEmployeePayDay: day };
           }
+        }
+
+        // ── Garantias: auto-recusa de claims expirados ─────────────
+        // Quando o jogador ignora um claim além do prazo, é tratado como recusa:
+        // valor da venda é debitado e o carro volta para a garagem.
+        const pendingClaims = (next.warrantyClaims ?? []).filter(c => c.status === 'pending');
+        const expiredClaims = pendingClaims.filter(c => now >= c.expiresAt);
+        if (expiredClaims.length > 0) {
+          let updatedGarage = next.garage;
+          let updatedMoney  = next.money;
+          for (const claim of expiredClaims) {
+            updatedMoney = safeMoney(updatedMoney, updatedMoney - claim.salePrice);
+            const emptySlot = updatedGarage.find(s => s.unlocked && !s.car);
+            if (emptySlot) {
+              updatedGarage = updatedGarage.map(s =>
+                s.id === emptySlot.id ? { ...s, car: { ...claim.car } } : s,
+              );
+            }
+          }
+          next = {
+            ...next,
+            money:  updatedMoney,
+            garage: updatedGarage,
+            warrantyClaims: (next.warrantyClaims ?? []).map(c =>
+              expiredClaims.find(e => e.id === c.id)
+                ? { ...c, status: 'refused' as const }
+                : c
+            ),
+          };
         }
 
         // ── Funcionário: Lavador (lava 1 carro/tick por slot livre) ──
@@ -1060,6 +1135,11 @@ export function useCarGameLogic() {
       profit, soldAt: Date.now(), gameDay: state.gameTime.day,
     };
 
+    // Garantia: chance de claim se carro tinha condição < 60% e jogador Lv 8+
+    const warrantyClaim = maybeGenerateWarrantyClaim(
+      car, buyer.name, playerOfferSafe, state.reputation?.level ?? 1,
+    );
+
     const slotIdx   = buyer.slotIndex ?? -1;
     const lockEpoch = currentCycleEpoch();
 
@@ -1086,6 +1166,9 @@ export function useCarGameLogic() {
         totalProfit:     (prev.totalProfit ?? 0) + profit,
         reputation:      addXp(prev.reputation, XP_REWARDS.carSale).reputation,
         buyerSlotLocks:  locks,
+        warrantyClaims:  warrantyClaim
+          ? [...(prev.warrantyClaims ?? []), warrantyClaim]
+          : (prev.warrantyClaims ?? []),
       };
     });
 
@@ -1192,6 +1275,11 @@ export function useCarGameLogic() {
       gameDay: state.gameTime.day,
     };
 
+    // Garantia: chance de claim se carro tinha condição < 60% e jogador Lv 8+
+    const warrantyClaim = maybeGenerateWarrantyClaim(
+      car, buyer.name, counterPrice, state.reputation?.level ?? 1,
+    );
+
     // ── Aplicação do estado (updater puro) ─────────────────────────────
     setGameState(prev => {
       // Guarda contra dupla aplicação em StrictMode: se o buyer já está em
@@ -1224,6 +1312,9 @@ export function useCarGameLogic() {
         totalRevenue:   (prev.totalRevenue ?? 0) + counterPrice,
         salesHistory:   [...(prev.salesHistory ?? []), saleRecord],
         totalProfit:    (prev.totalProfit ?? 0) + profit,
+        warrantyClaims: warrantyClaim
+          ? [...(prev.warrantyClaims ?? []), warrantyClaim]
+          : (prev.warrantyClaims ?? []),
         reputation:     addXp(prev.reputation, XP_REWARDS.carSale).reputation,
         buyerSlotLocks: locks,
       };
@@ -1452,6 +1543,68 @@ export function useCarGameLogic() {
     return { success: true, message: 'Configuração atualizada.' };
   }, [saveGame]);
 
+  // ─────────────────────────────────────────────────────────────────
+  // Garantias — pagar reparo do cliente ou recusar (carro volta)
+  // ─────────────────────────────────────────────────────────────────
+
+  const payWarrantyClaim = useCallback((claimId: string): { success: boolean; message: string } => {
+    const state = stateRef.current;
+    const claim = (state.warrantyClaims ?? []).find(c => c.id === claimId);
+    if (!claim) return { success: false, message: 'Claim não encontrado.' };
+    if (claim.status !== 'pending') return { success: false, message: 'Claim já resolvido.' };
+    if (state.money - claim.repairCost < state.overdraftLimit) {
+      return { success: false, message: `Saldo insuficiente para pagar ${formatMoney(claim.repairCost)}.` };
+    }
+
+    setGameState(prev => ({
+      ...prev,
+      money:          safeMoney(prev.money, prev.money - claim.repairCost),
+      warrantyClaims: (prev.warrantyClaims ?? []).map(c =>
+        c.id === claimId ? { ...c, status: 'paid' as const } : c
+      ),
+    }));
+    setTimeout(() => void saveGame(), 400);
+    return { success: true, message: `Reparo pago: ${formatMoney(claim.repairCost)}` };
+  }, [saveGame]);
+
+  const refuseWarrantyClaim = useCallback((claimId: string): { success: boolean; message: string } => {
+    const state = stateRef.current;
+    const claim = (state.warrantyClaims ?? []).find(c => c.id === claimId);
+    if (!claim) return { success: false, message: 'Claim não encontrado.' };
+    if (claim.status !== 'pending') return { success: false, message: 'Claim já resolvido.' };
+
+    setGameState(prev => {
+      // Subtrai o valor da venda do saldo
+      const newMoney = safeMoney(prev.money, prev.money - claim.salePrice);
+      // Tenta colocar o carro de volta na garagem (slot livre)
+      const emptySlot = prev.garage.find(s => s.unlocked && !s.car);
+      const garage = emptySlot
+        ? prev.garage.map(s => s.id === emptySlot.id ? { ...s, car: { ...claim.car } } : s)
+        : prev.garage;
+      return {
+        ...prev,
+        money:          newMoney,
+        garage,
+        warrantyClaims: (prev.warrantyClaims ?? []).map(c =>
+          c.id === claimId ? { ...c, status: 'refused' as const } : c
+        ),
+      };
+    });
+    setTimeout(() => void saveGame(), 400);
+    return {
+      success: true,
+      message: `Recusou: -${formatMoney(claim.salePrice)} e ${claim.car.brand} ${claim.car.model} de volta na garagem`,
+    };
+  }, [saveGame]);
+
+  const dismissWarrantyClaim = useCallback((claimId: string): void => {
+    setGameState(prev => ({
+      ...prev,
+      warrantyClaims: (prev.warrantyClaims ?? []).filter(c => c.id !== claimId),
+    }));
+    setTimeout(() => void saveGame(), 400);
+  }, [saveGame]);
+
 
   // ── Derived values ────────────────────────────────────────────
   const garageCarCount = gameState.garage.filter(s => s.car).length;
@@ -1493,6 +1646,11 @@ export function useCarGameLogic() {
     hireEmployee,
     fireEmployee,
     updateEmployeeConfig,
+
+    // Garantias
+    payWarrantyClaim,
+    refuseWarrantyClaim,
+    dismissWarrantyClaim,
 
     repairTypes:    REPAIR_TYPES,
     garageSlotDefs: GARAGE_SLOTS,

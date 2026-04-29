@@ -32,6 +32,12 @@ import type { GameState, OwnedCar, PlayerMarketListing, PlayerMarketListingStatu
 import { usePlayerMarket } from '@/hooks/usePlayerMarket';
 import { getFullPerformance } from '@/lib/performanceEngine';
 import type { PerformanceStats } from '@/types/performance';
+import { useCarImages } from '@/hooks/useCarImages';
+
+const fmtKm = (km?: number | null): string => {
+  if (km == null || km <= 0) return '— km';
+  return `${new Intl.NumberFormat('pt-BR').format(km)} km`;
+};
 
 interface PlayerMarketScreenProps {
   gameState: GameState;
@@ -237,122 +243,132 @@ function ListingCard({
   onBuy: () => void;
   onCancel: () => void;
 }) {
+  const { getImgForInstance } = useCarImages();
   const si        = statusInfo(listing.status);
   const isActive  = listing.status === 'active';
-  const condition = listing.car_data?.condition;
-  const isAuction = listing.car_data?.acquiredFrom === 'auction';
+  const isSold    = listing.status === 'sold';
+  const isCancelled = listing.status === 'cancelled';
+  const isExpired = !isActive && !isSold && !isCancelled;
+  const carData   = listing.car_data;
+  const condition = carData?.condition ?? 0;
+  const fipePrice = carData?.fipePrice ?? 0;
+  const mileage   = carData?.mileage ?? 0;
+  const year      = carData?.year ?? 0;
+  const trim      = carData?.trim ?? '';
+  const isAuction = carData?.acquiredFrom === 'auction';
+  const cardImgUrl = carData?.modelId ? getImgForInstance(carData.modelId, listing.id) : undefined;
+
+  // Comparativo com FIPE — mesma lógica da aba Global
+  const fipeDiff    = fipePrice > 0 ? listing.total_price - fipePrice : 0;
+  const isBelowFipe = fipeDiff < 0;
+  const diffPct     = fipePrice > 0 ? Math.abs(Math.round((fipeDiff / fipePrice) * 100)) : 0;
 
   return (
-    <div className="ios-surface rounded-[14px] p-4 space-y-3">
-      {/* Header */}
-      <div className="flex items-start gap-3">
-        <div className="w-12 h-12 rounded-[12px] bg-muted flex items-center justify-center text-2xl shrink-0">
-          {listing.product_icon ?? '🚗'}
-        </div>
-        <div className="flex-1 min-w-0">
-          <div className="flex items-center gap-1.5 flex-wrap">
-            <span className="font-bold text-[14px] text-foreground truncate">{listing.product_name}</span>
-            {isAuction && (
-              <span className="text-[9px] font-bold text-amber-500 px-1.5 py-0.5 rounded-full bg-amber-500/15 flex items-center gap-0.5 shrink-0">
-                🔨 Leilão
+    <div className="ios-surface rounded-[14px] overflow-hidden flex flex-col w-full relative">
+      {/* Thumbnail */}
+      <div className="relative w-full bg-muted flex items-center justify-center overflow-hidden" style={{ height: 110 }}>
+        {cardImgUrl ? (
+          <img
+            src={cardImgUrl}
+            alt={listing.product_name}
+            className={`w-full h-full object-cover ${!isActive ? 'opacity-30' : ''}`}
+            onError={(e) => {
+              e.currentTarget.style.display = 'none';
+              const fallback = e.currentTarget.nextElementSibling as HTMLElement | null;
+              if (fallback) fallback.style.display = 'flex';
+            }}
+          />
+        ) : null}
+        <span
+          className={`text-[52px] items-center justify-center ${!isActive ? 'opacity-30' : ''}`}
+          style={{ display: cardImgUrl ? 'none' : 'flex' }}
+        >{listing.product_icon ?? '🚗'}</span>
+
+        {/* FIPE badge */}
+        {isActive && fipePrice > 0 && (
+          <div className={`absolute top-2 left-2 px-1.5 py-0.5 rounded-full text-[9px] font-bold text-white ${isBelowFipe ? 'bg-emerald-500' : 'bg-orange-500'}`}>
+            {isBelowFipe ? `▼${diffPct}%` : `▲${diffPct}%`}
+          </div>
+        )}
+
+        {/* Badge de leilão */}
+        {isActive && isAuction && (
+          <div className="absolute top-2 left-2 mt-5 px-1.5 py-0.5 rounded-full text-[9px] font-bold text-white bg-amber-500 flex items-center gap-0.5">
+            🔨 Leilão
+          </div>
+        )}
+
+        {/* Condition dot */}
+        {isActive && condition > 0 && (
+          <div className={`absolute top-2 right-2 w-2 h-2 rounded-full ${
+            condition >= 75 ? 'bg-emerald-400'
+            : condition >= 50 ? 'bg-amber-400'
+            : condition >= 30 ? 'bg-orange-400'
+            : 'bg-red-400'
+          }`} />
+        )}
+
+        {/* Sold/Cancelled/Expired overlay */}
+        {!isActive && (
+          <div className="absolute inset-0 bg-black/50 flex flex-col items-center justify-center gap-1">
+            {si.icon}
+            <span className="text-white text-[10px] font-bold tracking-wider uppercase">{si.label}</span>
+            {isSold && listing.buyer_name && (
+              <span className="text-white/75 text-[9px] mt-0.5 px-1 text-center leading-tight">
+                para {listing.buyer_name}
               </span>
             )}
           </div>
-          <div className="text-[11px] text-muted-foreground">
-            Vendedor: {listing.seller_name}
-          </div>
-          <div className="text-[10px] text-muted-foreground mt-0.5">{relativeTime(listing.created_at)}</div>
-        </div>
-        <Badge variant="outline" className={`text-[10px] flex items-center gap-1 ${si.color}`}>
-          {si.icon}
-          {si.label}
-        </Badge>
+        )}
       </div>
 
-      {/* Condição do veículo */}
-      {condition !== undefined && (
-        <div className="space-y-1.5">
-          <div className="flex items-center gap-2">
-            <div className="flex-1 h-1.5 bg-muted rounded-full overflow-hidden">
-              <div
-                className="h-full rounded-full"
-                style={{
-                  width: `${condition}%`,
-                  background: condition >= 60
-                    ? 'var(--gradient-primary, #22c55e)'
-                    : condition >= 35
-                    ? 'linear-gradient(90deg,#f59e0b,#f97316)'
-                    : 'linear-gradient(90deg,#ef4444,#dc2626)',
-                }}
-              />
-            </div>
-            <Badge
-              variant="outline"
-              className={`text-[10px] font-bold shrink-0 ${conditionBadgeClass(condition)}`}
-            >
-              {conditionLabel(condition)} · {condition}%
-            </Badge>
-          </div>
-          {listing.car_data?.mileage != null && (
-            <div className="text-[11px] text-muted-foreground flex items-center gap-1">
-              <span>🛣️</span>
-              <span className="tabular-nums font-medium">
-                {new Intl.NumberFormat('pt-BR').format(listing.car_data.mileage)} km
-              </span>
-            </div>
-          )}
+      {/* Info */}
+      <div className="px-2.5 py-2.5 space-y-0.5 flex-1">
+        <div className={`font-game-title text-[16px] font-bold tabular-nums ${!isActive ? 'text-muted-foreground line-through' : 'text-foreground'}`}>
+          {fmt(listing.total_price)}
         </div>
-      )}
+        <div className="text-[11px] font-semibold text-foreground leading-tight truncate">{listing.product_name}</div>
+        <div className="text-[10px] text-muted-foreground truncate">
+          {trim && `${trim} · `}{year > 0 && `${year} · `}{fmtKm(mileage)}
+        </div>
+        <div className="text-[10px] text-muted-foreground truncate">📍 {listing.seller_name}</div>
+        <div className="text-[9px] text-muted-foreground/70 truncate">{relativeTime(listing.created_at)}</div>
+        {isActive && !isOwn && !hasGarageSpace && <div className="text-[9px] text-orange-500 font-semibold mt-0.5">Garagem cheia</div>}
+        {isActive && !isOwn && !canAfford && hasGarageSpace && <div className="text-[9px] text-red-500 font-semibold mt-0.5">Saldo insuficiente</div>}
+      </div>
 
-      {/* Descrição do vendedor */}
-      {listing.description && (
-        <p className="text-[12px] text-muted-foreground italic leading-relaxed border-l-2 border-primary/30 pl-2">
+      {/* Descrição opcional */}
+      {listing.description && isActive && (
+        <p className="px-2.5 pb-1.5 text-[10px] text-muted-foreground italic leading-tight border-l-2 border-primary/30 ml-2.5 truncate">
           "{listing.description}"
         </p>
       )}
 
-      {/* Botão de ver desempenho — só se há car_data */}
-      {listing.car_data && (
-        <div className="flex justify-end">
-          <CarPerformanceDialog car={listing.car_data} />
-        </div>
-      )}
-
-      {/* Preço + ação */}
-      <div className="flex items-center justify-between">
-        <div>
-          <div className="font-game-title text-xl font-bold text-foreground tabular-nums">
-            {fmt(listing.total_price)}
-          </div>
-          {listing.category && (
-            <div className="text-[10px] text-muted-foreground uppercase tracking-wider">{listing.category}</div>
+      {/* Ações */}
+      {isActive && (
+        <div className="flex gap-1.5 px-2.5 pb-2.5 pt-1">
+          {carData && (
+            <CarPerformanceDialog car={carData} />
           )}
-        </div>
-
-        {isActive && (
-          isOwn ? (
-            <Button variant="outline" size="sm" className="text-[12px] text-red-500 border-red-500/30" onClick={onCancel}>
-              Cancelar anúncio
+          {isOwn ? (
+            <Button
+              variant="outline"
+              size="sm"
+              className="flex-1 text-[11px] text-red-500 border-red-500/30 px-2"
+              onClick={onCancel}
+            >
+              Cancelar
             </Button>
           ) : (
             <Button
               size="sm"
-              className="text-[12px]"
+              className="flex-1 text-[11px] px-2"
               disabled={!canAfford || !hasGarageSpace}
               onClick={onBuy}
             >
-              {!hasGarageSpace ? 'Garagem cheia' : !canAfford ? 'Sem saldo' : 'Comprar'}
+              Comprar
             </Button>
-          )
-        )}
-      </div>
-
-      {listing.status === 'sold' && (
-        <div className="flex items-center gap-2 bg-emerald-500/10 border border-emerald-500/20 rounded-[10px] px-3 py-2">
-          <CheckCircle2 size={14} className="text-emerald-500 shrink-0" />
-          <div className="text-[12px] text-emerald-600 font-semibold">
-            Vendido{listing.buyer_name ? ` para ${listing.buyer_name}` : ''}
-          </div>
+          )}
         </div>
       )}
     </div>
@@ -746,7 +762,7 @@ export const PlayerMarketScreen = ({
               <div className="text-[11px] text-muted-foreground">Seja o primeiro a anunciar um carro!</div>
             </div>
           ) : (
-            <div className="space-y-3">
+            <div className="grid grid-cols-2 gap-2">
               {filtered.map(listing => (
                 <ListingCard
                   key={listing.id}
@@ -870,7 +886,7 @@ export const PlayerMarketScreen = ({
               <div className="text-[11px] text-muted-foreground">Anuncie um carro da sua garagem acima.</div>
             </div>
           ) : (
-            <div className="space-y-3">
+            <div className="grid grid-cols-2 gap-2">
               {myListings.map(listing => (
                 <ListingCard
                   key={listing.id}

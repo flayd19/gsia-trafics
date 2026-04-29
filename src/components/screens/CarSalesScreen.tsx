@@ -2,7 +2,7 @@
 // CarSalesScreen — Venda de carros para NPCs (ciclos de 30 min)
 // =====================================================================
 import { useState, useEffect, useMemo, useRef } from 'react';
-import { Car, ArrowRight, CheckCircle, XCircle, User, Lock, Tag, Layers, TrendingDown, TrendingUp } from 'lucide-react';
+import { Car, ArrowRight, CheckCircle, XCircle, User, Lock, Tag, Layers, TrendingDown, TrendingUp, Users, ShieldCheck } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import type { GameState, CarBuyerNPC, OwnedCar } from '@/types/game';
@@ -14,6 +14,9 @@ import {
   secondsUntilNextCycle,
   CATEGORY_LABELS,
 } from '@/data/carBuyers';
+import { WarrantiesTab } from './WarrantiesTab';
+import { ensureReputation } from '@/lib/reputation';
+import { WARRANTY_MIN_LEVEL } from '@/types/warranty';
 
 interface CarSalesScreenProps {
   gameState: GameState;
@@ -27,6 +30,9 @@ interface CarSalesScreenProps {
   onResolveDecision: (buyerId: string) => { success: boolean; accepted: boolean; message: string; finalPrice?: number; counterOffer?: number };
   onResolveCounterOffer: (buyerId: string, accept: boolean) => { success: boolean; message: string; accepted?: boolean; finalPrice?: number };
   onDismissBuyer: (buyerId: string) => void;
+  onPayWarrantyClaim:    (claimId: string) => { success: boolean; message: string };
+  onRefuseWarrantyClaim: (claimId: string) => { success: boolean; message: string };
+  onDismissWarrantyClaim:(claimId: string) => void;
 }
 
 const fmt = (v: number) =>
@@ -719,8 +725,11 @@ export function CarSalesScreen({
   onResolveDecision,
   onResolveCounterOffer,
   onDismissBuyer,
+  onPayWarrantyClaim,
+  onRefuseWarrantyClaim,
+  onDismissWarrantyClaim,
 }: CarSalesScreenProps) {
-  const level        = gameState.reputation.level;
+  const level        = ensureReputation(gameState.reputation).level;
   const totalSlots   = maxBuyerSlots(level);
   const slotLocks    = gameState.buyerSlotLocks ?? [];
   const cycleEpoch   = currentCycleEpoch();
@@ -731,14 +740,19 @@ export function CarSalesScreen({
     b => b.state === 'waiting' || b.state === 'thinking' || b.state === 'countering' || b.state === 'accepted' || b.state === 'rejected',
   );
 
-  const totalSold   = gameState.totalCarsSold ?? 0;
+  const totalSold    = gameState.totalCarsSold ?? 0;
   const totalRevenue = gameState.totalRevenue ?? 0;
-  const avgProfit   = gameState.carSales.length > 0
+  const avgProfit    = gameState.carSales.length > 0
     ? Math.round(gameState.carSales.reduce((s, r) => s + r.profit, 0) / gameState.carSales.length)
     : 0;
 
+  // Sub-aba: clientes (default) ou garantias
+  const [subTab, setSubTab] = useState<'clientes' | 'garantias'>('clientes');
+  const pendingClaimsCount = (gameState.warrantyClaims ?? []).filter(c => c.status === 'pending').length;
+  const showWarrantyTab = level >= WARRANTY_MIN_LEVEL || (gameState.warrantyClaims ?? []).length > 0;
+
   return (
-    <div className="space-y-5">
+    <div className="space-y-4">
       {/* Header */}
       <div className="flex items-end justify-between">
         <div>
@@ -752,6 +766,53 @@ export function CarSalesScreen({
           <div className="font-game-title tabular-nums text-[15px] font-bold">{totalSold} carros</div>
         </div>
       </div>
+
+      {/* Sub-abas (só mostra se Lv 8+ ou se tem claims) */}
+      {showWarrantyTab && (
+        <div className="flex gap-1 bg-muted rounded-[12px] p-1">
+          <button
+            onClick={() => setSubTab('clientes')}
+            className={`flex-1 flex items-center justify-center gap-1.5 py-2 rounded-[10px] text-[12px] font-semibold transition-all ${
+              subTab === 'clientes'
+                ? 'bg-background text-foreground shadow-sm'
+                : 'text-muted-foreground'
+            }`}
+          >
+            <Users size={13} />
+            Clientes
+          </button>
+          <button
+            onClick={() => setSubTab('garantias')}
+            className={`flex-1 flex items-center justify-center gap-1.5 py-2 rounded-[10px] text-[12px] font-semibold transition-all ${
+              subTab === 'garantias'
+                ? 'bg-background text-foreground shadow-sm'
+                : 'text-muted-foreground'
+            }`}
+          >
+            <ShieldCheck size={13} />
+            Garantias
+            {pendingClaimsCount > 0 && (
+              <span className="text-[9px] font-bold text-white bg-red-500 px-1 rounded-full">
+                {pendingClaimsCount}
+              </span>
+            )}
+          </button>
+        </div>
+      )}
+
+      {/* Sub-aba: Garantias */}
+      {subTab === 'garantias' && (
+        <WarrantiesTab
+          gameState={gameState}
+          onPayClaim={onPayWarrantyClaim}
+          onRefuseClaim={onRefuseWarrantyClaim}
+          onDismissClaim={onDismissWarrantyClaim}
+        />
+      )}
+
+      {/* Sub-aba: Clientes (conteúdo original) */}
+      {subTab === 'clientes' && (
+      <div className="space-y-5">
 
       {/* Ciclo global */}
       <CycleHeader epochLocks={slotLocks} />
@@ -829,6 +890,8 @@ export function CarSalesScreen({
             ))}
           </div>
         </div>
+      )}
+      </div>
       )}
     </div>
   );
