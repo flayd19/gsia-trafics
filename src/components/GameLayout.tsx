@@ -1,20 +1,17 @@
 import { useState, useEffect, useMemo, useRef } from 'react';
 import { Button } from '@/components/ui/button';
 import {
-  Home,
   MoreHorizontal,
   Settings as SettingsIcon,
   LogOut,
   User,
-  Trophy,
   X,
-  DollarSign,
+  Building2,
   ShoppingBag,
-  Wrench,
-  Car,
-  Zap,
+  FileText,
+  Trophy,
   MessageSquare,
-  Briefcase,
+  MapPin,
 } from 'lucide-react';
 import { supabase } from '@/integrations/supabase/client';
 import { useAudio } from '@/hooks/useAudio';
@@ -22,8 +19,8 @@ import { ensureReputation, levelProgress, xpRequiredForLevel, MAX_LEVEL } from '
 import type { Reputation } from '@/types/game';
 
 /* ----------------------------------------------------------------
- * Tab metadata — Compra & Venda de Carros
- * 5 principais no bottom tab bar; resto no sheet "Mais".
+ * Tab metadata — Simulador de Construtora
+ * 4 abas principais no bottom tab bar; settings no sheet "Mais".
  * ---------------------------------------------------------------- */
 
 type TabDef = {
@@ -33,40 +30,37 @@ type TabDef = {
 };
 
 const PRIMARY_TABS: TabDef[] = [
-  { id: 'garagem',      label: 'Garagem',      icon: Car },
-  { id: 'fornecedores', label: 'Comprar',       icon: ShoppingBag },
-  { id: 'oficina',      label: 'Oficina',       icon: Wrench },
-  { id: 'vendas',       label: 'Vendas',        icon: DollarSign },
+  { id: 'empresa',    label: 'Empresa',    icon: Building2 },
+  { id: 'mercado',    label: 'Mercado',    icon: ShoppingBag },
+  { id: 'cidade',     label: 'Cidade',     icon: MapPin },
+  { id: 'licitacoes', label: 'Licitações', icon: FileText },
+  { id: 'empresas',   label: 'Empresas',  icon: Trophy },
 ];
 
 const SECONDARY_TABS: TabDef[] = [
-  { id: 'home',        label: 'Início',       icon: Home },
-  { id: 'rachas',      label: 'Rachas',       icon: Zap },
-  { id: 'chat',        label: 'Chat',         icon: MessageSquare },
-  { id: 'employees',   label: 'Funcionários', icon: Briefcase },
-  { id: 'ranking',     label: 'Ranking',      icon: Trophy },
-  { id: 'settings',    label: 'Ajustes',      icon: SettingsIcon },
+  { id: 'chat',     label: 'Chat',    icon: MessageSquare },
+  { id: 'settings', label: 'Ajustes', icon: SettingsIcon },
 ];
 
 /* ---------------------------------------------------------------- */
 
 interface GameLayoutProps {
-  children: React.ReactNode;
-  money: number;
-  garageCount: number;
-  gameTime: { day: number; time: string };
-  onTabChange: (tab: string) => void;
-  currentTab: string;
-  isSyncing?: boolean;
-  user?: { email?: string } | null;
-  onLogout?: () => void;
-  reputation?: Reputation;
+  children:         React.ReactNode;
+  money:            number;
+  activeWorksCount: number;
+  gameTime:         { day: number; time: string };
+  onTabChange:      (tab: string) => void;
+  currentTab:       string;
+  isSyncing?:       boolean;
+  user?:            { email?: string } | null;
+  onLogout?:        () => void;
+  reputation?:      Reputation;
 }
 
 export const GameLayout = ({
   children,
   money,
-  garageCount,
+  activeWorksCount,
   gameTime,
   onTabChange,
   currentTab,
@@ -76,9 +70,9 @@ export const GameLayout = ({
   reputation,
 }: GameLayoutProps) => {
   const [displayName, setDisplayName] = useState<string>('');
-  const [moreOpen, setMoreOpen] = useState(false);
-  const { playClickSound } = useAudio();
-  const mainRef = useRef<HTMLElement>(null);
+  const [moreOpen, setMoreOpen]       = useState(false);
+  const { playClickSound }            = useAudio();
+  const mainRef                       = useRef<HTMLElement>(null);
 
   useEffect(() => {
     const fetchDisplayName = async () => {
@@ -90,7 +84,7 @@ export const GameLayout = ({
         .select('display_name')
         .eq('user_id', authUser.id)
         .maybeSingle();
-      const name = profile?.display_name || user.email.split('@')[0] || 'Jogador';
+      const name = profile?.display_name || user.email.split('@')[0] || 'Construtora';
       setDisplayName(name.length > 15 ? name.substring(0, 15) : name);
     };
     fetchDisplayName();
@@ -101,8 +95,6 @@ export const GameLayout = ({
   }, [currentTab]);
 
   const formatMoney = (amount: number) => {
-    // BUG FIX: defesa contra NaN/Infinity. Intl.NumberFormat formata NaN como
-    // a string literal "NaN", causando a HUD aparecer "NaN" para o jogador.
     const safe = typeof amount === 'number' && Number.isFinite(amount) ? amount : 0;
     return new Intl.NumberFormat('pt-BR', {
       style: 'currency',
@@ -125,9 +117,9 @@ export const GameLayout = ({
 
   const isNegative = money < 0;
 
-  const rep = ensureReputation(reputation);
-  const isMaxLevel = rep.level >= MAX_LEVEL;
-  const xpNeeded = isMaxLevel ? 0 : xpRequiredForLevel(rep.level + 1);
+  const rep          = ensureReputation(reputation);
+  const isMaxLevel   = rep.level >= MAX_LEVEL;
+  const xpNeeded     = isMaxLevel ? 0 : xpRequiredForLevel(rep.level + 1);
   const xpProgressPct = Math.round(levelProgress(rep) * 100);
 
   return (
@@ -141,11 +133,11 @@ export const GameLayout = ({
               className="w-8 h-8 rounded-[10px] flex items-center justify-center text-white font-bold text-sm shadow-sm"
               style={{ background: 'var(--gradient-primary)' }}
             >
-              🚗
+              🏗️
             </div>
             <div className="flex flex-col leading-tight min-w-0">
               <span className="font-game-title text-[15px] font-bold text-foreground tracking-tight truncate">
-                GSIA Carros
+                GSIA Construtora
               </span>
               <div className="flex items-center gap-1 mt-0.5">
                 <span className="text-[11px] font-bold text-primary tabular-nums">
@@ -200,7 +192,7 @@ export const GameLayout = ({
 
             <div className="flex-1 min-w-0">
               <div className="text-[10px] uppercase tracking-wider text-muted-foreground font-semibold">
-                Saldo disponível
+                Caixa da empresa
               </div>
               <div
                 className={`font-game-title tabular-nums text-lg font-bold leading-tight ${
@@ -211,14 +203,14 @@ export const GameLayout = ({
               </div>
               {isNegative && (
                 <div className="text-[10px] text-danger font-semibold animate-pulse">
-                  Cheque especial
+                  Saldo negativo
                 </div>
               )}
             </div>
 
             <div className="flex flex-col items-end gap-0.5">
               <div className="text-[10px] text-muted-foreground tabular-nums">
-                🚗 {garageCount} carros
+                🏗️ {activeWorksCount} obra{activeWorksCount !== 1 ? 's' : ''}
               </div>
               <button
                 onClick={() => handleTab('settings')}

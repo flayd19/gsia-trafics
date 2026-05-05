@@ -17,28 +17,16 @@ const AppContent = () => {
   const { user, loading } = useAuth();
   const navigate = useNavigate();
 
-  // Redirect unauthenticated users to auth page.
-  // Whitelist: /auth (próprio login) e /admin (sessão admin é independente
-  // do login do jogo — tem sua própria proteção em AdminPage.tsx).
+  // Modo offline/dev: redireciona para /auth apenas quando o usuário
+  // tenta acessar /admin sem estar logado. O jogo roda sem login via
+  // localStorage — sem Supabase, sem bloqueio.
   useEffect(() => {
     if (loading) return;
     const path = window.location.pathname;
-    const isPublicPath = path === '/auth' || path.startsWith('/admin');
-    if (!user && !isPublicPath) {
+    if (!user && path.startsWith('/admin')) {
       navigate('/auth');
     }
   }, [user, loading, navigate]);
-
-  if (loading) {
-    return (
-      <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-background to-secondary">
-        <div className="text-center">
-          <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-primary mx-auto mb-4"></div>
-          <p className="text-muted-foreground">Carregando...</p>
-        </div>
-      </div>
-    );
-  }
 
   return (
     <Routes>
