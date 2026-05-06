@@ -317,88 +317,221 @@ function centroid(polygon) {
 }
 
 // ── Modo OSM (Overpass API) ─────────────────────────────────────────
+//
+// Estratégia:
+//   1. Query Overpass por:
+//      - way[landuse=residential|commercial|retail|industrial]  → blocos
+//      - way[leisure=park]                                       → parques
+//      - way[highway]                                            → ruas
+//   2. Cada way fechada vira um QUARTEIRÃO real
+//   3. Cada quarteirão é subdividido em lotes via grid retangular
+//      filtrado por point-in-polygon (lotes fora do polígono são descartados)
+//   4. Lotes pegam preço base proporcional à área e bairro
 async function generateFromOSM() {
+  // Bbox um pouco maior que a área procedural padrão para cobrir mais da cidade
   const bbox = {
-    minLng: CITY_CENTER[0] - URBAN_RX_DEG,
-    minLat: CITY_CENTER[1] - URBAN_RY_DEG,
-    maxLng: CITY_CENTER[0] + URBAN_RX_DEG,
-    maxLat: CITY_CENTER[1] + URBAN_RY_DEG,
+    minLng: CITY_CENTER[0] - 0.025,
+    minLat: CITY_CENTER[1] - 0.018,
+    maxLng: CITY_CENTER[0] + 0.025,
+    maxLat: CITY_CENTER[1] + 0.018,
   };
   const bboxStr = `${bbox.minLat},${bbox.minLng},${bbox.maxLat},${bbox.maxLng}`;
   const query = `
-    [out:json][timeout:60];
-    (
-      way[highway](${bboxStr});
-      way[leisure=park](${bboxStr});
-      way[landuse=residential](${bboxStr});
-      relation[boundary=administrative]["name"="Goianésia"];
-    );
-    out body;
-    >;
-    out skel qt;
-  `;
+[out:json][timeout:120];
+(
+  way[landuse=residential](${bboxStr});
+  way[landuse=commercial](${bboxStr});
+  way[landuse=retail](${bboxStr});
+  way[landuse=industrial](${bboxStr});
+  way[leisure=park](${bboxStr});
+  way[leisure=garden](${bboxStr});
+  way[highway~"^(motorway|trunk|primary|secondary|tertiary|residential|unclassified|service)$"](${bboxStr});
+);
+(._;>;);
+out body;
+`;
   const url = 'https://overpass-api.de/api/interpreter?data=' + encodeURIComponent(query);
   // eslint-disable-next-line no-console
-  console.log('[osm] fetching', url.length, 'bytes-encoded url');
+  console.log('[osm] fetching Overpass…');
   const res = await fetch(url);
   if (!res.ok) throw new Error('Overpass HTTP ' + res.status);
   const data = await res.json();
   // eslint-disable-next-line no-console
-  console.log('[osm] elementos recebidos:', data.elements.length);
+  console.log(`[osm] ${data.elements.length} elementos recebidos`);
 
-  // Implementação OSM completa requer:
-  //  - extrair nodes (points), ways (linhas/polígonos), relations
-  //  - identificar polígonos fechados de quarteirões via faces da malha de ruas
-  //  - subdividir em lotes
-  // Por concisão, este modo gera o JSON com ruas/parques REAIS mas mantém
-  // os QUARTEIRÕES e LOTES do modo procedural. Substitua isso conforme
-  // sua necessidade refinar a precisão.
-  const procedural = generateProcedural();
-  procedural.mode = 'osm-hybrid';
-  procedural.streets = extractStreets(data);
-  procedural.parks   = extractParks(data);
-  return procedural;
-}
-
-function extractStreets(osmData) {
+  // Indexa nodes
   const nodes = new Map();
-  for (const el of osmData.elements) {
+  for (const el of data.elements) {
     if (el.type === 'node') nodes.set(el.id, [el.lon, el.lat]);
   }
+
+  const blocks  = [];
+  const lots    = [];
+  const parks   = [];
   const streets = [];
-  for (const el of osmData.elements) {
-    if (el.type === 'way' && el.tags?.highway) {
-      const path = el.nodes.map(id => nodes.get(id)).filter(Boolean);
-      if (path.length < 2) continue;
+
+  let blockIdx = 0;
+
+  for (const el of data.elements) {
+    if (el.type !== 'way') continue;
+    const pts = el.nodes.map(id => nodes.get(id)).filter(Boolean);
+    if (pts.length < 2) continue;
+    const isClosed = el.nodes[0] === el.nodes[el.nodes.length - 1];
+
+    // Ruas
+    if (el.tags?.highway) {
       streets.push({
         id:   `s_${el.id}`,
         name: el.tags.name ?? null,
         type: el.tags.highway,
-        path: path.map(p => [round6(p[0]), round6(p[1])]),
+        path: pts.map(p => [round6(p[0]), round6(p[1])]),
       });
+      continue;
     }
-  }
-  return streets;
-}
 
-function extractParks(osmData) {
-  const nodes = new Map();
-  for (const el of osmData.elements) {
-    if (el.type === 'node') nodes.set(el.id, [el.lon, el.lat]);
-  }
-  const parks = [];
-  for (const el of osmData.elements) {
-    if (el.type === 'way' && (el.tags?.leisure === 'park' || el.tags?.landuse === 'recreation_ground')) {
-      const polygon = el.nodes.map(id => nodes.get(id)).filter(Boolean);
-      if (polygon.length < 3) continue;
+    // Parques
+    if (el.tags?.leisure === 'park' || el.tags?.leisure === 'garden') {
+      if (!isClosed || pts.length < 3) continue;
       parks.push({
         id:      `p_${el.id}`,
         name:    el.tags.name ?? 'Parque',
-        polygon: polygon.map(p => [round6(p[0]), round6(p[1])]),
+        polygon: pts.map(p => [round6(p[0]), round6(p[1])]),
+      });
+      continue;
+    }
+
+    // Quarteirões: landuse residential/commercial/retail/industrial
+    const isBlock =
+      el.tags?.landuse === 'residential' ||
+      el.tags?.landuse === 'commercial'  ||
+      el.tags?.landuse === 'retail'      ||
+      el.tags?.landuse === 'industrial';
+    if (isBlock && isClosed && pts.length >= 4) {
+      const blockId = `b${blockIdx.toString().padStart(4, '0')}`;
+      blockIdx++;
+      const polygon = pts.map(p => [round6(p[0]), round6(p[1])]);
+      const ctr     = centroid(polygon);
+      const area    = polygonAreaM2(polygon);
+      const nbName  = neighborhoodFor(ctr[0], ctr[1]);
+
+      blocks.push({
+        id:           blockId,
+        polygon,
+        neighborhood: nbName,
+        centroid_lng: round6(ctr[0]),
+        centroid_lat: round6(ctr[1]),
+      });
+
+      // Subdivide em lotes proporcionais à área. Alvo ~300 m²/lote.
+      const TARGET_LOT_AREA_M2 = 300;
+      const numLots = Math.max(1, Math.min(80, Math.round(area / TARGET_LOT_AREA_M2)));
+      const blockLots = subdivideRealBlock(polygon, blockId, numLots);
+
+      for (const l of blockLots) {
+        const la  = polygonAreaM2(l.polygon);
+        const lc  = centroid(l.polygon);
+        const lnb = neighborhoodFor(lc[0], lc[1]);
+        lots.push({
+          id:           l.id,
+          block_id:     l.block_id,
+          polygon:      l.polygon,
+          area_m2:      Math.round(la),
+          neighborhood: lnb,
+          base_price:   lotBasePrice(lnb, la),
+        });
+      }
+    }
+  }
+
+  // eslint-disable-next-line no-console
+  console.log(`[osm] ${blocks.length} quarteirões, ${lots.length} lotes, ${parks.length} parques, ${streets.length} ruas`);
+
+  return {
+    city:        'Goianésia',
+    state:       'GO',
+    generatedAt: new Date().toISOString(),
+    mode:        'osm',
+    bbox,
+    cityCenter:  CITY_CENTER,
+    blocks,
+    lots,
+    streets,
+    parks,
+    clubs:       [],
+    highways:    [HIGHWAY_GO080],
+    neighborhoods: NEIGHBORHOODS.map(n => ({ name: n.name, center: n.center })),
+  };
+}
+
+// ── Subdivisão de quarteirão real em lotes ──────────────────────────
+//
+// Algoritmo:
+//   1. Calcula bounding box (lng/lat) do polígono real
+//   2. Calcula nCols x nRows que produz ~numLots células retangulares
+//   3. Para cada célula: retângulo lng/lat
+//   4. Filtra: só inclui célula cujo centróide está DENTRO do polígono
+//      (point-in-polygon ray-casting)
+function subdivideRealBlock(polygon, blockId, numLots) {
+  let minLng = Infinity, minLat = Infinity, maxLng = -Infinity, maxLat = -Infinity;
+  for (const [lng, lat] of polygon) {
+    if (lng < minLng) minLng = lng;
+    if (lat < minLat) minLat = lat;
+    if (lng > maxLng) maxLng = lng;
+    if (lat > maxLat) maxLat = lat;
+  }
+  const width  = maxLng - minLng;
+  const height = maxLat - minLat;
+  if (width <= 0 || height <= 0) return [];
+
+  // Ratio aproximado: quanto mais largo que alto, mais cols
+  const ratio = (width / height) * (M_PER_DEG_LNG / M_PER_DEG_LAT);
+  const nCols = Math.max(1, Math.round(Math.sqrt(numLots * ratio)));
+  const nRows = Math.max(1, Math.ceil(numLots / nCols));
+
+  const cellW = width  / nCols;
+  const cellH = height / nRows;
+
+  const lots = [];
+  for (let r = 0; r < nRows; r++) {
+    for (let c = 0; c < nCols; c++) {
+      const lng0 = minLng + c * cellW;
+      const lng1 = lng0 + cellW;
+      const lat0 = minLat + r * cellH;
+      const lat1 = lat0 + cellH;
+      const cx = (lng0 + lng1) / 2;
+      const cy = (lat0 + lat1) / 2;
+
+      // Só aceita se o centróide cai dentro do polígono real do quarteirão
+      if (!pointInPolygon([cx, cy], polygon)) continue;
+
+      lots.push({
+        id:       `${blockId}_l${r}${c}`,
+        block_id: blockId,
+        polygon: [
+          [round6(lng0), round6(lat0)],
+          [round6(lng1), round6(lat0)],
+          [round6(lng1), round6(lat1)],
+          [round6(lng0), round6(lat1)],
+        ],
       });
     }
   }
-  return parks;
+  return lots;
+}
+
+// Ray casting — true se ponto está dentro do polígono fechado
+function pointInPolygon(point, polygon) {
+  const [x, y] = point;
+  let inside = false;
+  for (let i = 0, j = polygon.length - 1; i < polygon.length; j = i++) {
+    const [xi, yi] = polygon[i];
+    const [xj, yj] = polygon[j];
+    const intersect =
+      ((yi > y) !== (yj > y)) &&
+      (x < ((xj - xi) * (y - yi)) / (yj - yi + 1e-12) + xi);
+    if (intersect) inside = !inside;
+  }
+  return inside;
 }
 
 // ── Main ────────────────────────────────────────────────────────────
@@ -436,7 +569,5 @@ async function main() {
 main().catch(err => {
   // eslint-disable-next-line no-console
   console.error('Erro:', err);
-  process.exit(1);
-});
   process.exit(1);
 });

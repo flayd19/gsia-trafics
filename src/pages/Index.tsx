@@ -3,13 +3,13 @@ import { useAuth } from '@/hooks/useAuth';
 import { GameLayout } from '@/components/GameLayout';
 import { EmpresaScreen } from '@/components/screens/EmpresaScreen';
 import { MercadoScreen } from '@/components/screens/MercadoScreen';
-import { LicitacoesScreen } from '@/components/screens/LicitacoesScreen';
+import { PropriedadesScreen } from '@/components/screens/PropriedadesScreen';
 import { EmpresasScreen } from '@/components/screens/EmpresasScreen';
 import { ChatScreen } from '@/components/screens/ChatScreen';
 import { CityScreen } from '@/components/screens/CityScreen';
 import { SettingsScreen } from '@/components/screens/SettingsScreen';
 import { useConstrutora } from '@/hooks/useConstrutora';
-import { useLicitacoes } from '@/hooks/useLicitacoes';
+import { usePropriedades } from '@/hooks/usePropriedades';
 import { useChatMoneySync } from '@/hooks/useChatMoneySync';
 import { supabase } from '@/integrations/supabase/client';
 import { toast } from 'sonner';
@@ -43,20 +43,8 @@ const Index = () => {
     removeMachineFromWork,
   } = useConstrutora();
 
-  // ── Licitações ───────────────────────────────────────────────────
-  const {
-    licitacoes,
-    myWins,
-    myBids,
-    loading: licLoading,
-    successMsg: licSuccessMsg,
-    placeBid,
-    claimWin,
-    consumeWin,
-    isLeading,
-    myBidFor,
-    refreshPool,
-  } = useLicitacoes(playerName);
+  // ── Imóveis ──────────────────────────────────────────────────────
+  const proprApi = usePropriedades();
 
   // ── Chat money sync (background) ─────────────────────────────────
   useChatMoneySync({
@@ -136,26 +124,13 @@ const Index = () => {
           />
         );
 
-      case 'licitacoes':
+      case 'propriedades':
         return (
-          <LicitacoesScreen
+          <PropriedadesScreen
             gameState={gameState}
-            licitacoes={licitacoes}
-            myWins={myWins}
-            myBids={myBids}
-            loading={licLoading}
-            successMsg={licSuccessMsg}
-            onPlaceBid={placeBid}
-            onClaimWin={claimWin}
-            onConsumeWin={consumeWin}
-            onIsLeading={isLeading}
-            onMyBidFor={myBidFor}
-            onRefreshPool={refreshPool}
-            onStartWork={startWork}
-            onAddEmployeeToWork={addEmployeeToWork}
-            onRemoveEmployeeFromWork={removeEmployeeFromWork}
-            onAddMachineToWork={addMachineToWork}
-            onRemoveMachineFromWork={removeMachineFromWork}
+            proprApi={proprApi}
+            onSpend={spendMoney}
+            onReceive={(amount) => addMoney(amount)}
           />
         );
 

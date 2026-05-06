@@ -8,7 +8,7 @@ import {
   X,
   Building2,
   ShoppingBag,
-  FileText,
+  Home,
   Trophy,
   MessageSquare,
   MapPin,
@@ -30,11 +30,11 @@ type TabDef = {
 };
 
 const PRIMARY_TABS: TabDef[] = [
-  { id: 'empresa',    label: 'Empresa',    icon: Building2 },
-  { id: 'mercado',    label: 'Mercado',    icon: ShoppingBag },
-  { id: 'cidade',     label: 'Cidade',     icon: MapPin },
-  { id: 'licitacoes', label: 'Licitações', icon: FileText },
-  { id: 'empresas',   label: 'Empresas',  icon: Trophy },
+  { id: 'empresa',      label: 'Empresa',   icon: Building2 },
+  { id: 'mercado',      label: 'Mercado',   icon: ShoppingBag },
+  { id: 'cidade',       label: 'Cidade',    icon: MapPin },
+  { id: 'propriedades', label: 'Imóveis',   icon: Home },
+  { id: 'empresas',     label: 'Empresas',  icon: Trophy },
 ];
 
 const SECONDARY_TABS: TabDef[] = [
