@@ -11,8 +11,7 @@ import {
   Home,
   Trophy,
   MessageSquare,
-  MapPin,
-  ClipboardList,
+  Gavel,
 } from 'lucide-react';
 import { supabase } from '@/integrations/supabase/client';
 import { useAudio } from '@/hooks/useAudio';
@@ -31,17 +30,16 @@ type TabDef = {
 };
 
 const PRIMARY_TABS: TabDef[] = [
-  { id: 'empresa',      label: 'Empresa',   icon: Building2 },
-  { id: 'mercado',      label: 'Mercado',   icon: ShoppingBag },
-  { id: 'cidade',       label: 'Cidade',    icon: MapPin },
-  { id: 'propriedades', label: 'Imóveis',   icon: Home },
-  { id: 'empresas',     label: 'Empresas',  icon: Trophy },
+  { id: 'empresa',      label: 'Empresa',    icon: Building2 },
+  { id: 'contratos',    label: 'Licitações', icon: Gavel },
+  { id: 'mercado',      label: 'Mercado',    icon: ShoppingBag },
+  { id: 'propriedades', label: 'Imóveis',    icon: Home },
+  { id: 'empresas',     label: 'Empresas',   icon: Trophy },
 ];
 
 const SECONDARY_TABS: TabDef[] = [
-  { id: 'contratos', label: 'Contratos', icon: ClipboardList },
-  { id: 'chat',      label: 'Chat',      icon: MessageSquare },
-  { id: 'settings',  label: 'Ajustes',   icon: SettingsIcon },
+  { id: 'chat',     label: 'Chat',   icon: MessageSquare },
+  { id: 'settings', label: 'Ajustes', icon: SettingsIcon },
 ];
 
 /* ---------------------------------------------------------------- */

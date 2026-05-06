@@ -7,7 +7,6 @@ import { PropriedadesScreen } from '@/components/screens/PropriedadesScreen';
 import { LicitacoesScreen } from '@/components/screens/LicitacoesScreen';
 import { EmpresasScreen } from '@/components/screens/EmpresasScreen';
 import { ChatScreen } from '@/components/screens/ChatScreen';
-import { CityScreen } from '@/components/screens/CityScreen';
 import { SettingsScreen } from '@/components/screens/SettingsScreen';
 import { useConstrutora } from '@/hooks/useConstrutora';
 import { usePropriedades } from '@/hooks/usePropriedades';
@@ -195,18 +194,6 @@ const Index = () => {
           <EmpresasScreen
             gameState={gameState}
             gameLoaded={gameLoaded}
-          />
-        );
-
-      case 'cidade':
-        return (
-          <CityScreen
-            currentMoney={gameState.money}
-            onMoneyChange={(newMoney) => {
-              const delta = newMoney - gameState.money;
-              if (delta > 0) addMoney(delta);
-              else if (delta < 0) spendMoney(-delta);
-            }}
           />
         );
 
