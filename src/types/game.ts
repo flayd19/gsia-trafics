@@ -239,8 +239,75 @@ export interface GameState {
     lastUpdate: number;
   };
 
+  // Imóveis
+  properties: Property[];
+
   // Idempotência de pagamentos via chat
   _processedChatMoneyIds?: Record<string, true>;
+}
+
+// ── Imóveis ───────────────────────────────────────────────────────────
+
+export type PropertyType = 'casa' | 'sobrado' | 'apartamento' | 'comercial' | 'galpao';
+export type PropertyStatus = 'construindo' | 'pronto' | 'alugado' | 'a_venda' | 'vendido';
+
+export interface BuildOption {
+  typeId: PropertyType;
+  name: string;
+  icon: string;
+  areaM2: number;
+  buildCost: number;
+  buildDays: number; // game days to build
+  marketValue: number;
+  rentMonthly: number; // per game month (30 game days)
+  maintenancePerDay: number;
+  description: string;
+}
+
+export interface AvailableLot {
+  id: string;
+  name: string;
+  neighborhood: string;
+  areaM2: number;
+  price: number;
+  buildOptions: PropertyType[];
+}
+
+export interface Property {
+  instanceId: string;
+  lotId: string;
+  name: string;
+  type: PropertyType;
+  icon: string;
+  areaM2: number;
+  neighborhood: string;
+
+  // Investimento
+  lotCost: number;
+  buildCost: number;
+  marketValue: number;
+  rentMonthly: number;
+  maintenancePerDay: number;
+
+  status: PropertyStatus;
+
+  // Construção (game days)
+  buildStartDay: number;
+  buildEndDay: number;
+
+  // Aluguel
+  tenantName?: string;
+  tenantSince?: number;       // game day
+  lastRentDay?: number;       // último game day que aluguel foi coletado
+  rentCollected: number;      // total acumulado
+
+  // Venda
+  salePrice?: number;
+  listedForSaleDay?: number;  // game day em que foi listado
+  pendingBuyerName?: string;  // comprador NPC esperando aprovação
+  pendingBuyerDay?: number;
+
+  purchasedAt: number;        // timestamp real
 }
 
 // ── Helper: garante compatibilidade com saves antigos ─────────────────
@@ -261,6 +328,7 @@ export function ensureGameState(raw: Partial<GameState>): GameState {
     completedContracts:  raw.completedContracts  ?? 0,
     failedContracts:     raw.failedContracts      ?? 0,
     gameTime: raw.gameTime ?? { day: 1, hour: 8, minute: 0, lastUpdate: Date.now() },
+    properties: raw.properties ?? [],
     _processedChatMoneyIds: raw._processedChatMoneyIds ?? {},
   };
 }
