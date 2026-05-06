@@ -248,43 +248,54 @@ export interface GameState {
 
 // ── Imóveis ───────────────────────────────────────────────────────────
 
-export type PropertyType = 'casa' | 'sobrado' | 'apartamento' | 'comercial' | 'galpao';
+export type PropertyType =
+  | 'casa_popular'
+  | 'casa_media'
+  | 'casa_alto_padrao'
+  | 'casa_luxo'
+  | 'comercial_pequeno'
+  | 'comercial_medio'
+  | 'comercial_grande'
+  | 'galpao_pequeno'
+  | 'galpao_medio'
+  | 'galpao_grande';
+
+export type PropertyCategory = 'residencial' | 'comercial' | 'industrial';
 export type PropertyStatus = 'construindo' | 'pronto' | 'alugado' | 'a_venda' | 'vendido';
+
+export interface PropertyEmployeeReq {
+  minTotal: number;          // mínimo de funcionários ativos na empresa
+  minSkilled: number;        // mínimo de pedreiros/mestres/engenheiros
+  engineerBonus: boolean;    // engenheiro reduz tempo de construção
+}
 
 export interface BuildOption {
   typeId: PropertyType;
+  category: PropertyCategory;
   name: string;
   icon: string;
   areaM2: number;
-  buildCost: number;
-  buildDays: number; // game days to build
+  lotCostBase: number;       // custo do terreno incluso
+  buildCost: number;         // custo de materiais + obra
+  buildDaysBase: number;     // dias de jogo sem bônus de equipe
   marketValue: number;
-  rentMonthly: number; // per game month (30 game days)
+  rentMonthly: number;
   maintenancePerDay: number;
+  employeeReq: PropertyEmployeeReq;
   description: string;
-}
-
-export interface AvailableLot {
-  id: string;
-  name: string;
-  neighborhood: string;
-  areaM2: number;
-  price: number;
-  buildOptions: PropertyType[];
 }
 
 export interface Property {
   instanceId: string;
-  lotId: string;
   name: string;
   type: PropertyType;
+  category: PropertyCategory;
   icon: string;
   areaM2: number;
   neighborhood: string;
 
   // Investimento
-  lotCost: number;
-  buildCost: number;
+  totalInvested: number;
   marketValue: number;
   rentMonthly: number;
   maintenancePerDay: number;
@@ -297,17 +308,18 @@ export interface Property {
 
   // Aluguel
   tenantName?: string;
-  tenantSince?: number;       // game day
-  lastRentDay?: number;       // último game day que aluguel foi coletado
-  rentCollected: number;      // total acumulado
+  tenantSince?: number;
+  lastRentDay?: number;
+  rentCollected: number;
 
   // Venda
   salePrice?: number;
-  listedForSaleDay?: number;  // game day em que foi listado
-  pendingBuyerName?: string;  // comprador NPC esperando aprovação
+  listedForSaleDay?: number;
+  pendingBuyerName?: string;
+  pendingBuyerOffer?: number;
   pendingBuyerDay?: number;
 
-  purchasedAt: number;        // timestamp real
+  purchasedAt: number;
 }
 
 // ── Helper: garante compatibilidade com saves antigos ─────────────────

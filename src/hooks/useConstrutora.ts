@@ -37,9 +37,12 @@ import { ensureReputation, addXp, XP_REWARDS } from '@/lib/reputation';
 import { supabase } from '@/integrations/supabase/client';
 
 // ── Config ────────────────────────────────────────────────────────────
-const LOCAL_SAVE_KEY    = 'gsia_construtora_v1';
-const AUTO_SAVE_MS      = 30_000;
-const TICK_MS           = 1_000;
+const LOCAL_SAVE_KEY      = 'gsia_construtora_v1';
+const PROPERTIES_SAVE_KEY = 'gsia_properties_v2';
+const AUTO_SAVE_MS        = 30_000;
+const TICK_MS             = 1_000;
+/** 1 tick real (10s) = 1 minuto de jogo. 1 dia de jogo = ~4 minutos reais. */
+const GAME_CLOCK_TICK_MS  = 10_000;
 const XP_PER_CONTRACT: Record<WorkType, number> = {
   pequena: 15,
   media:   40,
@@ -53,10 +56,11 @@ function genId() {
 
 // ── Hook ──────────────────────────────────────────────────────────────
 export function useConstrutora() {
-  const [gameState,   setGameState]   = useState<GameState>(() => ensureGameState({}));
-  const [gameLoaded,  setGameLoaded]  = useState(false);
-  const [isSyncing,   setIsSyncing]   = useState(false);
-  const [playerName,  setPlayerName]  = useState('Jogador');
+  const [gameState,  setGameState]  = useState<GameState>(() => ensureGameState({}));
+  const [gameLoaded, setGameLoaded] = useState(false);
+  const [playerName, setPlayerName] = useState('Jogador');
+  // localStorage é síncrono; sem sync remoto neste build → sempre false
+  const isSyncing = false;
 
   const stateRef    = useRef(gameState);
   const mountedRef  = useRef(true);
@@ -97,6 +101,25 @@ export function useConstrutora() {
 
   useEffect(() => {
     const t = setInterval(() => saveGame(), AUTO_SAVE_MS);
+    return () => clearInterval(t);
+  }, [saveGame]);
+
+  // ── Relógio do jogo (1 tick real = 1 minuto de jogo) ────────────
+  useEffect(() => {
+    const t = setInterval(() => {
+      if (!mountedRef.current) return;
+      setGameState(prev => {
+        const gt = prev.gameTime;
+        let minute = gt.minute + 1;
+        let hour   = gt.hour;
+        let day    = gt.day;
+        if (minute >= 60) { minute = 0; hour++; }
+        if (hour   >= 24) { hour   = 0; day++;  }
+        const next = { ...prev, gameTime: { day, hour, minute, lastUpdate: Date.now() } };
+        if (day !== gt.day) saveGame(next);
+        return next;
+      });
+    }, GAME_CLOCK_TICK_MS);
     return () => clearInterval(t);
   }, [saveGame]);
 
@@ -406,6 +429,12 @@ export function useConstrutora() {
   }, [saveGame]);
 
   const removeEmployeeFromWork = useCallback((workId: string, instanceId: string): { ok: boolean; message: string } => {
+    const state = stateRef.current;
+    const work = state.activeWorks.find(w => w.id === workId);
+    if (!work || work.status !== 'running') return { ok: false, message: 'Obra não encontrada.' };
+    const inWork = work.allocatedEmployees.some(e => e.instanceId === instanceId);
+    if (!inWork) return { ok: false, message: 'Funcionário não está alocado nesta obra.' };
+
     const now = Date.now();
     setGameState(prev => {
       const w = prev.activeWorks.find(w => w.id === workId);
@@ -457,6 +486,12 @@ export function useConstrutora() {
   }, [saveGame]);
 
   const removeMachineFromWork = useCallback((workId: string, instanceId: string): { ok: boolean; message: string } => {
+    const state = stateRef.current;
+    const work = state.activeWorks.find(w => w.id === workId);
+    if (!work || work.status !== 'running') return { ok: false, message: 'Obra não encontrada.' };
+    const inWork = work.allocatedMachines.some(m => m.instanceId === instanceId);
+    if (!inWork) return { ok: false, message: 'Máquina não está alocada nesta obra.' };
+
     setGameState(prev => {
       const w = prev.activeWorks.find(w => w.id === workId);
       if (!w || w.status !== 'running') return prev;
@@ -476,6 +511,8 @@ export function useConstrutora() {
 
   // ── Reset ────────────────────────────────────────────────────────
   const resetGame = useCallback(() => {
+    // Limpa também o save dos imóveis
+    try { localStorage.removeItem(PROPERTIES_SAVE_KEY); } catch { /* ignore */ }
     const fresh = ensureGameState({});
     setGameState(fresh);
     saveGame(fresh);

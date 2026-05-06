@@ -12,6 +12,7 @@ import {
   Trophy,
   MessageSquare,
   MapPin,
+  ClipboardList,
 } from 'lucide-react';
 import { supabase } from '@/integrations/supabase/client';
 import { useAudio } from '@/hooks/useAudio';
@@ -38,8 +39,9 @@ const PRIMARY_TABS: TabDef[] = [
 ];
 
 const SECONDARY_TABS: TabDef[] = [
-  { id: 'chat',     label: 'Chat',    icon: MessageSquare },
-  { id: 'settings', label: 'Ajustes', icon: SettingsIcon },
+  { id: 'contratos', label: 'Contratos', icon: ClipboardList },
+  { id: 'chat',      label: 'Chat',      icon: MessageSquare },
+  { id: 'settings',  label: 'Ajustes',   icon: SettingsIcon },
 ];
 
 /* ---------------------------------------------------------------- */

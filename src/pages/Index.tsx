@@ -1,15 +1,17 @@
-import { useState } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { useAuth } from '@/hooks/useAuth';
 import { GameLayout } from '@/components/GameLayout';
 import { EmpresaScreen } from '@/components/screens/EmpresaScreen';
 import { MercadoScreen } from '@/components/screens/MercadoScreen';
 import { PropriedadesScreen } from '@/components/screens/PropriedadesScreen';
+import { LicitacoesScreen } from '@/components/screens/LicitacoesScreen';
 import { EmpresasScreen } from '@/components/screens/EmpresasScreen';
 import { ChatScreen } from '@/components/screens/ChatScreen';
 import { CityScreen } from '@/components/screens/CityScreen';
 import { SettingsScreen } from '@/components/screens/SettingsScreen';
 import { useConstrutora } from '@/hooks/useConstrutora';
 import { usePropriedades } from '@/hooks/usePropriedades';
+import { useLicitacoes } from '@/hooks/useLicitacoes';
 import { useChatMoneySync } from '@/hooks/useChatMoneySync';
 import { supabase } from '@/integrations/supabase/client';
 import { toast } from 'sonner';
@@ -45,6 +47,34 @@ const Index = () => {
 
   // ── Imóveis ──────────────────────────────────────────────────────
   const proprApi = usePropriedades();
+
+  // ── Licitações / Contratos ────────────────────────────────────────
+  const {
+    licitacoes,
+    myWins,
+    myBids,
+    loading: licLoading,
+    successMsg: licSuccessMsg,
+    placeBid,
+    claimWin,
+    consumeWin,
+    isLeading,
+    myBidFor,
+    refreshPool,
+  } = useLicitacoes(playerName);
+
+  // ── tickDay: avança propriedades quando o dia muda ────────────────
+  const prevDayRef = useRef(gameState.gameTime.day);
+  useEffect(() => {
+    if (!gameLoaded) return;
+    const newDay = gameState.gameTime.day;
+    if (newDay > prevDayRef.current) {
+      const result = proprApi.tickDay(newDay);
+      result.constructionDone.forEach(msg => toast.success(msg));
+      result.newBuyers.forEach(msg => toast.info(`🏷️ ${msg}`));
+      prevDayRef.current = newDay;
+    }
+  }, [gameState.gameTime.day, gameLoaded]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // ── Chat money sync (background) ─────────────────────────────────
   useChatMoneySync({
@@ -93,8 +123,8 @@ const Index = () => {
   };
 
   const handleSaveGame = async () => {
-    const ok = await saveGame();
-    ok ? toast.success('Progresso salvo!') : toast.error('Erro ao salvar. Tente novamente.');
+    saveGame(); // retorna void — localStorage é síncrono, sempre funciona
+    toast.success('Progresso salvo!');
   };
 
   const handleResetGame = async () => {
@@ -128,9 +158,35 @@ const Index = () => {
         return (
           <PropriedadesScreen
             gameState={gameState}
-            proprApi={proprApi}
-            onSpend={spendMoney}
+            api={proprApi}
+            onSpend={(amount) => {
+              const ok = spendMoney(amount);
+              return { ok, message: ok ? '' : 'Saldo insuficiente.' };
+            }}
             onReceive={(amount) => addMoney(amount)}
+          />
+        );
+
+      case 'contratos':
+        return (
+          <LicitacoesScreen
+            gameState={gameState}
+            licitacoes={licitacoes}
+            myWins={myWins}
+            myBids={myBids}
+            loading={licLoading}
+            successMsg={licSuccessMsg}
+            onPlaceBid={placeBid}
+            onClaimWin={claimWin}
+            onConsumeWin={consumeWin}
+            onIsLeading={isLeading}
+            onMyBidFor={myBidFor}
+            onRefreshPool={refreshPool}
+            onStartWork={startWork}
+            onAddEmployeeToWork={addEmployeeToWork}
+            onRemoveEmployeeFromWork={removeEmployeeFromWork}
+            onAddMachineToWork={addMachineToWork}
+            onRemoveMachineFromWork={removeMachineFromWork}
           />
         );
 

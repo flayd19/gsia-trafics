@@ -142,6 +142,13 @@ export function LicitacoesScreen(props: LicitacoesScreenProps) {
     return () => clearInterval(t);
   }, []);
 
+  // Se a obra selecionada deixou de existir (completou/foi removida), limpa a seleção
+  useEffect(() => {
+    if (!selectedWorkId) return;
+    const still = gameState.activeWorks.some(w => w.id === selectedWorkId);
+    if (!still) setSelectedWorkId(null);
+  }, [selectedWorkId, gameState.activeWorks]);
+
   function flash(result: { ok: boolean; message: string }) {
     setMessage({ text: result.message, ok: result.ok });
     setTimeout(() => setMessage(null), 4_000);
@@ -218,10 +225,6 @@ export function LicitacoesScreen(props: LicitacoesScreenProps) {
       />
     );
   }
-  if (selectedWorkId && !selectedWork) {
-    setSelectedWorkId(null);
-  }
-
   const pendingWins = myWins.filter(w => w.prepDeadline > Date.now());
 
   return (
