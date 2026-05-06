@@ -163,6 +163,13 @@ const Index = () => {
               return { ok, message: ok ? '' : 'Saldo insuficiente.' };
             }}
             onReceive={(amount) => addMoney(amount)}
+            myWins={myWins}
+            onConsumeWin={consumeWin}
+            onStartWork={startWork}
+            onAddEmployeeToWork={addEmployeeToWork}
+            onRemoveEmployeeFromWork={removeEmployeeFromWork}
+            onAddMachineToWork={addMachineToWork}
+            onRemoveMachineFromWork={removeMachineFromWork}
           />
         );
 
@@ -182,10 +189,7 @@ const Index = () => {
             onMyBidFor={myBidFor}
             onRefreshPool={refreshPool}
             onStartWork={startWork}
-            onAddEmployeeToWork={addEmployeeToWork}
-            onRemoveEmployeeFromWork={removeEmployeeFromWork}
-            onAddMachineToWork={addMachineToWork}
-            onRemoveMachineFromWork={removeMachineFromWork}
+            onWorkStarted={() => setCurrentTab('propriedades')}
           />
         );
 

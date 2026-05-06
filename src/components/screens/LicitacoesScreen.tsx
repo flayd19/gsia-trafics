@@ -1,10 +1,10 @@
 // =====================================================================
-// LicitacoesScreen — Serviços Rápidos + Leilão de obras + obras em andamento
+// LicitacoesScreen — Serviços Rápidos + Leilão de obras
 // =====================================================================
-import { useState, useMemo, useEffect } from 'react';
+import { useState, useEffect } from 'react';
 import {
-  Gavel, HardHat, RefreshCw, Clock, ChevronRight, CheckCircle2,
-  Users, Truck, Package, ArrowLeft, AlertTriangle, Zap,
+  Gavel, RefreshCw, Clock, ChevronRight, CheckCircle2,
+  Users, Truck, Package, ArrowLeft, AlertTriangle, Zap, HardHat,
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import type {
@@ -13,24 +13,22 @@ import type {
   WorkType,
   AllocatedEmployee,
   AllocatedMachine,
-  WorkRequirements,
-  ActiveWork,
 } from '@/types/game';
 import type { MyWin } from '@/hooks/useLicitacoes';
 import {
   fmt,
   getWorkTypeDef,
   EMPLOYEE_TYPES,
-  MACHINE_CATALOG,
   generateServicosRapidos,
 } from '@/data/construction';
 import type { ServicoRapido } from '@/data/construction';
+import { checkRequirements } from '@/lib/obraEngine';
 import {
-  checkRequirements,
-  calcProducaoPerMin,
-  calcTempoEstimadoMin,
-  calcWorkCost,
-} from '@/lib/obraEngine';
+  fmtTimeLeft,
+  workTypeColor,
+  WorkPreparation,
+  type StartWorkParams,
+} from './ObrasViews';
 
 // ── Props ──────────────────────────────────────────────────────────
 interface LicitacoesScreenProps {
@@ -44,25 +42,13 @@ interface LicitacoesScreenProps {
   onMyBidFor:     (id: string) => number | null;
   onPlaceBid:     (id: string, valor: number) => Promise<{ ok: boolean; message: string }>;
   onClaimWin:     (id: string) => { ok: boolean; win?: MyWin };
-  onStartWork:    (params: {
-    licitacaoId:        string;
-    nome:               string;
-    tipo:               WorkType;
-    tamanhoM2:          number;
-    contractValue:      number;
-    allocatedEmployees: AllocatedEmployee[];
-    allocatedMachines:  AllocatedMachine[];
-    materialQtys:       { materialId: string; quantity: number }[];
-  }) => { ok: boolean; message: string };
-  onConsumeWin:             (id: string) => void;
-  onRefreshPool:            () => void;
-  onAddEmployeeToWork:      (workId: string, instanceId: string) => { ok: boolean; message: string };
-  onRemoveEmployeeFromWork: (workId: string, instanceId: string) => { ok: boolean; message: string };
-  onAddMachineToWork:       (workId: string, instanceId: string) => { ok: boolean; message: string };
-  onRemoveMachineFromWork:  (workId: string, instanceId: string) => { ok: boolean; message: string };
+  onStartWork:    (params: StartWorkParams) => { ok: boolean; message: string };
+  onConsumeWin:   (id: string) => void;
+  onRefreshPool:  () => void;
+  onWorkStarted:  () => void;   // navega para Imóveis/Obras após iniciar
 }
 
-type MainTab = 'rapidas' | 'licitacoes' | 'obras';
+type MainTab = 'rapidas' | 'licitacoes';
 
 function servicoToWin(s: ServicoRapido): MyWin {
   const fakeLic: Licitacao = {
@@ -94,25 +80,6 @@ function servicoToWin(s: ServicoRapido): MyWin {
   };
 }
 
-function fmtTimeLeft(expiresAt: number): string {
-  const ms = expiresAt - Date.now();
-  if (ms <= 0) return 'Encerrado';
-  const min = Math.floor(ms / 60_000);
-  const sec = Math.floor((ms % 60_000) / 1_000);
-  if (min > 60) return `${Math.floor(min / 60)}h ${min % 60}min`;
-  if (min > 0) return `${min}min ${sec}s`;
-  return `${sec}s`;
-}
-
-function workTypeColor(tipo: WorkType) {
-  switch (tipo) {
-    case 'pequena': return 'text-emerald-400 bg-emerald-500/10 border-emerald-500/25';
-    case 'media':   return 'text-amber-400 bg-amber-500/10 border-amber-500/25';
-    case 'grande':  return 'text-orange-400 bg-orange-500/10 border-orange-500/25';
-    case 'mega':    return 'text-red-400 bg-red-500/10 border-red-500/25';
-  }
-}
-
 // ══════════════════════════════════════════════════════════════════
 // Tela principal
 // ══════════════════════════════════════════════════════════════════
@@ -120,9 +87,7 @@ export function LicitacoesScreen(props: LicitacoesScreenProps) {
   const {
     gameState, licitacoes, myWins, loading, successMsg,
     onIsLeading, onMyBidFor, onPlaceBid, onClaimWin, onStartWork,
-    onConsumeWin, onRefreshPool,
-    onAddEmployeeToWork, onRemoveEmployeeFromWork,
-    onAddMachineToWork, onRemoveMachineFromWork,
+    onConsumeWin, onRefreshPool, onWorkStarted,
   } = props;
 
   const [mainTab,         setMainTab]         = useState<MainTab>('rapidas');
@@ -134,7 +99,6 @@ export function LicitacoesScreen(props: LicitacoesScreenProps) {
   const [servicosRapidos, setServicosRapidos] = useState<ServicoRapido[]>(() =>
     generateServicosRapidos(Date.now() % 10_000)
   );
-  const [selectedWorkId, setSelectedWorkId] = useState<string | null>(null);
 
   const [, setTick] = useState(0);
   useEffect(() => {
@@ -142,18 +106,12 @@ export function LicitacoesScreen(props: LicitacoesScreenProps) {
     return () => clearInterval(t);
   }, []);
 
-  // Se a obra selecionada deixou de existir (completou/foi removida), limpa a seleção
-  useEffect(() => {
-    if (!selectedWorkId) return;
-    const still = gameState.activeWorks.some(w => w.id === selectedWorkId);
-    if (!still) setSelectedWorkId(null);
-  }, [selectedWorkId, gameState.activeWorks]);
-
   function flash(result: { ok: boolean; message: string }) {
     setMessage({ text: result.message, ok: result.ok });
     setTimeout(() => setMessage(null), 4_000);
   }
 
+  // ── Full-screen: detalhe de licitação ──────────────────────────
   if (selectedLic) {
     return (
       <LicitacaoDetail
@@ -179,7 +137,6 @@ export function LicitacoesScreen(props: LicitacoesScreenProps) {
           if (r.ok && r.win) {
             setSelectedLic(null);
             setPreparingWin(r.win);
-            setMainTab('obras');
           } else {
             flash({ ok: false, message: 'Não é possível reivindicar esta vitória.' });
           }
@@ -188,6 +145,7 @@ export function LicitacoesScreen(props: LicitacoesScreenProps) {
     );
   }
 
+  // ── Full-screen: preparação de obra ───────────────────────────
   if (preparingWin) {
     return (
       <WorkPreparation
@@ -196,11 +154,12 @@ export function LicitacoesScreen(props: LicitacoesScreenProps) {
         onBack={() => setPreparingWin(null)}
         onStart={(params) => {
           const r = onStartWork(params);
-          flash(r);
           if (r.ok) {
             onConsumeWin(preparingWin.licitacaoId);
             setPreparingWin(null);
-            setMainTab('obras');
+            onWorkStarted();
+          } else {
+            flash(r);
           }
           return r;
         }}
@@ -208,27 +167,11 @@ export function LicitacoesScreen(props: LicitacoesScreenProps) {
     );
   }
 
-  const selectedWork = selectedWorkId
-    ? gameState.activeWorks.find(w => w.id === selectedWorkId) ?? null
-    : null;
-
-  if (selectedWorkId && selectedWork) {
-    return (
-      <WorkDetailView
-        work={selectedWork}
-        gameState={gameState}
-        onBack={() => setSelectedWorkId(null)}
-        onAddEmployee={(id)    => onAddEmployeeToWork(selectedWork.id, id)}
-        onRemoveEmployee={(id) => onRemoveEmployeeFromWork(selectedWork.id, id)}
-        onAddMachine={(id)     => onAddMachineToWork(selectedWork.id, id)}
-        onRemoveMachine={(id)  => onRemoveMachineFromWork(selectedWork.id, id)}
-      />
-    );
-  }
   const pendingWins = myWins.filter(w => w.prepDeadline > Date.now());
 
   return (
     <div className="space-y-4">
+      {/* Header */}
       <div className="flex items-start justify-between">
         <div>
           <h2 className="font-game-title text-xl font-bold text-foreground flex items-center gap-2">
@@ -244,12 +187,33 @@ export function LicitacoesScreen(props: LicitacoesScreenProps) {
         </Button>
       </div>
 
+      {/* Pending wins banner */}
+      {pendingWins.length > 0 && (
+        <div className="flex items-center gap-3 ios-surface rounded-[12px] px-3 py-2.5 border border-emerald-500/30 bg-emerald-500/5">
+          <span className="text-xl shrink-0">🏆</span>
+          <div className="flex-1 min-w-0">
+            <div className="text-[12px] font-bold text-emerald-400">
+              {pendingWins.length} vitória{pendingWins.length > 1 ? 's' : ''} aguardando início
+            </div>
+            <div className="text-[10px] text-muted-foreground">Acesse Imóveis → Obras para preparar</div>
+          </div>
+          <Button
+            size="sm"
+            className="shrink-0 bg-emerald-500 hover:bg-emerald-600 text-white gap-1 text-[11px] h-7 px-2.5"
+            onClick={onWorkStarted}
+          >
+            <HardHat size={12} />
+            Ver Obras
+          </Button>
+        </div>
+      )}
+
+      {/* Tab bar */}
       <div className="flex gap-1 p-1 ios-surface rounded-[14px]">
         {([
-          { id: 'rapidas',    label: 'Rápidas', badge: servicosRapidos.length },
-          { id: 'licitacoes', label: 'Leilões',  badge: licitacoes.length },
-          { id: 'obras',      label: 'Obras',    badge: gameState.activeWorks.length + pendingWins.length },
-        ] as { id: MainTab; label: string; badge: number }[]).map(({ id, label, badge }) => (
+          { id: 'rapidas' as MainTab,    label: 'Rápidas', badge: servicosRapidos.length },
+          { id: 'licitacoes' as MainTab, label: 'Leilões',  badge: licitacoes.length },
+        ]).map(({ id, label, badge }) => (
           <button
             key={id}
             onClick={() => setMainTab(id)}
@@ -271,6 +235,7 @@ export function LicitacoesScreen(props: LicitacoesScreenProps) {
         ))}
       </div>
 
+      {/* Flash message */}
       {(successMsg || message) && (
         <div className={`px-3 py-2 rounded-[10px] text-[12px] font-medium ${
           (message?.ok ?? true)
@@ -281,6 +246,7 @@ export function LicitacoesScreen(props: LicitacoesScreenProps) {
         </div>
       )}
 
+      {/* ── Serviços Rápidos ── */}
       {mainTab === 'rapidas' && (
         <div className="space-y-3">
           <div className="flex items-center justify-between">
@@ -341,7 +307,7 @@ export function LicitacoesScreen(props: LicitacoesScreenProps) {
                 {!check.ok && (
                   <div className="flex items-center gap-1.5 text-[11px] text-amber-400 bg-amber-500/10 rounded-[8px] px-2.5 py-1.5">
                     <AlertTriangle size={11} />
-                    <span>Recursos insuficientes para executar</span>
+                    <span>Recursos insuficientes — você poderá iniciar assim mesmo</span>
                   </div>
                 )}
                 <Button
@@ -349,7 +315,6 @@ export function LicitacoesScreen(props: LicitacoesScreenProps) {
                   onClick={() => {
                     setServicosRapidos(prev => prev.filter(r => r.id !== s.id));
                     setPreparingWin(servicoToWin(s));
-                    setMainTab('obras');
                   }}
                 >
                   <Zap size={14} />
@@ -361,6 +326,7 @@ export function LicitacoesScreen(props: LicitacoesScreenProps) {
         </div>
       )}
 
+      {/* ── Leilões ── */}
       {mainTab === 'licitacoes' && (
         <div className="space-y-2">
           {loading && <div className="text-center py-8 text-muted-foreground text-[13px]">Carregando licitações...</div>}
@@ -416,100 +382,6 @@ export function LicitacoesScreen(props: LicitacoesScreenProps) {
           })}
         </div>
       )}
-
-      {mainTab === 'obras' && (
-        <div className="space-y-3">
-          {pendingWins.map(win => (
-            <div key={win.licitacaoId} className="ios-surface rounded-[14px] p-3.5 border border-emerald-500/30 bg-emerald-500/5 space-y-2">
-              <div className="flex items-start gap-3">
-                <span className="text-3xl">🏆</span>
-                <div className="flex-1 min-w-0">
-                  <div className="text-[13px] font-bold text-emerald-400">Você venceu!</div>
-                  <div className="text-[12px] font-semibold text-foreground">{win.nome}</div>
-                  <div className="text-[10px] text-muted-foreground">Contrato: {fmt(win.contractValue)} · {win.tamanhoM2.toLocaleString('pt-BR')} m²</div>
-                  <div className="flex items-center gap-1 mt-0.5 text-[10px] text-amber-400">
-                    <Clock size={9} />
-                    <span>Inicie em: {fmtTimeLeft(win.prepDeadline)}</span>
-                  </div>
-                </div>
-              </div>
-              <Button className="w-full gap-1.5 bg-emerald-500 hover:bg-emerald-600 text-white" onClick={() => setPreparingWin(win)}>
-                <HardHat size={14} />
-                Preparar e Iniciar Obra
-              </Button>
-            </div>
-          ))}
-
-          {gameState.activeWorks.length > 0 && (
-            <div className="space-y-2">
-              <div className="text-[11px] uppercase tracking-wider text-muted-foreground font-semibold px-1">Em Andamento</div>
-              {gameState.activeWorks.map(work => (
-                <button
-                  key={work.id}
-                  onClick={() => { setSelectedWorkId(work.id); setMainTab('obras'); }}
-                  className="w-full ios-surface rounded-[14px] p-3.5 space-y-2 text-left hover:border-primary/30 transition-colors"
-                >
-                  <div className="flex items-center gap-2">
-                    <span className="text-xl">{getWorkTypeDef(work.tipo).icon}</span>
-                    <div className="flex-1 min-w-0">
-                      <div className="text-[13px] font-semibold text-foreground truncate">{work.nome}</div>
-                      <div className="text-[10px] text-muted-foreground">
-                        {work.currentM2Done.toFixed(0)} / {work.tamanhoM2.toLocaleString('pt-BR')} m²
-                        · {work.producaoPerMin.toFixed(1)} m²/min
-                        · {work.allocatedEmployees.length} func.
-                      </div>
-                    </div>
-                    <div className="text-right shrink-0">
-                      <div className="text-[14px] font-bold text-primary">{work.progressPct}%</div>
-                      <div className="text-[10px] text-muted-foreground">{fmtTimeLeft(work.estimatedCompletesAt)}</div>
-                    </div>
-                    <ChevronRight size={14} className="text-muted-foreground shrink-0" />
-                  </div>
-                  <div className="w-full h-2.5 bg-muted rounded-full overflow-hidden">
-                    <div
-                      className="h-full bg-primary rounded-full transition-[width] duration-1000 ease-linear"
-                      style={{ width: `${work.progressPct}%` }}
-                    />
-                  </div>
-                  <div className="flex items-center justify-between text-[10px]">
-                    <span className="text-muted-foreground">Contrato: {fmt(work.contractValue)}</span>
-                    <span className="text-[10px] text-primary/70 font-medium">Toque para gerenciar →</span>
-                  </div>
-                </button>
-              ))}
-            </div>
-          )}
-
-          {gameState.workHistory.length > 0 && (
-            <div className="space-y-1.5">
-              <div className="text-[11px] uppercase tracking-wider text-muted-foreground font-semibold px-1">Histórico ({gameState.workHistory.length})</div>
-              {gameState.workHistory.slice(0, 10).map(rec => (
-                <div key={rec.id} className={`ios-surface rounded-[12px] px-3 py-2.5 flex items-center gap-3 ${rec.succeeded ? '' : 'opacity-60'}`}>
-                  <span className="text-xl">{rec.succeeded ? '✅' : '❌'}</span>
-                  <div className="flex-1 min-w-0">
-                    <div className="text-[12px] font-semibold text-foreground truncate">{rec.nome}</div>
-                    <div className="text-[10px] text-muted-foreground">{rec.tamanhoM2.toLocaleString('pt-BR')} m² · {rec.timeTakenMin}min</div>
-                  </div>
-                  <div className="text-right">
-                    <div className={`text-[12px] font-bold ${rec.profit >= 0 ? 'text-emerald-400' : 'text-red-400'}`}>
-                      {rec.profit >= 0 ? '+' : ''}{fmt(rec.profit)}
-                    </div>
-                    <div className="text-[10px] text-muted-foreground">{rec.profitPct}%</div>
-                  </div>
-                </div>
-              ))}
-            </div>
-          )}
-
-          {pendingWins.length === 0 && gameState.activeWorks.length === 0 && gameState.workHistory.length === 0 && (
-            <div className="ios-surface rounded-[16px] p-8 text-center space-y-2">
-              <div className="text-4xl">👷</div>
-              <div className="text-[14px] font-semibold text-muted-foreground">Nenhuma obra</div>
-              <div className="text-[11px] text-muted-foreground">Participe de licitações para ganhar contratos!</div>
-            </div>
-          )}
-        </div>
-      )}
     </div>
   );
 }
@@ -559,10 +431,10 @@ function LicitacaoDetail({
 
       <div className="grid grid-cols-2 gap-2 text-[12px]">
         {[
-          { label: 'Área', value: `${lic.tamanhoM2.toLocaleString('pt-BR')} m²` },
-          { label: 'Tempo base', value: `${lic.tempoBaseMin} min` },
-          { label: 'Custo estimado', value: fmt(lic.custoEstimado) },
-          { label: 'Valor base', value: fmt(lic.valorBase) },
+          { label: 'Área',          value: `${lic.tamanhoM2.toLocaleString('pt-BR')} m²` },
+          { label: 'Tempo base',    value: `${lic.tempoBaseMin} min` },
+          { label: 'Custo estimado',value: fmt(lic.custoEstimado) },
+          { label: 'Valor base',    value: fmt(lic.valorBase) },
         ].map(({ label, value }) => (
           <div key={label} className="ios-surface rounded-[10px] p-2.5">
             <div className="text-[9px] uppercase text-muted-foreground">{label}</div>
@@ -623,7 +495,7 @@ function LicitacaoDetail({
                 <div key={mr.materialId} className={`text-[12px] flex items-center gap-2 ${miss ? 'text-red-400' : 'text-foreground'}`}>
                   <span>🧱</span>
                   <span>{mr.name}: {mr.quantity.toLocaleString('pt-BR')} {mr.unit}</span>
-                  {miss && <span className="text-red-400 text-[9px]">(faltam {(mr.quantity - (check.missingMaterials.find(m => m.materialId === mr.materialId)?.have ?? 0)).toLocaleString('pt-BR')})</span>}
+                  {miss && <span className="text-red-400 text-[9px]">(faltam {(mr.quantity - (miss.have ?? 0)).toLocaleString('pt-BR')})</span>}
                 </div>
               );
             })}
@@ -632,7 +504,7 @@ function LicitacaoDetail({
         {check.ok ? (
           <div className="text-[11px] text-emerald-400 flex items-center gap-1 mt-1"><CheckCircle2 size={11} /> Você tem todos os requisitos!</div>
         ) : (
-          <div className="text-[11px] text-amber-400 flex items-center gap-1 mt-1"><AlertTriangle size={11} /> Recursos insuficientes para executar</div>
+          <div className="text-[11px] text-amber-400 flex items-center gap-1 mt-1"><AlertTriangle size={11} /> Recursos insuficientes — poderá iniciar assim mesmo</div>
         )}
       </div>
 
@@ -673,392 +545,6 @@ function LicitacaoDetail({
       ) : (
         <div className="text-center text-[12px] text-muted-foreground py-3">
           Licitação encerrada.{' '}{isLeading ? 'Aguardando reivindicação.' : `Vencedor: ${lic.liderNome}`}
-        </div>
-      )}
-    </div>
-  );
-}
-
-// ══════════════════════════════════════════════════════════════════
-// Preparação da obra (alocar recursos)
-// ══════════════════════════════════════════════════════════════════
-function WorkPreparation({ win, gameState, onBack, onStart }: {
-  win:       MyWin;
-  gameState: GameState;
-  onBack:    () => void;
-  onStart:   (params: Parameters<LicitacoesScreenProps['onStartWork']>[0]) => { ok: boolean; message: string };
-}) {
-  const req           = win.licitacao.requisitos;
-  const idleEmployees = gameState.employees.filter(e => e.status === 'idle');
-  const idleMachines  = gameState.machines.filter(m => m.status === 'idle');
-
-  const [selEmployees, setSelEmployees] = useState<string[]>(() => {
-    const sel: string[] = [];
-    for (const er of req.employees) {
-      const available = idleEmployees.filter(e => e.type === er.type);
-      sel.push(...available.slice(0, er.quantity).map(e => e.instanceId));
-    }
-    return sel;
-  });
-
-  const [selMachines, setSelMachines] = useState<string[]>(() => {
-    const sel: string[] = [];
-    for (const mr of req.machines) {
-      const available = idleMachines.filter(m => m.typeId === mr.typeId);
-      sel.push(...available.slice(0, mr.quantity).map(m => m.instanceId));
-    }
-    return sel;
-  });
-
-  const [message, setMessage] = useState<{ text: string; ok: boolean } | null>(null);
-  function flash(result: { ok: boolean; message: string }) {
-    setMessage({ text: result.message, ok: result.ok });
-    setTimeout(() => setMessage(null), 4_000);
-  }
-
-  const allocatedEmployees: AllocatedEmployee[] = useMemo(() =>
-    selEmployees.map(id => {
-      const emp = gameState.employees.find(e => e.instanceId === id)!;
-      return { instanceId: id, type: emp.type, name: emp.name, skill: emp.skill };
-    }),
-    [selEmployees, gameState.employees],
-  );
-
-  const allocatedMachines: AllocatedMachine[] = useMemo(() =>
-    selMachines.map(id => {
-      const m = gameState.machines.find(m => m.instanceId === id)!;
-      return { instanceId: id, typeId: m.typeId, name: m.name, icon: m.icon, costPerMin: m.costPerMin };
-    }),
-    [selMachines, gameState.machines],
-  );
-
-  const producaoPerMin    = calcProducaoPerMin(allocatedEmployees);
-  const tempoEstMin       = calcTempoEstimadoMin(win.tamanhoM2, producaoPerMin);
-  const materialQtys      = req.materials.map(m => ({ materialId: m.materialId, quantity: m.quantity }));
-  const consumedMaterials = req.materials.map(mr => {
-    const wItem = gameState.warehouse.find(w => w.materialId === mr.materialId);
-    return { materialId: mr.materialId, name: mr.name, quantity: mr.quantity, unitPrice: wItem?.unitPrice ?? 0 };
-  });
-  const cost     = calcWorkCost(allocatedEmployees, allocatedMachines, consumedMaterials, tempoEstMin);
-  const profitEst = win.contractValue - cost.laborCost - cost.machineCost - cost.materialCost;
-  const check    = checkRequirements(req, gameState.employees, gameState.machines, gameState.warehouse);
-
-  function toggleEmployee(id: string) {
-    setSelEmployees(prev => prev.includes(id) ? prev.filter(i => i !== id) : [...prev, id]);
-  }
-  function toggleMachine(id: string) {
-    setSelMachines(prev => prev.includes(id) ? prev.filter(i => i !== id) : [...prev, id]);
-  }
-
-  function handleStart() {
-    if (producaoPerMin === 0) {
-      flash({ ok: false, message: 'Adicione pelo menos um ajudante ou pedreiro para produzir.' });
-      return;
-    }
-    if (!check.ok) {
-      flash({ ok: false, message: 'Requisitos mínimos não atendidos.' });
-      return;
-    }
-    const r = onStart({
-      licitacaoId:        win.licitacaoId,
-      nome:               win.nome,
-      tipo:               win.tipo,
-      tamanhoM2:          win.tamanhoM2,
-      contractValue:      win.contractValue,
-      allocatedEmployees,
-      allocatedMachines,
-      materialQtys,
-    });
-    flash(r);
-  }
-
-  return (
-    <div className="space-y-4">
-      <div className="flex items-center gap-2">
-        <button onClick={onBack} className="p-1.5 rounded-full hover:bg-muted/50">
-          <ArrowLeft size={18} className="text-muted-foreground" />
-        </button>
-        <div>
-          <h2 className="font-game-title text-[15px] font-bold">Preparar Obra</h2>
-          <div className="text-[11px] text-muted-foreground">{win.nome}</div>
-        </div>
-      </div>
-
-      {producaoPerMin === 0 && (
-        <div className="flex items-center gap-1.5 text-[11px] text-red-400 bg-red-500/10 rounded-[10px] px-3 py-2 border border-red-500/25">
-          <AlertTriangle size={12} />
-          Equipe sem produção! Adicione ajudantes ou pedreiros.
-        </div>
-      )}
-
-      <div className="ios-surface rounded-[14px] p-3 space-y-2 text-[12px]">
-        <div className="grid grid-cols-2 gap-2">
-          <div><div className="text-[9px] uppercase text-muted-foreground">Contrato</div><div className="font-bold text-foreground">{fmt(win.contractValue)}</div></div>
-          <div><div className="text-[9px] uppercase text-muted-foreground">Produção</div><div className={`font-bold ${producaoPerMin === 0 ? 'text-red-400' : 'text-foreground'}`}>{producaoPerMin.toFixed(1)} m²/min</div></div>
-          <div><div className="text-[9px] uppercase text-muted-foreground">Mão-de-obra est.</div><div className="font-bold text-foreground">{fmt(cost.laborCost)}</div></div>
-          <div><div className="text-[9px] uppercase text-muted-foreground">Máquinas est.</div><div className="font-bold text-foreground">{fmt(cost.machineCost)}</div></div>
-          <div>
-            <div className="text-[9px] uppercase text-muted-foreground">Tempo est.</div>
-            <div className={`font-bold ${producaoPerMin === 0 ? 'text-red-400' : 'text-foreground'}`}>
-              {producaoPerMin === 0 ? '∞' : tempoEstMin < 60 ? `${Math.round(tempoEstMin)}min` : `${(tempoEstMin / 60).toFixed(1)}h`}
-            </div>
-          </div>
-          <div><div className="text-[9px] uppercase text-muted-foreground">Materiais (já pagos)</div><div className="font-bold text-muted-foreground">{fmt(cost.materialCost)}</div></div>
-        </div>
-        <div className="pt-1.5 border-t border-border/30">
-          <div className="text-[9px] uppercase text-muted-foreground">Lucro estimado</div>
-          <div className={`font-bold text-[15px] ${profitEst >= 0 ? 'text-emerald-400' : 'text-red-400'}`}>
-            {profitEst >= 0 ? '+' : ''}{fmt(profitEst)}
-          </div>
-          <div className="text-[9px] text-muted-foreground mt-0.5">
-            Receberá: {fmt(Math.max(0, win.contractValue - cost.laborCost - cost.machineCost))} (após custos operacionais)
-          </div>
-        </div>
-      </div>
-
-      <div className="ios-surface rounded-[12px] p-3 space-y-1.5">
-        <div className="text-[11px] uppercase tracking-wider text-muted-foreground font-semibold">Materiais (consumo imediato)</div>
-        {req.materials.map(mr => {
-          const stock = gameState.warehouse.find(w => w.materialId === mr.materialId);
-          const ok    = (stock?.quantity ?? 0) >= mr.quantity;
-          return (
-            <div key={mr.materialId} className={`flex items-center justify-between text-[12px] ${ok ? '' : 'text-red-400'}`}>
-              <span>{mr.name}</span>
-              <span>{mr.quantity.toLocaleString('pt-BR')} {mr.unit}{!ok && ` (estoque: ${(stock?.quantity ?? 0).toLocaleString('pt-BR')})`}</span>
-            </div>
-          );
-        })}
-      </div>
-
-      <div className="space-y-1.5">
-        <div className="text-[11px] uppercase tracking-wider text-muted-foreground font-semibold px-1">Equipe ({selEmployees.length} selecionados)</div>
-        {idleEmployees.map(emp => {
-          const def     = EMPLOYEE_TYPES.find(d => d.type === emp.type)!;
-          const sel     = selEmployees.includes(emp.instanceId);
-          const minReq  = req.employees.find(e => e.type === emp.type);
-          const selOfType = selEmployees.filter(id => gameState.employees.find(e => e.instanceId === id)?.type === emp.type).length;
-          const isRequired = !!minReq && selOfType <= minReq.quantity;
-          return (
-            <button
-              key={emp.instanceId}
-              onClick={() => toggleEmployee(emp.instanceId)}
-              className={`w-full ios-surface rounded-[12px] p-2.5 flex items-center gap-2.5 text-left transition-colors ${sel ? 'border border-primary/40 bg-primary/5' : 'border border-transparent'}`}
-            >
-              <span className="text-xl">{def.icon}</span>
-              <div className="flex-1 min-w-0">
-                <div className="text-[12px] font-semibold text-foreground">{emp.name}</div>
-                <div className="text-[10px] text-muted-foreground">{def.label} · Skill {emp.skill}{isRequired && sel && <span className="ml-1 text-amber-400 font-bold">· Obrigatório</span>}</div>
-              </div>
-              <div className={`w-4 h-4 rounded border flex items-center justify-center ${sel ? 'bg-primary border-primary' : 'border-border'}`}>
-                {sel && <CheckCircle2 size={10} className="text-white" />}
-              </div>
-            </button>
-          );
-        })}
-      </div>
-
-      <div className="space-y-1.5">
-        <div className="text-[11px] uppercase tracking-wider text-muted-foreground font-semibold px-1">Máquinas ({selMachines.length} selecionadas)</div>
-        {idleMachines.map(mach => {
-          const sel = selMachines.includes(mach.instanceId);
-          return (
-            <button
-              key={mach.instanceId}
-              onClick={() => toggleMachine(mach.instanceId)}
-              className={`w-full ios-surface rounded-[12px] p-2.5 flex items-center gap-2.5 text-left transition-colors ${sel ? 'border border-primary/40 bg-primary/5' : 'border border-transparent'}`}
-            >
-              <span className="text-xl">{mach.icon}</span>
-              <div className="flex-1 min-w-0">
-                <div className="text-[12px] font-semibold text-foreground">{mach.name}</div>
-                <div className="text-[10px] text-muted-foreground">{mach.category} · {fmt(mach.costPerMin)}/min</div>
-              </div>
-              <div className={`w-4 h-4 rounded border flex items-center justify-center ${sel ? 'bg-primary border-primary' : 'border-border'}`}>
-                {sel && <CheckCircle2 size={10} className="text-white" />}
-              </div>
-            </button>
-          );
-        })}
-      </div>
-
-      {message && (
-        <div className={`px-3 py-2 rounded-[10px] text-[12px] font-medium ${message.ok ? 'bg-emerald-500/10 border border-emerald-500/25 text-emerald-400' : 'bg-red-500/10 border border-red-500/25 text-red-400'}`}>
-          {message.text}
-        </div>
-      )}
-
-      <Button className="w-full gap-1.5" disabled={!check.ok} onClick={handleStart}>
-        <HardHat size={14} />
-        Iniciar Obra · {fmt(win.contractValue)}
-      </Button>
-
-      {!check.ok && (
-        <div className="text-[10px] text-amber-400 text-center">Resolva os recursos em falta antes de iniciar</div>
-      )}
-    </div>
-  );
-}
-
-// ══════════════════════════════════════════════════════════════════
-// Detalhe e gestão de obra em andamento
-// ══════════════════════════════════════════════════════════════════
-function WorkDetailView({
-  work, gameState, onBack,
-  onAddEmployee, onRemoveEmployee, onAddMachine, onRemoveMachine,
-}: {
-  work:             ActiveWork;
-  gameState:        GameState;
-  onBack:           () => void;
-  onAddEmployee:    (instanceId: string) => { ok: boolean; message: string };
-  onRemoveEmployee: (instanceId: string) => { ok: boolean; message: string };
-  onAddMachine:     (instanceId: string) => { ok: boolean; message: string };
-  onRemoveMachine:  (instanceId: string) => { ok: boolean; message: string };
-}) {
-  const [msg, setMsg] = useState<{ text: string; ok: boolean } | null>(null);
-  function flash(r: { ok: boolean; message: string }) {
-    setMsg({ text: r.message, ok: r.ok });
-    setTimeout(() => setMsg(null), 3_000);
-  }
-
-  const def       = getWorkTypeDef(work.tipo);
-  const idleEmps  = gameState.employees.filter(e => e.status === 'idle');
-  const idleMachs = gameState.machines.filter(m => m.status === 'idle');
-
-  return (
-    <div className="space-y-4">
-      <div className="flex items-center gap-2">
-        <button onClick={onBack} className="p-1.5 rounded-full hover:bg-muted/50">
-          <ArrowLeft size={18} className="text-muted-foreground" />
-        </button>
-        <div>
-          <h2 className="font-game-title text-[15px] font-bold">{work.nome}</h2>
-          <div className="text-[11px] text-muted-foreground">{def.icon} {def.label}</div>
-        </div>
-      </div>
-
-      <div className="ios-surface rounded-[16px] p-4 space-y-3">
-        <div className="flex items-end justify-between">
-          <div>
-            <div className="text-[11px] text-muted-foreground uppercase tracking-wide">Progresso</div>
-            <div className="text-[28px] font-black text-primary leading-none">{work.progressPct}%</div>
-          </div>
-          <div className="text-right">
-            <div className="text-[10px] text-muted-foreground">Conclui em</div>
-            <div className="text-[15px] font-bold text-foreground">{fmtTimeLeft(work.estimatedCompletesAt)}</div>
-          </div>
-        </div>
-        <div className="w-full h-4 bg-muted rounded-full overflow-hidden">
-          <div
-            className="h-full bg-primary rounded-full transition-[width] duration-1000 ease-linear"
-            style={{ width: `${work.progressPct}%` }}
-          />
-        </div>
-        <div className="grid grid-cols-3 gap-2 text-[11px]">
-          <div>
-            <div className="text-[9px] uppercase text-muted-foreground">Produção</div>
-            <div className={`font-semibold ${work.producaoPerMin === 0 ? 'text-red-400' : 'text-foreground'}`}>{work.producaoPerMin.toFixed(1)} m²/min</div>
-          </div>
-          <div>
-            <div className="text-[9px] uppercase text-muted-foreground">Concluído</div>
-            <div className="font-semibold">{work.currentM2Done.toFixed(0)} / {work.tamanhoM2} m²</div>
-          </div>
-          <div>
-            <div className="text-[9px] uppercase text-muted-foreground">Contrato</div>
-            <div className="font-semibold">{fmt(work.contractValue)}</div>
-          </div>
-        </div>
-        {work.producaoPerMin === 0 && (
-          <div className="flex items-center gap-1.5 text-[11px] text-red-400 bg-red-500/10 rounded-[8px] px-2.5 py-1.5">
-            <AlertTriangle size={10} />
-            Sem produção! Adicione ajudantes ou pedreiros.
-          </div>
-        )}
-      </div>
-
-      {msg && (
-        <div className={`px-3 py-2 rounded-[10px] text-[12px] font-medium ${msg.ok ? 'bg-emerald-500/10 border border-emerald-500/25 text-emerald-400' : 'bg-red-500/10 border border-red-500/25 text-red-400'}`}>
-          {msg.text}
-        </div>
-      )}
-
-      <div className="space-y-1.5">
-        <div className="text-[11px] uppercase tracking-wider text-muted-foreground font-semibold px-1">Equipe na Obra ({work.allocatedEmployees.length})</div>
-        {work.allocatedEmployees.length === 0 && <div className="text-center text-[12px] text-muted-foreground py-3">Nenhum funcionário alocado</div>}
-        {work.allocatedEmployees.map(emp => {
-          const empDef = EMPLOYEE_TYPES.find(d => d.type === emp.type);
-          return (
-            <div key={emp.instanceId} className="ios-surface rounded-[12px] p-2.5 flex items-center gap-2.5">
-              <span className="text-xl">{empDef?.icon ?? '👷'}</span>
-              <div className="flex-1 min-w-0">
-                <div className="text-[12px] font-semibold text-foreground">{emp.name}</div>
-                <div className="text-[10px] text-muted-foreground">{empDef?.label} · Skill {emp.skill}</div>
-              </div>
-              <button onClick={() => flash(onRemoveEmployee(emp.instanceId))} className="text-[11px] text-red-400 border border-red-500/30 rounded-[8px] px-2.5 py-1 hover:bg-red-500/10 transition-colors shrink-0">
-                Remover
-              </button>
-            </div>
-          );
-        })}
-      </div>
-
-      {idleEmps.length > 0 && (
-        <div className="space-y-1.5">
-          <div className="text-[11px] uppercase tracking-wider text-muted-foreground font-semibold px-1">Disponíveis para Adicionar</div>
-          {idleEmps.map(emp => {
-            const empDef = EMPLOYEE_TYPES.find(d => d.type === emp.type);
-            return (
-              <div key={emp.instanceId} className="ios-surface rounded-[12px] p-2.5 flex items-center gap-2.5">
-                <span className="text-xl">{empDef?.icon ?? '👷'}</span>
-                <div className="flex-1 min-w-0">
-                  <div className="text-[12px] font-semibold text-foreground">{emp.name}</div>
-                  <div className="text-[10px] text-muted-foreground">{empDef?.label} · Skill {emp.skill}</div>
-                </div>
-                <button onClick={() => flash(onAddEmployee(emp.instanceId))} className="text-[11px] text-emerald-400 border border-emerald-500/30 rounded-[8px] px-2.5 py-1 hover:bg-emerald-500/10 transition-colors shrink-0">
-                  + Adicionar
-                </button>
-              </div>
-            );
-          })}
-        </div>
-      )}
-
-      <div className="space-y-1.5">
-        <div className="text-[11px] uppercase tracking-wider text-muted-foreground font-semibold px-1">Máquinas na Obra ({work.allocatedMachines.length})</div>
-        {work.allocatedMachines.length === 0 && <div className="text-center text-[12px] text-muted-foreground py-3">Nenhuma máquina alocada</div>}
-        {work.allocatedMachines.map(mach => (
-          <div key={mach.instanceId} className="ios-surface rounded-[12px] p-2.5 flex items-center gap-2.5">
-            <span className="text-xl">{mach.icon}</span>
-            <div className="flex-1 min-w-0">
-              <div className="text-[12px] font-semibold text-foreground">{mach.name}</div>
-              <div className="text-[10px] text-muted-foreground">{fmt(mach.costPerMin)}/min</div>
-            </div>
-            <button onClick={() => flash(onRemoveMachine(mach.instanceId))} className="text-[11px] text-red-400 border border-red-500/30 rounded-[8px] px-2.5 py-1 hover:bg-red-500/10 transition-colors shrink-0">
-              Remover
-            </button>
-          </div>
-        ))}
-      </div>
-
-      {idleMachs.length > 0 && (
-        <div className="space-y-1.5">
-          <div className="text-[11px] uppercase tracking-wider text-muted-foreground font-semibold px-1">Máquinas Disponíveis</div>
-          {idleMachs.map(mach => (
-            <div key={mach.instanceId} className="ios-surface rounded-[12px] p-2.5 flex items-center gap-2.5">
-              <span className="text-xl">{mach.icon}</span>
-              <div className="flex-1 min-w-0">
-                <div className="text-[12px] font-semibold text-foreground">{mach.name}</div>
-                <div className="text-[10px] text-muted-foreground">{fmt(mach.costPerMin)}/min</div>
-              </div>
-              <button onClick={() => flash(onAddMachine(mach.instanceId))} className="text-[11px] text-emerald-400 border border-emerald-500/30 rounded-[8px] px-2.5 py-1 hover:bg-emerald-500/10 transition-colors shrink-0">
-                + Adicionar
-              </button>
-            </div>
-          ))}
-        </div>
-      )}
-
-      {idleEmps.length === 0 && idleMachs.length === 0 && (
-        <div className="ios-surface rounded-[12px] p-4 text-center text-[12px] text-muted-foreground">
-          Todos os funcionários e máquinas já estão alocados
         </div>
       )}
     </div>
