@@ -37,9 +37,8 @@ import { ensureReputation, addXp, XP_REWARDS } from '@/lib/reputation';
 import { supabase } from '@/integrations/supabase/client';
 
 // ── Config ────────────────────────────────────────────────────────────
-const LOCAL_SAVE_KEY      = 'gsia_construtora_v1';
-const PROPERTIES_SAVE_KEY = 'gsia_properties_v2';
-const AUTO_SAVE_MS        = 30_000;
+const LOCAL_SAVE_KEY = 'gsia_construtora_v1';
+const AUTO_SAVE_MS   = 30_000;
 const TICK_MS             = 1_000;
 /** 1 tick real (10s) = 1 minuto de jogo. 1 dia de jogo = ~4 minutos reais. */
 const GAME_CLOCK_TICK_MS  = 10_000;
@@ -133,21 +132,27 @@ export function useConstrutora() {
         if (!hasRunning) return prev;
 
         const updatedWorks = prev.activeWorks.map(w => tickActiveWork(w, now));
+
         const justCompleted = updatedWorks.filter(
           (w, i) => w.status === 'completed' && prev.activeWorks[i]!.status === 'running',
         );
+        const justFailed = updatedWorks.filter(
+          (w, i) => w.status === 'failed' && prev.activeWorks[i]!.status === 'running',
+        );
 
-        if (justCompleted.length === 0) {
+        if (justCompleted.length === 0 && justFailed.length === 0) {
           return { ...prev, activeWorks: updatedWorks };
         }
 
-        let money = prev.money;
-        let totalRevenue = prev.totalRevenue;
-        let totalSpent   = prev.totalSpent;
+        let money            = prev.money;
+        let totalRevenue     = prev.totalRevenue;
+        let totalSpent       = prev.totalSpent;
         let completedContracts = prev.completedContracts;
-        let rep = ensureReputation(prev.reputation);
+        let failedContracts    = prev.failedContracts;
+        let rep              = ensureReputation(prev.reputation);
         const newHistory: WorkRecord[] = [...prev.workHistory];
 
+        // ── Obras concluídas ────────────────────────────────────
         for (const work of justCompleted) {
           const timeTakenMin = (now - work.startedAt) / 60_000;
           const cost = calcWorkCost(
@@ -167,7 +172,7 @@ export function useConstrutora() {
           completedContracts++;
 
           const xpGain = XP_PER_CONTRACT[work.tipo] ?? 15;
-          rep = addXp(rep, xpGain);
+          rep = addXp(rep, xpGain).reputation;
 
           newHistory.unshift({
             id:            genId(),
@@ -181,17 +186,72 @@ export function useConstrutora() {
             completedAt:   now,
             timeTakenMin:  Math.round(timeTakenMin),
             succeeded:     true,
+            xpDelta:       xpGain,
           });
         }
 
-        const completedIds = new Set(justCompleted.map(w => w.id));
-        const freeEmployees = prev.employees.map(e =>
-          e.assignedWorkId && completedIds.has(e.assignedWorkId)
-            ? { ...e, status: 'idle' as const, assignedWorkId: undefined }
-            : e
-        );
+        // ── Obras falhas (prazo estourado) ───────────────────────
+        for (const work of justFailed) {
+          const timeTakenMin = (now - work.startedAt) / 60_000;
+          const cost = calcWorkCost(
+            work.allocatedEmployees,
+            work.allocatedMachines,
+            work.consumedMaterials,
+            timeTakenMin,
+          );
+
+          // Penalidade: 25% do valor do contrato debitado do saldo
+          const penalty = Math.round(work.contractValue * 0.25);
+          money      -= penalty;
+          totalSpent += penalty + cost.laborCost + cost.machineCost;
+          failedContracts++;
+
+          // Perda de XP (sem level-down, só reduz o xp atual do nível)
+          const xpLoss = Math.floor((XP_PER_CONTRACT[work.tipo] ?? 15) * 0.5);
+          rep = ensureReputation({
+            ...rep,
+            xp: Math.max(0, rep.xp - xpLoss),
+            totalXp: Math.max(0, rep.totalXp - xpLoss),
+          });
+
+          newHistory.unshift({
+            id:            genId(),
+            nome:          work.nome,
+            tipo:          work.tipo,
+            contractValue: work.contractValue,
+            totalCost:     cost.total,
+            profit:        -penalty,
+            profitPct:     -25,
+            tamanhoM2:     work.tamanhoM2,
+            completedAt:   now,
+            timeTakenMin:  Math.round(timeTakenMin),
+            succeeded:     false,
+            xpDelta:       -xpLoss,
+          });
+        }
+
+        // ── Liberar funcionários e atualizar níveis ──────────────
+        const resolvedIds = new Set([
+          ...justCompleted.map(w => w.id),
+          ...justFailed.map(w => w.id),
+        ]);
+
+        // Ids das obras concluídas com sucesso (para level-up)
+        const completedSuccessIds = new Set(justCompleted.map(w => w.id));
+
+        const updatedEmployees = prev.employees.map(e => {
+          if (!e.assignedWorkId || !resolvedIds.has(e.assignedWorkId)) return e;
+          // Libera o funcionário
+          const freed = { ...e, status: 'idle' as const, assignedWorkId: undefined };
+          // Só evolui se a obra foi concluída com sucesso
+          if (!completedSuccessIds.has(e.assignedWorkId)) return freed;
+          const newWorksCompleted = (e.worksCompleted ?? 0) + 1;
+          const newLevel = Math.min(10, Math.floor(newWorksCompleted / 3) + 1);
+          return { ...freed, worksCompleted: newWorksCompleted, level: newLevel };
+        });
+
         const freeMachines = prev.machines.map(m =>
-          m.assignedWorkId && completedIds.has(m.assignedWorkId)
+          m.assignedWorkId && resolvedIds.has(m.assignedWorkId)
             ? { ...m, status: 'idle' as const, assignedWorkId: undefined }
             : m
         );
@@ -202,10 +262,13 @@ export function useConstrutora() {
           totalRevenue,
           totalSpent,
           completedContracts,
+          failedContracts,
           reputation: rep,
-          employees: freeEmployees,
-          machines:  freeMachines,
-          activeWorks: updatedWorks.filter(w => w.status !== 'completed'),
+          employees:  updatedEmployees,
+          machines:   freeMachines,
+          activeWorks: updatedWorks.filter(
+            w => w.status !== 'completed' && w.status !== 'failed',
+          ),
           workHistory: newHistory.slice(0, 50),
         };
         saveGame(next);
@@ -243,12 +306,14 @@ export function useConstrutora() {
     if (stateRef.current.money < def.hiringCost) return { ok: false, message: 'Saldo insuficiente.' };
 
     const employee: Employee = {
-      instanceId: genId(),
+      instanceId:     genId(),
       type,
-      name:       randomEmployeeName(),
-      skill:      Math.round(50 + Math.random() * 40),
-      status:     'idle',
-      hiredAt:    Date.now(),
+      name:           randomEmployeeName(),
+      skill:          Math.round(50 + Math.random() * 40),
+      level:          1,
+      worksCompleted: 0,
+      status:         'idle',
+      hiredAt:        Date.now(),
     };
 
     setGameState(prev => {
@@ -342,10 +407,12 @@ export function useConstrutora() {
     nome:               string;
     tipo:               WorkType;
     tamanhoM2:          number;
+    tempoBaseMin:       number;
     contractValue:      number;
     allocatedEmployees: AllocatedEmployee[];
     allocatedMachines:  AllocatedMachine[];
     materialQtys:       { materialId: string; quantity: number }[];
+    requisitos?:        import('@/types/game').WorkRequirements;
   }): { ok: boolean; message: string } => {
     const state = stateRef.current;
 
@@ -367,10 +434,12 @@ export function useConstrutora() {
       nome:               params.nome,
       tipo:               params.tipo,
       tamanhoM2:          params.tamanhoM2,
+      tempoBaseMin:       params.tempoBaseMin,
       contractValue:      params.contractValue,
       allocatedEmployees: params.allocatedEmployees,
       allocatedMachines:  params.allocatedMachines,
       consumedMaterials,
+      requisitos:         params.requisitos,
     });
 
     const workId  = work.id;
@@ -409,7 +478,7 @@ export function useConstrutora() {
 
       const newAllocated: AllocatedEmployee[] = [
         ...w.allocatedEmployees,
-        { instanceId: e.instanceId, type: e.type, name: e.name, skill: e.skill },
+        { instanceId: e.instanceId, type: e.type, name: e.name, skill: e.skill, level: e.level ?? 1 },
       ];
       const newProducao = calcProducaoPerMin(newAllocated);
       const remainingM2 = Math.max(0, w.tamanhoM2 - w.currentM2Done);
@@ -511,8 +580,6 @@ export function useConstrutora() {
 
   // ── Reset ────────────────────────────────────────────────────────
   const resetGame = useCallback(() => {
-    // Limpa também o save dos imóveis
-    try { localStorage.removeItem(PROPERTIES_SAVE_KEY); } catch { /* ignore */ }
     const fresh = ensureGameState({});
     setGameState(fresh);
     saveGame(fresh);

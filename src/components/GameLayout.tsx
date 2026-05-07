@@ -8,7 +8,7 @@ import {
   X,
   Building2,
   ShoppingBag,
-  Home,
+  HardHat,
   Trophy,
   MessageSquare,
   Gavel,
@@ -33,7 +33,7 @@ const PRIMARY_TABS: TabDef[] = [
   { id: 'empresa',      label: 'Empresa',    icon: Building2 },
   { id: 'contratos',    label: 'Licitações', icon: Gavel },
   { id: 'mercado',      label: 'Mercado',    icon: ShoppingBag },
-  { id: 'propriedades', label: 'Imóveis',    icon: Home },
+  { id: 'propriedades', label: 'Obras',       icon: HardHat },
   { id: 'empresas',     label: 'Empresas',   icon: Trophy },
 ];
 

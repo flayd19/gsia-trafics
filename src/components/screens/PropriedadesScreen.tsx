@@ -1,34 +1,35 @@
 // =====================================================================
-// PropriedadesScreen — Imóveis: Obras · Construir · Meus · Aluguéis
+// PropriedadesScreen — 🏗️ OBRAS  (hub principal)
+// Cards expandíveis com gestão inline + sistema de colaboração
 // =====================================================================
-import { useState, useMemo, useEffect } from 'react';
-import { Button } from '@/components/ui/button';
-import { toast } from 'sonner';
+import { useState, useCallback } from 'react';
 import {
-  Hammer, Key, DollarSign, Tag, Clock, CheckCircle2,
-  AlertCircle, ChevronDown, ChevronUp, Building2, Home, Factory,
-  HardHat, ChevronRight,
+  HardHat, Clock, CheckCircle2, XCircle, ChevronRight,
+  AlertTriangle, Zap, Trophy, Users, Plus, Minus,
+  ChevronDown, ChevronUp, X, DollarSign,
 } from 'lucide-react';
-import type { GameState, PropertyType, PropertyCategory } from '@/types/game';
-import type { PropriedadesAPI } from '@/hooks/usePropriedades';
-import { BUILD_CATALOG, fmtBRL } from '@/hooks/usePropriedades';
+import { Button } from '@/components/ui/button';
+import type { GameState, ActiveWork } from '@/types/game';
 import type { MyWin } from '@/hooks/useLicitacoes';
-import { fmt, getWorkTypeDef } from '@/data/construction';
+import {
+  useWorkInvites, detectMissingResources,
+  type NeededResources, type WorkInvite,
+} from '@/hooks/useWorkInvites';
+import { fmt, getWorkTypeDef, EMPLOYEE_TYPES, MACHINE_CATALOG } from '@/data/construction';
+import { calcProducaoPerMin, calcTempoEstimadoMin } from '@/lib/obraEngine';
 import {
   WorkPreparation,
   WorkDetailView,
   fmtTimeLeft,
+  workTypeColor,
   type StartWorkParams,
 } from './ObrasViews';
 
 // ── Props ─────────────────────────────────────────────────────────
 
 interface PropriedadesScreenProps {
-  gameState: GameState;
-  api:       PropriedadesAPI;
-  onSpend:   (amount: number) => { ok: boolean; message: string };
-  onReceive: (amount: number) => void;
-  // Obras props
+  gameState:                GameState;
+  playerName:               string;
   myWins:                   MyWin[];
   onConsumeWin:             (id: string) => void;
   onStartWork:              (params: StartWorkParams) => { ok: boolean; message: string };
@@ -36,759 +37,757 @@ interface PropriedadesScreenProps {
   onRemoveEmployeeFromWork: (workId: string, instanceId: string) => { ok: boolean; message: string };
   onAddMachineToWork:       (workId: string, instanceId: string) => { ok: boolean; message: string };
   onRemoveMachineFromWork:  (workId: string, instanceId: string) => { ok: boolean; message: string };
+  onPayCollaborator?:       (amount: number) => boolean;
 }
 
-type Tab = 'obras' | 'meus' | 'construir' | 'alugueis';
+// ── Helper: tempo estimado com equipe atual ────────────────────────
+function fmtEstimatedTime(work: ActiveWork): string {
+  if (work.producaoPerMin <= 0) return '∞';
+  const remaining = Math.max(0, work.tamanhoM2 - work.currentM2Done);
+  const min = remaining / work.producaoPerMin;
+  if (min > 60) return `${Math.floor(min / 60)}h ${Math.round(min % 60)}min`;
+  return `${Math.round(min)}min`;
+}
 
-// ── Status helpers ────────────────────────────────────────────────
+function effColor(pct: number) {
+  if (pct >= 100) return 'text-emerald-400';
+  if (pct >= 60)  return 'text-amber-400';
+  return 'text-red-400';
+}
 
-const STATUS_LABEL: Record<string, string> = {
-  construindo: 'Em Construção',
-  pronto:      'Disponível',
-  alugado:     'Alugado',
-  a_venda:     'À Venda',
-  vendido:     'Vendido',
-};
+// ── InviteSheet — bottom sheet para criar convite ─────────────────
+function InviteSheet({ work, playerName, onClose, onCreateInvite }: {
+  work:            ActiveWork;
+  playerName:      string;
+  onClose:         () => void;
+  onCreateInvite:  (needed: NeededResources, payment: number) => Promise<{ ok: boolean; message: string }>;
+}) {
+  const missing = detectMissingResources(work);
+  const [payment, setPayment]   = useState(Math.round(work.contractValue * 0.10));
+  const [result,  setResult]    = useState<string | null>(null);
+  const [loading, setLoading]   = useState(false);
 
-const STATUS_COLOR: Record<string, string> = {
-  construindo: 'text-amber-600  bg-amber-500/15  border-amber-400/40',
-  pronto:      'text-blue-600   bg-blue-500/15   border-blue-400/40',
-  alugado:     'text-green-600  bg-green-500/15  border-green-400/40',
-  a_venda:     'text-purple-600 bg-purple-500/15 border-purple-400/40',
-  vendido:     'text-muted-foreground bg-muted   border-border',
-};
+  const noMissing = missing.employees.length === 0 && missing.machines.length === 0;
 
-const CAT_LABEL: Record<PropertyCategory, string> = {
-  residencial: 'Residencial',
-  comercial:   'Comercial',
-  industrial:  'Industrial',
-};
-
-const CAT_ICON: Record<PropertyCategory, React.ElementType> = {
-  residencial: Home,
-  comercial:   Building2,
-  industrial:  Factory,
-};
-
-// ── Main Component ────────────────────────────────────────────────
-
-export function PropriedadesScreen({
-  gameState, api, onSpend, onReceive,
-  myWins, onConsumeWin, onStartWork,
-  onAddEmployeeToWork, onRemoveEmployeeFromWork,
-  onAddMachineToWork, onRemoveMachineFromWork,
-}: PropriedadesScreenProps) {
-  const [tab,         setTab]         = useState<Tab>('obras');
-  const [filterCat,   setFilterCat]   = useState<PropertyCategory | 'all'>('all');
-  const [expandedId,  setExpandedId]  = useState<string | null>(null);
-  const [saleInputs,  setSaleInputs]  = useState<Record<string, string>>({});
-  const [buildTypeId, setBuildTypeId] = useState<PropertyType | null>(null);
-
-  // Obras state
-  const [preparingWin,  setPreparingWin]  = useState<MyWin | null>(null);
-  const [selectedWorkId, setSelectedWorkId] = useState<string | null>(null);
-  const [, setTick] = useState(0);
-
-  useEffect(() => {
-    const t = setInterval(() => setTick(n => n + 1), 1_000);
-    return () => clearInterval(t);
-  }, []);
-
-  // Clear selection if work was completed/removed
-  useEffect(() => {
-    if (!selectedWorkId) return;
-    const still = gameState.activeWorks.some(w => w.id === selectedWorkId);
-    if (!still) setSelectedWorkId(null);
-  }, [selectedWorkId, gameState.activeWorks]);
-
-  const currentDay = gameState.gameTime.day;
-  const { properties, startBuild, listForRent, collectRent, evictTenant,
-          listForSale, cancelSale, acceptBuyer, rejectBuyer, getBuildInfo } = api;
-
-  const activeProps  = properties.filter(p => p.status !== 'vendido');
-  const rentedProps  = properties.filter(p => p.status === 'alugado');
-  const pendingAlert = properties.filter(p => p.status === 'a_venda' && p.pendingBuyerName);
-  const buildingNow  = properties.filter(p => p.status === 'construindo');
-
-  const totalInvested   = activeProps.reduce((s, p) => s + p.totalInvested, 0);
-  const totalRentMonth  = rentedProps.reduce((s, p) => s + p.rentMonthly, 0);
-  const totalRentEarned = properties.reduce((s, p) => s + p.rentCollected, 0);
-
-  const pendingWins = myWins.filter(w => w.prepDeadline > Date.now());
-
-  // ── Full-screen views override the whole screen ────────────────
-  const selectedWork = selectedWorkId
-    ? gameState.activeWorks.find(w => w.id === selectedWorkId) ?? null
-    : null;
-
-  if (preparingWin) {
-    return (
-      <WorkPreparation
-        win={preparingWin}
-        gameState={gameState}
-        onBack={() => setPreparingWin(null)}
-        onStart={(params) => {
-          const r = onStartWork(params);
-          if (r.ok) {
-            onConsumeWin(preparingWin.licitacaoId);
-            setPreparingWin(null);
-            setTab('obras');
-          }
-          return r;
-        }}
-      />
-    );
+  async function handleCreate() {
+    setLoading(true);
+    const r = await onCreateInvite(missing, payment);
+    setResult(r.message);
+    setLoading(false);
+    if (r.ok) setTimeout(onClose, 1500);
   }
-
-  if (selectedWorkId && selectedWork) {
-    return (
-      <WorkDetailView
-        work={selectedWork}
-        gameState={gameState}
-        onBack={() => setSelectedWorkId(null)}
-        onAddEmployee={(id)    => onAddEmployeeToWork(selectedWork.id, id)}
-        onRemoveEmployee={(id) => onRemoveEmployeeFromWork(selectedWork.id, id)}
-        onAddMachine={(id)     => onAddMachineToWork(selectedWork.id, id)}
-        onRemoveMachine={(id)  => onRemoveMachineFromWork(selectedWork.id, id)}
-      />
-    );
-  }
-
-  // ── Handlers ──────────────────────────────────────────────────
-  const handleBuild = () => {
-    if (!buildTypeId) { toast.error('Selecione um tipo de construção.'); return; }
-    const result = startBuild(buildTypeId, currentDay, gameState);
-    if (!result.ok) { toast.error(result.message); return; }
-    const spend = onSpend(result.cost!);
-    if (!spend.ok) { toast.error(spend.message); return; }
-    toast.success(result.message);
-    setBuildTypeId(null);
-    setTab('meus');
-  };
-
-  const handleRent = (id: string) => {
-    const r = listForRent(id, currentDay);
-    r.ok ? toast.success(r.message) : toast.error(r.message);
-  };
-
-  const handleEvict = (id: string) => {
-    const r = evictTenant(id);
-    r.ok ? toast.success(r.message) : toast.error(r.message);
-  };
-
-  const handleCollect = (id: string) => {
-    const r = collectRent(id, currentDay);
-    if (!r.ok) { toast.error(r.message); return; }
-    if (r.amount) onReceive(r.amount);
-    toast.success(r.message);
-  };
-
-  const handleListSale = (id: string) => {
-    const priceStr = saleInputs[id] ?? '';
-    const price    = parseInt(priceStr.replace(/\D/g, ''), 10);
-    if (!price || price < 1_000) { toast.error('Informe um preço válido (mín. R$ 1.000).'); return; }
-    const r = listForSale(id, price, currentDay);
-    r.ok ? toast.success(r.message) : toast.error(r.message);
-    setSaleInputs(p => ({ ...p, [id]: '' }));
-  };
-
-  const handleAccept = (id: string) => {
-    const r = acceptBuyer(id);
-    if (!r.ok) { toast.error(r.message); return; }
-    if (r.amount) onReceive(r.amount);
-    toast.success(r.message);
-  };
-
-  const handleReject = (id: string) => {
-    const r = rejectBuyer(id);
-    r.ok ? toast.info(r.message) : toast.error(r.message);
-  };
-
-  const buildInfo = useMemo(
-    () => buildTypeId ? getBuildInfo(buildTypeId, gameState) : null,
-    [buildTypeId, gameState, getBuildInfo]
-  );
-
-  const catalogFiltered = BUILD_CATALOG.filter(
-    b => filterCat === 'all' || b.category === filterCat
-  );
-
-  // ── Obras badge ───────────────────────────────────────────────
-  const obrasBadge = pendingWins.length + gameState.activeWorks.length;
-
-  // ── Tab bar ────────────────────────────────────────────────────
-  const TABS: { id: Tab; label: string; badge: number | null }[] = [
-    { id: 'obras',     label: 'Obras',        badge: obrasBadge > 0 ? obrasBadge : null },
-    { id: 'meus',      label: 'Meus Imóveis', badge: activeProps.length > 0 ? activeProps.length : null },
-    { id: 'construir', label: 'Construir',    badge: null },
-    { id: 'alugueis',  label: 'Aluguéis',     badge: rentedProps.length > 0 ? rentedProps.length : null },
-  ];
 
   return (
-    <div className="space-y-4">
-
-      {/* KPI header */}
-      <div className="ios-surface p-3 space-y-2">
-        <div className="text-[11px] uppercase tracking-wider text-muted-foreground font-semibold">
-          🏠 Portfólio Imobiliário
-        </div>
-        <div className="grid grid-cols-3 gap-2">
-          <KpiBox icon="🏗️" label="Imóveis"   value={String(activeProps.length)} />
-          <KpiBox icon="💰" label="Investido"  value={fmtBRL(totalInvested)} />
-          <KpiBox icon="📈" label="Renda/mês"  value={fmtBRL(totalRentMonth)} />
-        </div>
-        {pendingAlert.length > 0 && (
-          <div className="flex items-center gap-2 bg-purple-500/10 border border-purple-500/30 rounded-xl px-3 py-2">
-            <AlertCircle size={13} className="text-purple-600 shrink-0" />
-            <span className="text-[12px] text-purple-700 font-semibold">
-              {pendingAlert.length} proposta{pendingAlert.length > 1 ? 's' : ''} de compra aguardando!
-            </span>
+    <div className="fixed inset-0 z-50 flex items-end" onClick={e => e.target === e.currentTarget && onClose()}>
+      <div className="w-full bg-background border-t border-border rounded-t-[20px] p-4 space-y-4 max-h-[80vh] overflow-y-auto">
+        <div className="flex items-center justify-between">
+          <div>
+            <h3 className="font-game-title text-[15px] font-bold">Buscar Colaborador</h3>
+            <div className="text-[11px] text-muted-foreground">{work.nome}</div>
           </div>
-        )}
-        {buildingNow.length > 0 && (
-          <div className="flex items-center gap-2 bg-amber-500/10 border border-amber-400/30 rounded-xl px-3 py-2">
-            <Hammer size={13} className="text-amber-600 shrink-0" />
-            <span className="text-[12px] text-amber-700 font-semibold">
-              {buildingNow.length} construção{buildingNow.length > 1 ? 'ões' : ''} em andamento
-            </span>
-          </div>
-        )}
-      </div>
-
-      {/* Tab bar */}
-      <div className="flex gap-1 bg-muted/40 p-1 rounded-2xl">
-        {TABS.map(t => {
-          const active = tab === t.id;
-          return (
-            <button key={t.id} onClick={() => setTab(t.id)}
-              className={`flex-1 flex items-center justify-center gap-1.5 py-2 rounded-xl text-[11px] font-semibold transition-all ${
-                active ? 'bg-background shadow text-primary' : 'text-muted-foreground'
-              }`}
-            >
-              {t.label}
-              {t.badge !== null && (
-                <span className={`text-[10px] px-1.5 py-0.5 rounded-full font-bold ${active ? 'bg-primary/15 text-primary' : 'bg-muted text-muted-foreground'}`}>
-                  {t.badge}
-                </span>
-              )}
-            </button>
-          );
-        })}
-      </div>
-
-      {/* ═══════════════════ OBRAS ══════════════════════════════ */}
-      {tab === 'obras' && (
-        <div className="space-y-3">
-
-          {/* Pending wins */}
-          {pendingWins.map(win => (
-            <div key={win.licitacaoId} className="ios-surface rounded-[14px] p-3.5 border border-emerald-500/30 bg-emerald-500/5 space-y-2">
-              <div className="flex items-start gap-3">
-                <span className="text-3xl">🏆</span>
-                <div className="flex-1 min-w-0">
-                  <div className="text-[13px] font-bold text-emerald-400">Você venceu!</div>
-                  <div className="text-[12px] font-semibold text-foreground">{win.nome}</div>
-                  <div className="text-[10px] text-muted-foreground">
-                    Contrato: {fmt(win.contractValue)} · {win.tamanhoM2.toLocaleString('pt-BR')} m²
-                  </div>
-                  <div className="flex items-center gap-1 mt-0.5 text-[10px] text-amber-400">
-                    <Clock size={9} />
-                    <span>Inicie em: {fmtTimeLeft(win.prepDeadline)}</span>
-                  </div>
-                </div>
-              </div>
-              <Button
-                className="w-full gap-1.5 bg-emerald-500 hover:bg-emerald-600 text-white"
-                onClick={() => setPreparingWin(win)}
-              >
-                <HardHat size={14} />
-                Preparar e Iniciar Obra
-              </Button>
-            </div>
-          ))}
-
-          {/* Active works */}
-          {gameState.activeWorks.length > 0 && (
-            <div className="space-y-2">
-              <div className="text-[11px] uppercase tracking-wider text-muted-foreground font-semibold px-1">Em Andamento</div>
-              {gameState.activeWorks.map(work => (
-                <button
-                  key={work.id}
-                  onClick={() => setSelectedWorkId(work.id)}
-                  className="w-full ios-surface rounded-[14px] p-3.5 space-y-2 text-left hover:border-primary/30 transition-colors"
-                >
-                  <div className="flex items-center gap-2">
-                    <span className="text-xl">{getWorkTypeDef(work.tipo).icon}</span>
-                    <div className="flex-1 min-w-0">
-                      <div className="text-[13px] font-semibold text-foreground truncate">{work.nome}</div>
-                      <div className="text-[10px] text-muted-foreground">
-                        {work.currentM2Done.toFixed(0)} / {work.tamanhoM2.toLocaleString('pt-BR')} m²
-                        · {work.producaoPerMin.toFixed(1)} m²/min
-                        · {work.allocatedEmployees.length} func.
-                      </div>
-                    </div>
-                    <div className="text-right shrink-0">
-                      <div className="text-[14px] font-bold text-primary">{work.progressPct}%</div>
-                      <div className="text-[10px] text-muted-foreground">{fmtTimeLeft(work.estimatedCompletesAt)}</div>
-                    </div>
-                    <ChevronRight size={14} className="text-muted-foreground shrink-0" />
-                  </div>
-                  <div className="w-full h-2.5 bg-muted rounded-full overflow-hidden">
-                    <div
-                      className="h-full bg-primary rounded-full transition-[width] duration-1000 ease-linear"
-                      style={{ width: `${work.progressPct}%` }}
-                    />
-                  </div>
-                  <div className="flex items-center justify-between text-[10px]">
-                    <span className="text-muted-foreground">Contrato: {fmt(work.contractValue)}</span>
-                    <span className="text-[10px] text-primary/70 font-medium">Toque para gerenciar →</span>
-                  </div>
-                </button>
-              ))}
-            </div>
-          )}
-
-          {/* Work history */}
-          {gameState.workHistory.length > 0 && (
-            <div className="space-y-1.5">
-              <div className="text-[11px] uppercase tracking-wider text-muted-foreground font-semibold px-1">
-                Histórico ({gameState.workHistory.length})
-              </div>
-              {gameState.workHistory.slice(0, 10).map(rec => (
-                <div key={rec.id} className={`ios-surface rounded-[12px] px-3 py-2.5 flex items-center gap-3 ${rec.succeeded ? '' : 'opacity-60'}`}>
-                  <span className="text-xl">{rec.succeeded ? '✅' : '❌'}</span>
-                  <div className="flex-1 min-w-0">
-                    <div className="text-[12px] font-semibold text-foreground truncate">{rec.nome}</div>
-                    <div className="text-[10px] text-muted-foreground">{rec.tamanhoM2.toLocaleString('pt-BR')} m² · {rec.timeTakenMin}min</div>
-                  </div>
-                  <div className="text-right">
-                    <div className={`text-[12px] font-bold ${rec.profit >= 0 ? 'text-emerald-400' : 'text-red-400'}`}>
-                      {rec.profit >= 0 ? '+' : ''}{fmt(rec.profit)}
-                    </div>
-                    <div className="text-[10px] text-muted-foreground">{rec.profitPct}%</div>
-                  </div>
-                </div>
-              ))}
-            </div>
-          )}
-
-          {pendingWins.length === 0 && gameState.activeWorks.length === 0 && gameState.workHistory.length === 0 && (
-            <EmptyState
-              icon="👷"
-              title="Nenhuma obra"
-              subtitle="Aceite serviços rápidos ou ganhe licitações para iniciar obras."
-              action="Ir para Licitações"
-              onAction={() => { /* handled by parent tab */ }}
-            />
-          )}
+          <button onClick={onClose} className="p-1.5 rounded-full hover:bg-muted/50">
+            <X size={16} className="text-muted-foreground" />
+          </button>
         </div>
-      )}
 
-      {/* ═══════════════════ MEUS IMÓVEIS ══════════════════════ */}
-      {tab === 'meus' && (
-        <div className="space-y-3">
-          {activeProps.length === 0 ? (
-            <EmptyState
-              icon="🏗️"
-              title="Nenhum imóvel ainda"
-              subtitle="Compre um terreno e inicie uma obra para começar seu portfólio."
-              action="Ir para Construir"
-              onAction={() => setTab('construir')}
-            />
+        {/* O que falta */}
+        <div className="ios-surface rounded-[12px] p-3 space-y-2">
+          <div className="text-[11px] uppercase tracking-wider text-muted-foreground font-semibold">
+            Recursos faltando na obra
+          </div>
+          {noMissing ? (
+            <div className="text-[12px] text-emerald-400 flex items-center gap-1.5">
+              <CheckCircle2 size={12} />
+              Obra totalmente equipada! Mesmo assim, pode convidar alguém para acelerar.
+            </div>
           ) : (
-            activeProps.map(prop => {
-              const isExp = expandedId === prop.instanceId;
-              const buildPct = prop.status === 'construindo'
-                ? Math.min(100, Math.round(
-                    ((currentDay - prop.buildStartDay) / Math.max(1, prop.buildEndDay - prop.buildStartDay)) * 100
-                  ))
-                : 100;
-              const daysLeft = prop.status === 'construindo'
-                ? Math.max(0, prop.buildEndDay - currentDay)
-                : 0;
-              const lastDay     = prop.lastRentDay ?? prop.tenantSince ?? currentDay;
-              const pendingRent = prop.status === 'alugado'
-                ? Math.floor((prop.rentMonthly / 30) * (currentDay - lastDay))
-                : 0;
-
-              return (
-                <div key={prop.instanceId} className="ios-surface overflow-hidden">
-                  <button
-                    className="w-full flex items-center gap-3 p-3 text-left active:bg-muted/30 transition"
-                    onClick={() => setExpandedId(isExp ? null : prop.instanceId)}
-                  >
-                    <div className="w-11 h-11 rounded-[12px] bg-primary/10 flex items-center justify-center text-2xl shrink-0">
-                      {prop.icon}
-                    </div>
-                    <div className="flex-1 min-w-0">
-                      <div className="font-semibold text-[13px] text-foreground truncate">{prop.name}</div>
-                      <div className="text-[11px] text-muted-foreground">{prop.areaM2}m² · {prop.neighborhood}</div>
-                      {prop.status === 'construindo' && (
-                        <div className="flex items-center gap-2 mt-1">
-                          <div className="flex-1 h-1.5 bg-muted rounded-full overflow-hidden">
-                            <div className="h-full bg-amber-500 rounded-full transition-all" style={{ width: `${buildPct}%` }} />
-                          </div>
-                          <span className="text-[10px] text-amber-600 font-bold">{daysLeft}d</span>
-                        </div>
-                      )}
-                      {prop.status === 'alugado' && pendingRent > 0 && (
-                        <div className="text-[11px] text-green-600 font-semibold mt-0.5">
-                          💰 {fmtBRL(pendingRent)} para cobrar
-                        </div>
-                      )}
-                      {prop.status === 'a_venda' && prop.pendingBuyerName && (
-                        <div className="text-[11px] text-purple-600 font-semibold mt-0.5 flex items-center gap-1">
-                          <AlertCircle size={10} />
-                          {prop.pendingBuyerName} ofereceu {fmtBRL(prop.pendingBuyerOffer!)}
-                        </div>
-                      )}
-                    </div>
-                    <div className="flex flex-col items-end gap-1 shrink-0">
-                      <span className={`text-[10px] font-semibold border px-2 py-0.5 rounded-full ${STATUS_COLOR[prop.status]}`}>
-                        {STATUS_LABEL[prop.status]}
-                      </span>
-                      {isExp ? <ChevronUp size={14} className="text-muted-foreground" /> : <ChevronDown size={14} className="text-muted-foreground" />}
-                    </div>
-                  </button>
-
-                  {isExp && (
-                    <div className="border-t border-border px-3 pb-4 pt-3 space-y-3">
-                      <div className="grid grid-cols-3 gap-2">
-                        <MiniStat label="Valor mercado"  value={fmtBRL(prop.marketValue)} />
-                        <MiniStat label="Investido"      value={fmtBRL(prop.totalInvested)} />
-                        <MiniStat label="Aluguel/mês"    value={fmtBRL(prop.rentMonthly)} />
-                      </div>
-
-                      {prop.status === 'pronto' && (
-                        <div className="space-y-2">
-                          <Button size="sm" className="w-full" onClick={() => handleRent(prop.instanceId)}>
-                            <Key size={13} className="mr-1.5" /> Alugar para Inquilino
-                          </Button>
-                          <div className="flex gap-2 items-center">
-                            <input
-                              type="number"
-                              placeholder={`Preço (sugerido ${fmtBRL(prop.marketValue)})`}
-                              className="flex-1 h-9 rounded-xl border border-border bg-muted/50 px-3 text-[13px]"
-                              value={saleInputs[prop.instanceId] ?? ''}
-                              onChange={e => setSaleInputs(p => ({ ...p, [prop.instanceId]: e.target.value }))}
-                            />
-                            <Button size="sm" variant="outline" onClick={() => handleListSale(prop.instanceId)}>
-                              <Tag size={13} /> Vender
-                            </Button>
-                          </div>
-                        </div>
-                      )}
-
-                      {prop.status === 'alugado' && (
-                        <div className="space-y-2">
-                          <div className="bg-green-500/8 border border-green-400/30 rounded-xl px-3 py-2 space-y-0.5">
-                            <div className="text-[12px]">Inquilino: <strong>{prop.tenantName}</strong> · desde o Dia {prop.tenantSince}</div>
-                            <div className="text-[12px]">Total recebido: <span className="text-green-600 font-bold">{fmtBRL(prop.rentCollected)}</span></div>
-                          </div>
-                          <div className="flex gap-2">
-                            <Button size="sm" className="flex-1" disabled={pendingRent <= 0} onClick={() => handleCollect(prop.instanceId)}>
-                              <DollarSign size={13} className="mr-1" />
-                              Cobrar {pendingRent > 0 ? fmtBRL(pendingRent) : 'Aluguel'}
-                            </Button>
-                            <Button size="sm" variant="outline" onClick={() => handleEvict(prop.instanceId)}>
-                              Despejar
-                            </Button>
-                          </div>
-                          <div className="flex gap-2 items-center pt-1 border-t border-border">
-                            <input
-                              type="number"
-                              placeholder={`Vender por (sugerido ${fmtBRL(prop.marketValue)})`}
-                              className="flex-1 h-9 rounded-xl border border-border bg-muted/50 px-3 text-[12px]"
-                              value={saleInputs[prop.instanceId] ?? ''}
-                              onChange={e => setSaleInputs(p => ({ ...p, [prop.instanceId]: e.target.value }))}
-                            />
-                            <Button size="sm" variant="outline" onClick={() => handleListSale(prop.instanceId)}>
-                              <Tag size={13} />
-                            </Button>
-                          </div>
-                        </div>
-                      )}
-
-                      {prop.status === 'a_venda' && (
-                        <div className="space-y-2">
-                          <div className="text-[12px] text-muted-foreground">
-                            Anunciado por <span className="font-semibold text-foreground">{fmtBRL(prop.salePrice!)}</span>
-                            {' '}· listado no Dia {prop.listedForSaleDay}
-                          </div>
-                          {prop.pendingBuyerName ? (
-                            <>
-                              <div className="bg-purple-500/10 border border-purple-400/30 rounded-xl px-3 py-2 space-y-0.5">
-                                <div className="text-[12px] font-semibold text-purple-700">🏷️ {prop.pendingBuyerName}</div>
-                                <div className="text-[13px] font-bold text-foreground">
-                                  Oferta: {fmtBRL(prop.pendingBuyerOffer!)}
-                                  {prop.pendingBuyerOffer! < prop.salePrice! && (
-                                    <span className="text-[11px] text-muted-foreground font-normal ml-1">
-                                      ({Math.round((prop.pendingBuyerOffer! / prop.salePrice!) * 100)}% do preço pedido)
-                                    </span>
-                                  )}
-                                </div>
-                              </div>
-                              <div className="flex gap-2">
-                                <Button size="sm" className="flex-1" onClick={() => handleAccept(prop.instanceId)}>
-                                  <CheckCircle2 size={13} className="mr-1" /> Aceitar Venda
-                                </Button>
-                                <Button size="sm" variant="outline" onClick={() => handleReject(prop.instanceId)}>Recusar</Button>
-                              </div>
-                            </>
-                          ) : (
-                            <div className="flex items-center justify-between">
-                              <div className="flex items-center gap-2 text-[12px] text-muted-foreground">
-                                <Clock size={12} /> Aguardando comprador...
-                              </div>
-                              <Button size="sm" variant="outline" onClick={() => cancelSale(prop.instanceId)}>Cancelar</Button>
-                            </div>
-                          )}
-                        </div>
-                      )}
-
-                      {prop.status === 'construindo' && (
-                        <div className="flex items-center gap-2 text-[12px] text-amber-700 bg-amber-500/8 border border-amber-400/30 rounded-xl px-3 py-2">
-                          <Hammer size={13} />
-                          Conclusão no Dia {prop.buildEndDay} · {daysLeft} dia{daysLeft !== 1 ? 's' : ''} restante{daysLeft !== 1 ? 's' : ''}
-                        </div>
-                      )}
-                    </div>
-                  )}
+            <>
+              {missing.employees.map(e => (
+                <div key={e.type} className="flex items-center gap-2 text-[12px]">
+                  <span>{e.icon}</span>
+                  <span className="text-foreground">{e.label}</span>
+                  <span className="ml-auto text-amber-400 font-bold">×{e.quantity} faltando</span>
                 </div>
-              );
-            })
+              ))}
+              {missing.machines.map(m => (
+                <div key={m.typeId} className="flex items-center gap-2 text-[12px]">
+                  <span>{m.icon}</span>
+                  <span className="text-foreground">{m.name}</span>
+                  <span className="ml-auto text-amber-400 font-bold">×{m.quantity} faltando</span>
+                </div>
+              ))}
+            </>
           )}
         </div>
-      )}
 
-      {/* ═══════════════════ CONSTRUIR ═════════════════════════ */}
-      {tab === 'construir' && (
-        <div className="space-y-4">
-          <div className="ios-surface p-3">
-            <div className="text-[11px] uppercase tracking-wider text-muted-foreground font-semibold mb-2">
-              👷 Equipe disponível
-            </div>
-            <div className="grid grid-cols-3 gap-2">
-              {(() => {
-                const idle    = gameState.employees.filter(e => e.status === 'idle');
-                const skilled = idle.filter(e => ['pedreiro','mestre','engenheiro'].includes(e.type));
-                const hasEng  = idle.some(e => e.type === 'engenheiro');
-                return (
-                  <>
-                    <KpiBox icon="👷" label="Disponíveis"  value={String(idle.length)} />
-                    <KpiBox icon="🪚" label="Qualificados" value={String(skilled.length)} />
-                    <KpiBox icon="📐" label="Engenheiro"   value={hasEng ? 'Sim ✓' : 'Não'} />
-                  </>
-                );
-              })()}
-            </div>
-            {gameState.employees.filter(e => e.status === 'idle').length === 0 && (
-              <div className="mt-2 flex items-center gap-2 bg-amber-500/10 border border-amber-400/30 rounded-xl px-3 py-2">
-                <AlertCircle size={13} className="text-amber-600" />
-                <span className="text-[12px] text-amber-700">Contrate funcionários na aba Empresa para construir!</span>
+        {/* Pagamento fixo */}
+        <div className="ios-surface rounded-[12px] p-3 space-y-2">
+          <div className="text-[11px] uppercase tracking-wider text-muted-foreground font-semibold">
+            Pagamento fixo ao colaborador
+          </div>
+          <div className="text-[10px] text-muted-foreground">
+            Valor que você pagará quando a obra for concluída. Contrato: {fmt(work.contractValue)}
+          </div>
+          <div className="flex items-center gap-2">
+            <button
+              onClick={() => setPayment(p => Math.max(1_000, p - 5_000))}
+              className="w-9 h-9 rounded-full bg-muted flex items-center justify-center"
+            >
+              <Minus size={14} />
+            </button>
+            <div className="flex-1 text-center">
+              <div className="text-[20px] font-black text-primary">{fmt(payment)}</div>
+              <div className="text-[9px] text-muted-foreground">
+                {Math.round((payment / work.contractValue) * 100)}% do contrato
               </div>
+            </div>
+            <button
+              onClick={() => setPayment(p => Math.min(work.contractValue * 0.5, p + 5_000))}
+              className="w-9 h-9 rounded-full bg-muted flex items-center justify-center"
+            >
+              <Plus size={14} />
+            </button>
+          </div>
+        </div>
+
+        {result && (
+          <div className="px-3 py-2 rounded-[10px] text-[12px] bg-emerald-500/10 border border-emerald-500/25 text-emerald-400">
+            {result}
+          </div>
+        )}
+
+        <Button className="w-full gap-1.5" onClick={handleCreate} disabled={loading}>
+          <Users size={14} />
+          {loading ? 'Publicando...' : 'Publicar Convite'}
+        </Button>
+      </div>
+    </div>
+  );
+}
+
+// ── OpenInviteCard — convite de outro jogador ─────────────────────
+function OpenInviteCard({ invite, idleEmployees, idleMachines, onAccept }: {
+  invite:         WorkInvite;
+  idleEmployees:  GameState['employees'];
+  idleMachines:   GameState['machines'];
+  onAccept:       (id: string, contributed: NeededResources) => Promise<void>;
+}) {
+  const [expanded, setExpanded] = useState(false);
+  const [loading,  setLoading]  = useState(false);
+  const snap = invite.work_snapshot;
+  const needed = invite.needed_resources;
+
+  // Verificar se o jogador tem o que é necessário
+  const canContribute =
+    needed.employees.every(ne =>
+      idleEmployees.filter(e => e.type === ne.type).length >= ne.quantity
+    ) &&
+    needed.machines.every(nm =>
+      idleMachines.filter(m => m.typeId === nm.typeId).length >= nm.quantity
+    );
+
+  async function handleAccept() {
+    setLoading(true);
+    // Contribute what's needed from idle pool
+    const contributed: NeededResources = { employees: needed.employees, machines: needed.machines };
+    await onAccept(invite.id, contributed);
+    setLoading(false);
+  }
+
+  return (
+    <div className="ios-surface rounded-[14px] border border-primary/20 overflow-hidden">
+      <button
+        className="w-full p-3 text-left flex items-center gap-2.5"
+        onClick={() => setExpanded(v => !v)}
+      >
+        <span className="text-xl">🤝</span>
+        <div className="flex-1 min-w-0">
+          <div className="text-[12px] font-bold text-foreground truncate">{snap.nome}</div>
+          <div className="text-[10px] text-muted-foreground">
+            {invite.owner_name} · {fmt(snap.contractValue)}
+          </div>
+        </div>
+        <div className="text-right shrink-0">
+          <div className="text-[13px] font-black text-emerald-400">{fmt(invite.payment_amount)}</div>
+          <div className="text-[9px] text-muted-foreground">pagamento</div>
+        </div>
+        {expanded ? <ChevronUp size={14} className="text-muted-foreground shrink-0" /> : <ChevronRight size={14} className="text-muted-foreground shrink-0" />}
+      </button>
+
+      {expanded && (
+        <div className="px-3 pb-3 space-y-2 border-t border-border/30 pt-2.5">
+          <div className="text-[10px] text-muted-foreground">Recursos solicitados:</div>
+          {needed.employees.map(ne => {
+            const have = idleEmployees.filter(e => e.type === ne.type).length;
+            return (
+              <div key={ne.type} className={`flex items-center gap-2 text-[11px] ${have >= ne.quantity ? 'text-foreground' : 'text-red-400'}`}>
+                <span>{ne.icon}</span>
+                <span>{ne.label} ×{ne.quantity}</span>
+                <span className="ml-auto text-muted-foreground">tenho: {have}</span>
+              </div>
+            );
+          })}
+          {needed.machines.map(nm => {
+            const have = idleMachines.filter(m => m.typeId === nm.typeId).length;
+            return (
+              <div key={nm.typeId} className={`flex items-center gap-2 text-[11px] ${have >= nm.quantity ? 'text-foreground' : 'text-red-400'}`}>
+                <span>{nm.icon}</span>
+                <span>{nm.name} ×{nm.quantity}</span>
+                <span className="ml-auto text-muted-foreground">tenho: {have}</span>
+              </div>
+            );
+          })}
+          <div className="pt-1">
+            {!canContribute && (
+              <div className="text-[10px] text-amber-400 mb-2">⚠️ Você não tem todos os recursos necessários disponíveis</div>
+            )}
+            <Button
+              size="sm"
+              className="w-full gap-1.5"
+              disabled={loading}
+              onClick={handleAccept}
+            >
+              <Users size={12} />
+              {loading ? 'Aceitando...' : `Colaborar · ${fmt(invite.payment_amount)}`}
+            </Button>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
+// ── ActiveWorkCard — card principal com inline quick actions ───────
+function ActiveWorkCard({
+  work, gameState,
+  onAddEmployee, onRemoveEmployee,
+  onAddMachine,  onRemoveMachine,
+  onInvite,
+  myInviteForWork,
+  onCancelInvite,
+}: {
+  work:              ActiveWork;
+  gameState:         GameState;
+  onAddEmployee:     (id: string) => { ok: boolean; message: string };
+  onRemoveEmployee:  (id: string) => { ok: boolean; message: string };
+  onAddMachine:      (id: string) => { ok: boolean; message: string };
+  onRemoveMachine:   (id: string) => { ok: boolean; message: string };
+  onInvite:          () => void;
+  myInviteForWork:   WorkInvite | undefined;
+  onCancelInvite:    () => void;
+}) {
+  const [expanded,  setExpanded]  = useState(false);
+  const [flashMsg,  setFlashMsg]  = useState<string | null>(null);
+
+  const def           = getWorkTypeDef(work.tipo);
+  const req           = work.requisitos;
+  const idleEmps      = gameState.employees.filter(e => e.status === 'idle');
+  const idleMachs     = gameState.machines.filter(m => m.status === 'idle');
+  const msToDeadline  = work.deadline - Date.now();
+  const deadlineUrgent = msToDeadline < 5 * 60_000 && msToDeadline > 0;
+
+  function flash(r: { ok: boolean; message: string }) {
+    setFlashMsg(r.message);
+    setTimeout(() => setFlashMsg(null), 2_500);
+  }
+
+  // Slots display: current vs recommended
+  const empTypes = req ? req.employees : [];
+  const machTypes = req ? req.machines : [];
+
+  return (
+    <div className={`ios-surface rounded-[16px] overflow-hidden border ${deadlineUrgent ? 'border-red-500/40' : 'border-border/40'}`}>
+
+      {/* ── Header ─────────────────────────────────────────────── */}
+      <div className="p-3 space-y-2.5">
+        <div className="flex items-start gap-2.5">
+          <span className="text-[22px] mt-0.5">{def.icon}</span>
+          <div className="flex-1 min-w-0">
+            <div className="flex items-center gap-1.5">
+              <div className="text-[13px] font-bold text-foreground truncate">{work.nome}</div>
+              <span className={`px-1.5 py-0.5 rounded border text-[9px] font-semibold ${workTypeColor(work.tipo)}`}>{def.label}</span>
+            </div>
+            <div className="text-[11px] text-emerald-400 font-bold mt-0.5">{fmt(work.contractValue)}</div>
+          </div>
+        </div>
+
+        {/* Progress */}
+        <div>
+          <div className="flex justify-between text-[10px] mb-1 text-muted-foreground">
+            <span>{work.progressPct}% · {work.currentM2Done.toFixed(0)}/{work.tamanhoM2} m²</span>
+            <span>{work.producaoPerMin.toFixed(1)} m²/min</span>
+          </div>
+          <div className="w-full h-2.5 bg-muted rounded-full overflow-hidden">
+            <div
+              className="h-full bg-primary rounded-full transition-[width] duration-1000 ease-linear"
+              style={{ width: `${work.progressPct}%` }}
+            />
+          </div>
+        </div>
+
+        {/* Time + Efficiency row */}
+        <div className="grid grid-cols-3 gap-1.5 text-[10px]">
+          <div className="ios-surface rounded-[8px] p-1.5 text-center">
+            <div className="text-[8px] uppercase text-muted-foreground">Conclui em</div>
+            <div className="font-bold text-foreground">{fmtEstimatedTime(work)}</div>
+          </div>
+          <div className={`ios-surface rounded-[8px] p-1.5 text-center ${deadlineUrgent ? 'bg-red-500/10 border border-red-500/30' : ''}`}>
+            <div className={`text-[8px] uppercase ${deadlineUrgent ? 'text-red-400' : 'text-muted-foreground'}`}>Prazo</div>
+            <div className={`font-bold ${deadlineUrgent ? 'text-red-400' : 'text-amber-400'}`}>{fmtTimeLeft(work.deadline)}</div>
+          </div>
+          <div className="ios-surface rounded-[8px] p-1.5 text-center">
+            <div className="text-[8px] uppercase text-muted-foreground"><Zap size={7} className="inline" /> Efic.</div>
+            <div className={`font-bold ${effColor(work.efficiencyPct)}`}>{work.efficiencyPct}%</div>
+          </div>
+        </div>
+
+        {/* Employee + Machine slots */}
+        <div className="flex gap-2">
+          {/* Employee slots */}
+          <div className="flex-1 ios-surface rounded-[10px] p-2">
+            <div className="text-[9px] uppercase text-muted-foreground mb-1.5">👷 Equipe</div>
+            {empTypes.length === 0 ? (
+              <div className="text-[11px] text-muted-foreground">{work.allocatedEmployees.length} alocados</div>
+            ) : (
+              empTypes.map(er => {
+                const have = work.allocatedEmployees.filter(e => e.type === er.type).length;
+                const ok   = have >= er.quantity;
+                const def  = EMPLOYEE_TYPES.find(d => d.type === er.type);
+                return (
+                  <div key={er.type} className="flex items-center gap-1 text-[11px]">
+                    <span className="text-base">{def?.icon ?? '👷'}</span>
+                    <span className={ok ? 'text-foreground' : 'text-amber-400'}>
+                      {have}/{er.quantity}
+                    </span>
+                    <span className="text-[9px] text-muted-foreground truncate">{def?.label}</span>
+                    {!ok && <AlertTriangle size={9} className="text-amber-400 ml-auto shrink-0" />}
+                  </div>
+                );
+              })
             )}
           </div>
-
-          <div className="flex gap-1.5">
-            {(['all','residencial','comercial','industrial'] as const).map(cat => (
-              <button
-                key={cat}
-                onClick={() => setFilterCat(cat)}
-                className={`flex-1 py-1.5 rounded-xl text-[11px] font-semibold border transition-all ${
-                  filterCat === cat
-                    ? 'bg-primary text-primary-foreground border-primary'
-                    : 'bg-muted/40 text-muted-foreground border-border'
-                }`}
-              >
-                {cat === 'all' ? 'Todos' : CAT_LABEL[cat]}
-              </button>
-            ))}
+          {/* Machine slots */}
+          <div className="flex-1 ios-surface rounded-[10px] p-2">
+            <div className="text-[9px] uppercase text-muted-foreground mb-1.5">🚜 Máquinas</div>
+            {machTypes.length === 0 ? (
+              <div className="text-[11px] text-muted-foreground">{work.allocatedMachines.length} alocadas</div>
+            ) : (
+              machTypes.map(mr => {
+                const have = work.allocatedMachines.filter(m => m.typeId === mr.typeId).length;
+                const ok   = have >= mr.quantity;
+                const def  = MACHINE_CATALOG.find(d => d.typeId === mr.typeId);
+                return (
+                  <div key={mr.typeId} className="flex items-center gap-1 text-[11px]">
+                    <span className="text-base">{def?.icon ?? '🚜'}</span>
+                    <span className={ok ? 'text-foreground' : 'text-amber-400'}>
+                      {have}/{mr.quantity}
+                    </span>
+                    <span className="text-[9px] text-muted-foreground truncate">{mr.name}</span>
+                    {!ok && <AlertTriangle size={9} className="text-amber-400 ml-auto shrink-0" />}
+                  </div>
+                );
+              })
+            )}
           </div>
+        </div>
 
+        {/* Materials summary */}
+        {work.consumedMaterials.length > 0 && (
+          <div className="ios-surface rounded-[10px] p-2">
+            <div className="text-[9px] uppercase text-muted-foreground mb-1">📦 Materiais consumidos</div>
+            <div className="flex flex-wrap gap-x-3 gap-y-0.5">
+              {work.consumedMaterials.map(m => (
+                <span key={m.materialId} className="text-[10px] text-muted-foreground">
+                  {m.name}: {m.quantity.toLocaleString('pt-BR')}
+                </span>
+              ))}
+            </div>
+          </div>
+        )}
+
+        {/* Flash message */}
+        {flashMsg && (
+          <div className="px-2.5 py-1.5 rounded-[8px] text-[11px] bg-primary/10 border border-primary/25 text-primary">
+            {flashMsg}
+          </div>
+        )}
+
+        {/* Action buttons */}
+        <div className="flex gap-2">
+          <button
+            onClick={() => setExpanded(v => !v)}
+            className="flex-1 flex items-center justify-center gap-1.5 py-2 rounded-[10px] bg-primary/10 border border-primary/25 text-[11px] font-semibold text-primary"
+          >
+            {expanded ? <ChevronUp size={12} /> : <Plus size={12} />}
+            {expanded ? 'Fechar' : 'Recursos'}
+          </button>
+
+          {myInviteForWork ? (
+            <button
+              onClick={onCancelInvite}
+              className="flex-1 flex items-center justify-center gap-1.5 py-2 rounded-[10px] bg-amber-500/10 border border-amber-500/25 text-[11px] font-semibold text-amber-400"
+            >
+              <Users size={12} />
+              Cancelar Convite
+            </button>
+          ) : (
+            <button
+              onClick={onInvite}
+              className="flex-1 flex items-center justify-center gap-1.5 py-2 rounded-[10px] bg-blue-500/10 border border-blue-500/25 text-[11px] font-semibold text-blue-400"
+            >
+              <Users size={12} />
+              Colaborador
+            </button>
+          )}
+        </div>
+      </div>
+
+      {/* ── Expanded: quick resource management ─────────────────── */}
+      {expanded && (
+        <div className="border-t border-border/30 p-3 space-y-3 bg-muted/10">
+
+          {/* Add employees */}
+          {idleEmps.length > 0 && (
+            <div className="space-y-1.5">
+              <div className="text-[10px] uppercase text-muted-foreground font-semibold">+ Adicionar Funcionários</div>
+              {idleEmps.map(emp => {
+                const empDef = EMPLOYEE_TYPES.find(d => d.type === emp.type);
+                return (
+                  <div key={emp.instanceId} className="flex items-center gap-2">
+                    <span className="text-base">{empDef?.icon ?? '👷'}</span>
+                    <div className="flex-1 min-w-0">
+                      <div className="text-[11px] font-semibold truncate">{emp.name}</div>
+                      <div className="text-[9px] text-muted-foreground">{empDef?.label} · Lv {emp.level ?? 1} · Skill {emp.skill}</div>
+                    </div>
+                    <button
+                      onClick={() => flash(onAddEmployee(emp.instanceId))}
+                      className="shrink-0 w-7 h-7 rounded-full bg-emerald-500/15 border border-emerald-500/30 flex items-center justify-center"
+                    >
+                      <Plus size={12} className="text-emerald-400" />
+                    </button>
+                  </div>
+                );
+              })}
+            </div>
+          )}
+
+          {/* Remove employees */}
+          {work.allocatedEmployees.length > 0 && (
+            <div className="space-y-1.5">
+              <div className="text-[10px] uppercase text-muted-foreground font-semibold">− Remover da Obra</div>
+              {work.allocatedEmployees.map(emp => {
+                const empDef = EMPLOYEE_TYPES.find(d => d.type === emp.type);
+                return (
+                  <div key={emp.instanceId} className="flex items-center gap-2">
+                    <span className="text-base">{empDef?.icon ?? '👷'}</span>
+                    <div className="flex-1 min-w-0">
+                      <div className="text-[11px] font-semibold truncate">{emp.name}</div>
+                      <div className="text-[9px] text-muted-foreground">{empDef?.label} · Lv {emp.level ?? 1}</div>
+                    </div>
+                    <button
+                      onClick={() => flash(onRemoveEmployee(emp.instanceId))}
+                      className="shrink-0 w-7 h-7 rounded-full bg-red-500/15 border border-red-500/30 flex items-center justify-center"
+                    >
+                      <Minus size={12} className="text-red-400" />
+                    </button>
+                  </div>
+                );
+              })}
+            </div>
+          )}
+
+          {/* Add machines */}
+          {idleMachs.length > 0 && (
+            <div className="space-y-1.5">
+              <div className="text-[10px] uppercase text-muted-foreground font-semibold">+ Adicionar Máquinas</div>
+              {idleMachs.map(mach => (
+                <div key={mach.instanceId} className="flex items-center gap-2">
+                  <span className="text-base">{mach.icon}</span>
+                  <div className="flex-1 min-w-0">
+                    <div className="text-[11px] font-semibold truncate">{mach.name}</div>
+                    <div className="text-[9px] text-muted-foreground">{fmt(mach.costPerMin)}/min</div>
+                  </div>
+                  <button
+                    onClick={() => flash(onAddMachine(mach.instanceId))}
+                    className="shrink-0 w-7 h-7 rounded-full bg-emerald-500/15 border border-emerald-500/30 flex items-center justify-center"
+                  >
+                    <Plus size={12} className="text-emerald-400" />
+                  </button>
+                </div>
+              ))}
+            </div>
+          )}
+
+          {/* Remove machines */}
+          {work.allocatedMachines.length > 0 && (
+            <div className="space-y-1.5">
+              <div className="text-[10px] uppercase text-muted-foreground font-semibold">− Máquinas na Obra</div>
+              {work.allocatedMachines.map(mach => (
+                <div key={mach.instanceId} className="flex items-center gap-2">
+                  <span className="text-base">{mach.icon}</span>
+                  <div className="flex-1 min-w-0">
+                    <div className="text-[11px] font-semibold truncate">{mach.name}</div>
+                    <div className="text-[9px] text-muted-foreground">{fmt(mach.costPerMin)}/min</div>
+                  </div>
+                  <button
+                    onClick={() => flash(onRemoveMachine(mach.instanceId))}
+                    className="shrink-0 w-7 h-7 rounded-full bg-red-500/15 border border-red-500/30 flex items-center justify-center"
+                  >
+                    <Minus size={12} className="text-red-400" />
+                  </button>
+                </div>
+              ))}
+            </div>
+          )}
+
+          {idleEmps.length === 0 && idleMachs.length === 0 && (
+            <div className="text-center text-[11px] text-muted-foreground py-2">
+              Todos os recursos já estão alocados
+            </div>
+          )}
+        </div>
+      )}
+
+      {/* Accepted collaborator badge */}
+      {myInviteForWork?.status === 'accepted' && (
+        <div className="px-3 pb-3">
+          <div className="flex items-center gap-1.5 text-[11px] text-emerald-400 bg-emerald-500/10 rounded-[8px] px-2.5 py-1.5">
+            <Users size={10} />
+            Colaborador: {myInviteForWork.collaborator_name} · Pagar {fmt(myInviteForWork.payment_amount)} na conclusão
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
+// ══════════════════════════════════════════════════════════════════
+// Main Screen
+// ══════════════════════════════════════════════════════════════════
+
+export function PropriedadesScreen({
+  gameState, playerName, myWins, onConsumeWin, onStartWork,
+  onAddEmployeeToWork, onRemoveEmployeeFromWork,
+  onAddMachineToWork, onRemoveMachineFromWork,
+  onPayCollaborator,
+}: PropriedadesScreenProps) {
+  const [preparingWin,  setPreparingWin]  = useState<MyWin | null>(null);
+  const [invitingWork,  setInvitingWork]  = useState<ActiveWork | null>(null);
+
+  const {
+    openInvites,
+    myInvites,
+    loading: invLoading,
+    createInvite,
+    acceptInvite,
+    cancelInvite,
+    completeInvite,
+  } = useWorkInvites(playerName);
+
+  const { activeWorks, workHistory } = gameState;
+
+  // ── WorkPreparation ────────────────────────────────────────────
+  if (preparingWin) {
+    return (
+      <div className="px-4 py-4">
+        <WorkPreparation
+          win={preparingWin}
+          gameState={gameState}
+          onBack={() => setPreparingWin(null)}
+          onStart={params => {
+            const result = onStartWork(params);
+            if (result.ok) {
+              onConsumeWin(preparingWin.licitacaoId);
+              setPreparingWin(null);
+            }
+            return result;
+          }}
+        />
+      </div>
+    );
+  }
+
+  // ── Main view ──────────────────────────────────────────────────
+  return (
+    <div className="px-3 py-4 space-y-5 pb-24">
+
+      {/* ── Contratos prontos para iniciar ─────────────────────── */}
+      {myWins.length > 0 && (
+        <section>
+          <div className="flex items-center gap-2 mb-2">
+            <HardHat size={13} className="text-amber-400" />
+            <h3 className="text-[11px] font-semibold uppercase tracking-wider text-amber-400">
+              Iniciar Obra ({myWins.length})
+            </h3>
+          </div>
           <div className="space-y-2">
-            {catalogFiltered.map(build => {
-              const info    = getBuildInfo(build.typeId, gameState);
-              const sel     = buildTypeId === build.typeId;
-              const CatIcon = CAT_ICON[build.category];
+            {myWins.map(win => {
+              const def = getWorkTypeDef(win.tipo);
               return (
                 <button
-                  key={build.typeId}
-                  onClick={() => setBuildTypeId(sel ? null : build.typeId)}
-                  className={`w-full ios-surface text-left flex items-start gap-3 p-3 transition-all ${sel ? 'ring-2 ring-primary' : ''} ${!info.canBuild ? 'opacity-60' : ''}`}
+                  key={win.licitacaoId}
+                  onClick={() => setPreparingWin(win)}
+                  className="w-full ios-surface rounded-[14px] p-3 text-left flex items-center gap-3 border border-amber-500/25 hover:border-amber-400/50 transition-colors"
                 >
-                  <div className="w-11 h-11 rounded-[12px] bg-primary/10 flex items-center justify-center text-2xl shrink-0 mt-0.5">
-                    {build.icon}
-                  </div>
+                  <span className="text-2xl">{def.icon}</span>
                   <div className="flex-1 min-w-0">
-                    <div className="flex items-center gap-2">
-                      <span className="font-bold text-[13px] text-foreground">{build.name}</span>
-                      <CatIcon size={11} className="text-muted-foreground" />
+                    <div className="text-[13px] font-bold text-foreground truncate">{win.nome}</div>
+                    <div className="flex items-center gap-2 mt-0.5 flex-wrap">
+                      <span className={`px-1.5 py-0.5 rounded border text-[9px] font-semibold ${workTypeColor(win.tipo)}`}>{def.label}</span>
+                      <span className="text-[10px] text-muted-foreground">{win.tamanhoM2.toLocaleString('pt-BR')} m²</span>
+                      <span className="text-[10px] text-emerald-400 font-bold">{fmt(win.contractValue)}</span>
                     </div>
-                    <div className="text-[11px] text-muted-foreground">{build.areaM2}m² · {info.days} dia{info.days !== 1 ? 's' : ''} de obra</div>
-                    <div className="text-[11px] text-muted-foreground mt-0.5">{build.description}</div>
-                    {!info.canBuild && (
-                      <div className="text-[11px] text-destructive mt-0.5 flex items-center gap-1">
-                        <AlertCircle size={10} /> {info.reason}
-                      </div>
-                    )}
+                    <div className="flex items-center gap-1 mt-1 text-[10px] text-amber-400">
+                      <Clock size={9} />
+                      Prazo para iniciar: {fmtTimeLeft(win.prepDeadline ?? Date.now() + 999_999_000)}
+                    </div>
                   </div>
-                  <div className="text-right shrink-0 space-y-0.5 min-w-[80px]">
-                    <div className="text-[13px] font-bold text-foreground">{fmtBRL(info.totalCost)}</div>
-                    <div className="text-[10px] text-green-600 font-semibold">{fmtBRL(build.rentMonthly)}/mês</div>
-                    <div className="text-[10px] text-blue-600">{fmtBRL(build.marketValue)}</div>
-                    {sel && <CheckCircle2 size={14} className="text-primary ml-auto mt-1" />}
-                  </div>
+                  <ChevronRight size={16} className="text-muted-foreground shrink-0" />
                 </button>
               );
             })}
           </div>
+        </section>
+      )}
 
-          {buildTypeId && buildInfo && (() => {
-            const build     = BUILD_CATALOG.find(b => b.typeId === buildTypeId)!;
-            const canAfford = gameState.money >= buildInfo.totalCost;
-            return (
-              <div className="ios-surface p-4 space-y-3">
-                <div className="text-[12px] font-bold text-foreground uppercase tracking-wider">📋 Resumo da Obra</div>
-                <div className="space-y-1.5 text-[13px]">
-                  <CostRow label="Terreno + infraestrutura" value={fmtBRL(build.lotCostBase)} />
-                  <CostRow label="Materiais e mão de obra"  value={fmtBRL(build.buildCost)} />
-                  <div className="border-t border-border pt-1.5 flex justify-between font-bold">
-                    <span>Total</span>
-                    <span className={canAfford ? 'text-foreground' : 'text-destructive'}>{fmtBRL(buildInfo.totalCost)}</span>
+      {/* ── Obras ativas ───────────────────────────────────────── */}
+      <section>
+        <div className="flex items-center gap-2 mb-2">
+          <Zap size={13} className="text-primary" />
+          <h3 className="text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">
+            Em Andamento ({activeWorks.filter(w => w.status === 'running').length})
+          </h3>
+        </div>
+        {activeWorks.filter(w => w.status === 'running').length === 0 ? (
+          <div className="ios-surface rounded-[14px] p-6 text-center">
+            <HardHat size={28} className="mx-auto mb-2 text-muted-foreground/30" />
+            <div className="text-[12px] text-muted-foreground">Nenhuma obra em andamento</div>
+          </div>
+        ) : (
+          <div className="space-y-3">
+            {activeWorks.filter(w => w.status === 'running').map(work => {
+              const myInvite = myInvites.find(i =>
+                (i.work_snapshot as { workId?: string }).workId === work.id && i.status !== 'cancelled',
+              );
+              return (
+                <ActiveWorkCard
+                  key={work.id}
+                  work={work}
+                  gameState={gameState}
+                  onAddEmployee={id => onAddEmployeeToWork(work.id, id)}
+                  onRemoveEmployee={id => onRemoveEmployeeFromWork(work.id, id)}
+                  onAddMachine={id => onAddMachineToWork(work.id, id)}
+                  onRemoveMachine={id => onRemoveMachineFromWork(work.id, id)}
+                  onInvite={() => setInvitingWork(work)}
+                  myInviteForWork={myInvite}
+                  onCancelInvite={() => myInvite && cancelInvite(myInvite.id)}
+                />
+              );
+            })}
+          </div>
+        )}
+      </section>
+
+      {/* ── Convites de outros jogadores ───────────────────────── */}
+      {openInvites.length > 0 && (
+        <section>
+          <div className="flex items-center gap-2 mb-2">
+            <Users size={13} className="text-blue-400" />
+            <h3 className="text-[11px] font-semibold uppercase tracking-wider text-blue-400">
+              Oportunidades de Colaborar ({openInvites.length})
+            </h3>
+          </div>
+          <div className="space-y-2">
+            {openInvites.map(invite => (
+              <OpenInviteCard
+                key={invite.id}
+                invite={invite}
+                idleEmployees={gameState.employees.filter(e => e.status === 'idle')}
+                idleMachines={gameState.machines.filter(m => m.status === 'idle')}
+                onAccept={async (id, contributed) => {
+                  await acceptInvite(id, contributed);
+                }}
+              />
+            ))}
+          </div>
+        </section>
+      )}
+
+      {/* ── Colaborações aceitas (como colaborador) ─────────────── */}
+
+      {/* ── Histórico ──────────────────────────────────────────── */}
+      {workHistory.length > 0 && (
+        <section>
+          <div className="flex items-center gap-2 mb-2">
+            <Trophy size={13} className="text-muted-foreground" />
+            <h3 className="text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">
+              Histórico ({workHistory.length})
+            </h3>
+          </div>
+          <div className="space-y-1.5">
+            {workHistory.slice(0, 20).map(record => {
+              const def = getWorkTypeDef(record.tipo);
+              return (
+                <div key={record.id} className="ios-surface rounded-[12px] p-2.5 flex items-center gap-2">
+                  <span className="text-lg">{def.icon}</span>
+                  <div className="flex-1 min-w-0">
+                    <div className="text-[11px] font-semibold text-foreground truncate">{record.nome}</div>
+                    <div className="text-[9px] text-muted-foreground">
+                      {new Date(record.completedAt).toLocaleDateString('pt-BR')} · {record.timeTakenMin}min
+                    </div>
+                  </div>
+                  <div className="text-right shrink-0">
+                    {record.succeeded ? (
+                      <div className="flex items-center gap-1 text-emerald-400">
+                        <CheckCircle2 size={9} />
+                        <span className="text-[11px] font-bold">{fmt(record.profit)}</span>
+                      </div>
+                    ) : (
+                      <div className="flex items-center gap-1 text-red-400">
+                        <XCircle size={9} />
+                        <span className="text-[11px] font-bold">{fmt(record.profit)}</span>
+                      </div>
+                    )}
+                    {(record.xpDelta ?? 0) !== 0 && (
+                      <div className={`text-[9px] ${(record.xpDelta ?? 0) > 0 ? 'text-amber-400' : 'text-red-400'}`}>
+                        {(record.xpDelta ?? 0) > 0 ? '+' : ''}{record.xpDelta} XP
+                      </div>
+                    )}
                   </div>
                 </div>
-                <div className="grid grid-cols-2 gap-2">
-                  <MiniStat label="Prazo estimado" value={`${buildInfo.days} dia${buildInfo.days !== 1 ? 's' : ''}`} />
-                  <MiniStat label="Aluguel mensal"  value={fmtBRL(build.rentMonthly)} />
-                  <MiniStat label="Valor de venda"  value={fmtBRL(build.marketValue)} />
-                  <MiniStat label="ROI aluguel"
-                    value={`${Math.round((build.rentMonthly * 12 / buildInfo.totalCost) * 100)}% a.a.`} />
-                </div>
-                {!canAfford && (
-                  <div className="flex items-center gap-2 bg-destructive/10 border border-destructive/30 rounded-xl px-3 py-2">
-                    <AlertCircle size={13} className="text-destructive" />
-                    <span className="text-[12px] text-destructive">Falta {fmtBRL(buildInfo.totalCost - gameState.money)}</span>
-                  </div>
-                )}
-                {!buildInfo.canBuild && (
-                  <div className="flex items-center gap-2 bg-amber-500/10 border border-amber-400/30 rounded-xl px-3 py-2">
-                    <AlertCircle size={13} className="text-amber-600" />
-                    <span className="text-[12px] text-amber-700">{buildInfo.reason}</span>
-                  </div>
-                )}
-                <Button className="w-full" disabled={!canAfford || !buildInfo.canBuild} onClick={handleBuild}>
-                  <Hammer size={14} className="mr-1.5" />
-                  Iniciar Obra — {fmtBRL(buildInfo.totalCost)}
-                </Button>
-              </div>
-            );
-          })()}
+              );
+            })}
+          </div>
+        </section>
+      )}
+
+      {/* Empty state */}
+      {myWins.length === 0 && activeWorks.length === 0 && workHistory.length === 0 && openInvites.length === 0 && (
+        <div className="flex flex-col items-center justify-center py-16 gap-3">
+          <HardHat size={48} className="text-muted-foreground/20" />
+          <div className="text-[14px] font-semibold text-muted-foreground">Nenhuma obra ainda</div>
+          <div className="text-[12px] text-muted-foreground/60 text-center max-w-[220px]">
+            Ganhe licitações na aba Contratos para iniciar obras
+          </div>
         </div>
       )}
 
-      {/* ═══════════════════ ALUGUÉIS ══════════════════════════ */}
-      {tab === 'alugueis' && (
-        <div className="space-y-3">
-          {rentedProps.length === 0 ? (
-            <EmptyState
-              icon="🔑"
-              title="Nenhum imóvel alugado"
-              subtitle="Conclua uma obra e alugue para ter renda passiva todo dia."
-              action="Ver Meus Imóveis"
-              onAction={() => setTab('meus')}
-            />
-          ) : (
-            <>
-              <div className="ios-surface p-3">
-                <div className="text-[11px] uppercase tracking-wider text-muted-foreground font-semibold mb-2">Resumo</div>
-                <div className="grid grid-cols-3 gap-2">
-                  <KpiBox icon="📝" label="Contratos"      value={String(rentedProps.length)} />
-                  <KpiBox icon="💵" label="Receita/mês"    value={fmtBRL(totalRentMonth)} />
-                  <KpiBox icon="📊" label="Total recebido" value={fmtBRL(totalRentEarned)} />
-                </div>
-              </div>
-
-              {rentedProps.map(prop => {
-                const lastDay    = prop.lastRentDay ?? prop.tenantSince ?? currentDay;
-                const daysPassed = currentDay - lastDay;
-                const pending    = Math.floor((prop.rentMonthly / 30) * daysPassed);
-                return (
-                  <div key={prop.instanceId} className="ios-surface p-3 space-y-2">
-                    <div className="flex items-center gap-3">
-                      <div className="text-2xl">{prop.icon}</div>
-                      <div className="flex-1 min-w-0">
-                        <div className="font-semibold text-[13px] text-foreground truncate">{prop.name}</div>
-                        <div className="text-[11px] text-muted-foreground">
-                          {prop.tenantName} · desde o Dia {prop.tenantSince}
-                        </div>
-                      </div>
-                      <div className="text-right shrink-0">
-                        <div className="text-[12px] font-bold text-green-600">{fmtBRL(prop.rentMonthly)}/mês</div>
-                        <div className="text-[10px] text-muted-foreground tabular-nums">{daysPassed}d pendente</div>
-                      </div>
-                    </div>
-                    <div className="flex items-center gap-2">
-                      <div className="flex-1 space-y-0.5">
-                        <div className="text-[12px]">Pendente: <span className="font-bold text-foreground">{fmtBRL(pending)}</span></div>
-                        <div className="text-[11px] text-muted-foreground">Total: <span className="text-green-600 font-semibold">{fmtBRL(prop.rentCollected)}</span></div>
-                      </div>
-                      <Button size="sm" disabled={pending <= 0} onClick={() => handleCollect(prop.instanceId)}>
-                        <DollarSign size={13} className="mr-1" /> Cobrar
-                      </Button>
-                    </div>
-                  </div>
-                );
-              })}
-            </>
-          )}
-        </div>
+      {/* ── Invite bottom sheet ────────────────────────────────── */}
+      {invitingWork && (
+        <InviteSheet
+          work={invitingWork}
+          playerName={playerName}
+          onClose={() => setInvitingWork(null)}
+          onCreateInvite={async (needed, payment) => {
+            const r = await createInvite({
+              work: invitingWork,
+              neededResources: needed,
+              paymentAmount: payment,
+            });
+            return r;
+          }}
+        />
       )}
-    </div>
-  );
-}
-
-// ── Small helpers ─────────────────────────────────────────────────
-
-function KpiBox({ icon, label, value }: { icon: string; label: string; value: string }) {
-  return (
-    <div className="bg-muted/40 rounded-xl px-2 py-2 text-center">
-      <div className="text-base leading-none">{icon}</div>
-      <div className="text-[13px] font-bold text-foreground mt-0.5 tabular-nums leading-tight">{value}</div>
-      <div className="text-[10px] text-muted-foreground leading-none">{label}</div>
-    </div>
-  );
-}
-
-function MiniStat({ label, value }: { label: string; value: string }) {
-  return (
-    <div className="bg-muted/40 rounded-xl px-2 py-1.5">
-      <div className="text-[10px] text-muted-foreground">{label}</div>
-      <div className="text-[12px] font-semibold text-foreground tabular-nums">{value}</div>
-    </div>
-  );
-}
-
-function CostRow({ label, value }: { label: string; value: string }) {
-  return (
-    <div className="flex justify-between text-[13px]">
-      <span className="text-muted-foreground">{label}</span>
-      <span className="font-medium text-foreground">{value}</span>
-    </div>
-  );
-}
-
-function EmptyState({ icon, title, subtitle, action, onAction }: {
-  icon: string; title: string; subtitle: string; action: string; onAction: () => void;
-}) {
-  return (
-    <div className="ios-surface p-8 flex flex-col items-center text-center gap-3">
-      <div className="text-4xl">{icon}</div>
-      <div>
-        <div className="font-bold text-[15px] text-foreground">{title}</div>
-        <div className="text-[13px] text-muted-foreground mt-1">{subtitle}</div>
-      </div>
-      <Button size="sm" onClick={onAction}>{action}</Button>
     </div>
   );
 }

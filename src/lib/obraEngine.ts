@@ -96,11 +96,35 @@ export function checkRequirements(
 // ── Cálculo de produção ───────────────────────────────────────────────
 
 /**
+ * Multiplicador de produção baseado no nível do funcionário.
+ * Nível 1 → ×1.0, nível 10 → ×2.08 (cap interno: ×2.5)
+ */
+export function calcLevelMultiplier(level: number): number {
+  return Math.min(2.5, 1 + (level - 1) * 0.12);
+}
+
+/**
+ * Calcula a eficiência percentual da equipe vs. equipe ideal.
+ *   idealProducao = tamanhoM2 / tempoBaseMin
+ *   efficiencyPct = (currentProducao / idealProducao) × 100
+ */
+export function calcEfficiencyPct(
+  producaoPerMin: number,
+  tamanhoM2: number,
+  tempoBaseMin: number,
+): number {
+  if (tempoBaseMin <= 0) return 0;
+  const idealProducao = tamanhoM2 / tempoBaseMin;
+  if (idealProducao <= 0) return 0;
+  return Math.round((producaoPerMin / idealProducao) * 100);
+}
+
+/**
  * Calcula a produção total em m²/min de uma equipe alocada.
  *
  * Regras:
  *  - Só ajudantes e pedreiros produzem diretamente
- *  - producao_real = base × (skill / 100)
+ *  - producao_real = base × (skill / 100) × levelMultiplier
  *  - Mestre de Obra: +15% por mestre (aditivo)
  *  - 2+ engenheiros: +10% (uma única vez)
  */
@@ -110,7 +134,8 @@ export function calcProducaoPerMin(employees: AllocatedEmployee[]): number {
   for (const emp of employees) {
     const def = EMPLOYEE_TYPES.find(d => d.type === emp.type);
     if (!def || def.producaoBase === 0) continue;
-    base += def.producaoBase * (emp.skill / 100);
+    const levelMult = calcLevelMultiplier(emp.level ?? 1);
+    base += def.producaoBase * (emp.skill / 100) * levelMult;
   }
 
   // Bônus de Mestre
@@ -191,10 +216,16 @@ export function expectedMarginPct(tipo: WorkType): string {
 /**
  * Atualiza o progresso de uma obra ativa.
  * Deve ser chamado a cada tick (ex: a cada segundo).
- * Retorna o objeto atualizado — se completou, status muda para 'completed'.
+ * - Se concluiu: status → 'completed'
+ * - Se passou do prazo sem concluir: status → 'failed'
  */
 export function tickActiveWork(work: ActiveWork, nowMs: number): ActiveWork {
   if (work.status !== 'running') return work;
+
+  // Prazo estourado → falha
+  if (nowMs > work.deadline) {
+    return { ...work, status: 'failed' };
+  }
 
   const elapsedMin = (nowMs - work.startedAt) / 60_000;
   const m2Done = Math.min(
@@ -217,16 +248,20 @@ export function tickActiveWork(work: ActiveWork, nowMs: number): ActiveWork {
 /**
  * Monta uma ActiveWork a partir dos recursos alocados pelo jogador.
  * Não modifica o estado — apenas calcula e retorna.
+ *
+ * @param tempoBaseMin — tempo ideal da licitação (usado para deadline e eficiência)
  */
 export function buildActiveWork(params: {
   licitacaoId:        string;
   nome:               string;
   tipo:               WorkType;
   tamanhoM2:          number;
+  tempoBaseMin:       number;
   contractValue:      number;
   allocatedEmployees: AllocatedEmployee[];
   allocatedMachines:  AllocatedMachine[];
   consumedMaterials:  ConsumedMaterial[];
+  requisitos?:        import('@/types/game').WorkRequirements;
 }): ActiveWork {
   const producaoPerMin = calcProducaoPerMin(params.allocatedEmployees);
   const tempoMin       = calcTempoEstimadoMin(params.tamanhoM2, producaoPerMin);
@@ -236,7 +271,10 @@ export function buildActiveWork(params: {
     params.consumedMaterials,
     tempoMin,
   );
-  const now = Date.now();
+  const now          = Date.now();
+  // Prazo = 2× o tempo base ideal (em ms reais)
+  const deadline     = now + params.tempoBaseMin * 60_000 * 2;
+  const efficiencyPct = calcEfficiencyPct(producaoPerMin, params.tamanhoM2, params.tempoBaseMin);
 
   return {
     id:                   `work_${Date.now()}_${Math.random().toString(36).slice(2, 7)}`,
@@ -250,11 +288,14 @@ export function buildActiveWork(params: {
     progressPct:          0,
     status:               'running',
     startedAt:            now,
+    deadline,
     estimatedCompletesAt: now + tempoMin * 60_000,
+    efficiencyPct,
     allocatedEmployees:   params.allocatedEmployees,
     allocatedMachines:    params.allocatedMachines,
     consumedMaterials:    params.consumedMaterials,
     currentM2Done:        0,
+    requisitos:           params.requisitos,
   };
 }
 

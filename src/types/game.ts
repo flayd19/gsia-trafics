@@ -21,11 +21,15 @@ export interface Employee {
   instanceId: string;
   type: EmployeeType;
   name: string;
-  /** Habilidade 0-100, afeta produção e custo real */
+  /** Habilidade 0-100, atributo base de talento */
   skill: number;
+  /** Nível 1-10, evolui com obras concluídas */
+  level: number;
+  /** Total de obras concluídas por este funcionário */
+  worksCompleted: number;
   status: 'idle' | 'working';
   assignedWorkId?: string;
-  hiredAt: number; // timestamp
+  hiredAt: number;
 }
 
 // ── Máquinas ──────────────────────────────────────────────────────────
@@ -55,7 +59,7 @@ export interface WarehouseItem {
   category: string;
   unit: string;
   quantity: number;
-  unitPrice: number; // preço médio pago
+  unitPrice: number;
   icon: string;
 }
 
@@ -96,16 +100,13 @@ export interface Licitacao {
   custoEstimado: number;
   valorBase: number;
   requisitos: WorkRequirements;
-  /** Menor lance atual (null = sem lance) */
   melhorLance: number | null;
   liderNome: string | null;
   liderId: string | null;
-  /** Quando o leilão fecha (timestamp ms) */
   expiresAt: number;
   status: 'open' | 'won' | 'preparing' | 'in_progress' | 'completed';
   winnerId?: string;
   winnerNome?: string;
-  /** 30 min reais para o vencedor iniciar após vencer */
   prepDeadline?: number;
   batchId: number;
   createdAt: number;
@@ -117,6 +118,7 @@ export interface AllocatedEmployee {
   type: EmployeeType;
   name: string;
   skill: number;
+  level: number;
 }
 
 export interface AllocatedMachine {
@@ -140,21 +142,23 @@ export interface ActiveWork {
   nome: string;
   tipo: WorkType;
   tamanhoM2: number;
-  /** Valor do lance vencedor (receita bruta) */
   contractValue: number;
-  /** Custo total estimado (mão-de-obra + máquinas + materiais) */
   estimatedCost: number;
-  /** Produção em m²/min efetiva */
   producaoPerMin: number;
-  /** Progresso 0-100 */
   progressPct: number;
   status: 'preparing' | 'running' | 'completed' | 'failed';
   startedAt: number;
+  /** Prazo contratual: data-limite para conclusão (ms real) */
+  deadline: number;
   estimatedCompletesAt: number;
+  /** Eficiência em % vs equipe ideal (0-100+) */
+  efficiencyPct: number;
   allocatedEmployees: AllocatedEmployee[];
   allocatedMachines: AllocatedMachine[];
   consumedMaterials: ConsumedMaterial[];
   currentM2Done: number;
+  /** Requisitos originais da licitação (para exibir slots nos cards) */
+  requisitos?: WorkRequirements;
 }
 
 // ── Histórico de obras ────────────────────────────────────────────────
@@ -170,9 +174,11 @@ export interface WorkRecord {
   completedAt: number;
   timeTakenMin: number;
   succeeded: boolean;
+  /** XP ganho (negativo se falhou) */
+  xpDelta: number;
 }
 
-// ── Mercado P2P (materiais entre jogadores) ───────────────────────────
+// ── Mercado P2P ───────────────────────────────────────────────────────
 export type PlayerMarketListingStatus = 'active' | 'sold' | 'cancelled' | 'expired';
 
 export interface PlayerMarketListing {
@@ -216,22 +222,18 @@ export interface GameState {
   money: number;
   reputation: Reputation;
 
-  // Recursos da empresa
   employees: Employee[];
   machines: Machine[];
   warehouse: WarehouseItem[];
 
-  // Obras
   activeWorks: ActiveWork[];
   workHistory: WorkRecord[];
 
-  // Estatísticas
   totalRevenue: number;
   totalSpent: number;
   completedContracts: number;
   failedContracts: number;
 
-  // Tempo do jogo
   gameTime: {
     day: number;
     hour: number;
@@ -239,87 +241,7 @@ export interface GameState {
     lastUpdate: number;
   };
 
-  // Imóveis
-  properties: Property[];
-
-  // Idempotência de pagamentos via chat
   _processedChatMoneyIds?: Record<string, true>;
-}
-
-// ── Imóveis ───────────────────────────────────────────────────────────
-
-export type PropertyType =
-  | 'casa_popular'
-  | 'casa_media'
-  | 'casa_alto_padrao'
-  | 'casa_luxo'
-  | 'comercial_pequeno'
-  | 'comercial_medio'
-  | 'comercial_grande'
-  | 'galpao_pequeno'
-  | 'galpao_medio'
-  | 'galpao_grande';
-
-export type PropertyCategory = 'residencial' | 'comercial' | 'industrial';
-export type PropertyStatus = 'construindo' | 'pronto' | 'alugado' | 'a_venda' | 'vendido';
-
-export interface PropertyEmployeeReq {
-  minTotal: number;          // mínimo de funcionários ativos na empresa
-  minSkilled: number;        // mínimo de pedreiros/mestres/engenheiros
-  engineerBonus: boolean;    // engenheiro reduz tempo de construção
-}
-
-export interface BuildOption {
-  typeId: PropertyType;
-  category: PropertyCategory;
-  name: string;
-  icon: string;
-  areaM2: number;
-  lotCostBase: number;       // custo do terreno incluso
-  buildCost: number;         // custo de materiais + obra
-  buildDaysBase: number;     // dias de jogo sem bônus de equipe
-  marketValue: number;
-  rentMonthly: number;
-  maintenancePerDay: number;
-  employeeReq: PropertyEmployeeReq;
-  description: string;
-}
-
-export interface Property {
-  instanceId: string;
-  name: string;
-  type: PropertyType;
-  category: PropertyCategory;
-  icon: string;
-  areaM2: number;
-  neighborhood: string;
-
-  // Investimento
-  totalInvested: number;
-  marketValue: number;
-  rentMonthly: number;
-  maintenancePerDay: number;
-
-  status: PropertyStatus;
-
-  // Construção (game days)
-  buildStartDay: number;
-  buildEndDay: number;
-
-  // Aluguel
-  tenantName?: string;
-  tenantSince?: number;
-  lastRentDay?: number;
-  rentCollected: number;
-
-  // Venda
-  salePrice?: number;
-  listedForSaleDay?: number;
-  pendingBuyerName?: string;
-  pendingBuyerOffer?: number;
-  pendingBuyerDay?: number;
-
-  purchasedAt: number;
 }
 
 // ── Helper: garante compatibilidade com saves antigos ─────────────────
@@ -327,20 +249,62 @@ export function ensureGameState(raw: Partial<GameState>): GameState {
   const sanitizeMoney = (v: unknown, fallback: number) =>
     typeof v === 'number' && isFinite(v) ? v : fallback;
 
+  // Migra funcionários antigos que não possuem level/worksCompleted
+  const rawEmps = (raw.employees ?? []) as Partial<Employee>[];
+  const employees: Employee[] = rawEmps.map(e => ({
+    instanceId:     e.instanceId    ?? '',
+    type:           e.type          ?? 'ajudante',
+    name:           e.name          ?? 'Funcionário',
+    skill:          e.skill         ?? 70,
+    level:          e.level         ?? 1,
+    worksCompleted: e.worksCompleted ?? 0,
+    status:         e.status        ?? 'idle',
+    assignedWorkId: e.assignedWorkId,
+    hiredAt:        e.hiredAt       ?? Date.now(),
+  }));
+
+  // Migra obras ativas antigas
+  const rawWorks = (raw.activeWorks ?? []) as Partial<ActiveWork>[];
+  const activeWorks: ActiveWork[] = rawWorks.map(w => ({
+    id:                   w.id                  ?? '',
+    licitacaoId:          w.licitacaoId         ?? '',
+    nome:                 w.nome                ?? '',
+    tipo:                 w.tipo                ?? 'pequena',
+    tamanhoM2:            w.tamanhoM2           ?? 0,
+    contractValue:        w.contractValue       ?? 0,
+    estimatedCost:        w.estimatedCost       ?? 0,
+    producaoPerMin:       w.producaoPerMin      ?? 0,
+    progressPct:          w.progressPct         ?? 0,
+    status:               w.status              ?? 'running',
+    startedAt:            w.startedAt           ?? Date.now(),
+    deadline:             w.deadline            ?? (w.startedAt ?? Date.now()) + 999_999_000,
+    estimatedCompletesAt: w.estimatedCompletesAt ?? Date.now() + 999_999_000,
+    efficiencyPct:        w.efficiencyPct       ?? 100,
+    allocatedEmployees:   (w.allocatedEmployees ?? []).map(e => ({
+      ...e,
+      level: (e as Partial<AllocatedEmployee>).level ?? 1,
+    })) as AllocatedEmployee[],
+    allocatedMachines:    w.allocatedMachines   ?? [],
+    consumedMaterials:    w.consumedMaterials   ?? [],
+    currentM2Done:        w.currentM2Done       ?? 0,
+  }));
+
   return {
     money:               sanitizeMoney(raw.money, 100_000),
     reputation:          raw.reputation          ?? { level: 1, xp: 0, totalXp: 0 },
-    employees:           raw.employees           ?? [],
+    employees,
     machines:            raw.machines            ?? [],
     warehouse:           raw.warehouse           ?? [],
-    activeWorks:         raw.activeWorks         ?? [],
-    workHistory:         raw.workHistory         ?? [],
+    activeWorks,
+    workHistory:         (raw.workHistory        ?? []).map(r => ({
+      ...(r as WorkRecord),
+      xpDelta: (r as Partial<WorkRecord>).xpDelta ?? 0,
+    })),
     totalRevenue:        sanitizeMoney(raw.totalRevenue,  0),
     totalSpent:          sanitizeMoney(raw.totalSpent,    0),
     completedContracts:  raw.completedContracts  ?? 0,
     failedContracts:     raw.failedContracts      ?? 0,
     gameTime: raw.gameTime ?? { day: 1, hour: 8, minute: 0, lastUpdate: Date.now() },
-    properties: raw.properties ?? [],
     _processedChatMoneyIds: raw._processedChatMoneyIds ?? {},
   };
 }
