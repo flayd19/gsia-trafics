@@ -12,6 +12,7 @@ import {
   Trophy,
   MessageSquare,
   Gavel,
+  TrendingUp,
 } from 'lucide-react';
 import { supabase } from '@/integrations/supabase/client';
 import { useAudio } from '@/hooks/useAudio';
@@ -19,8 +20,7 @@ import { ensureReputation, levelProgress, xpRequiredForLevel, MAX_LEVEL } from '
 import type { Reputation } from '@/types/game';
 
 /* ----------------------------------------------------------------
- * Tab metadata — Simulador de Construtora
- * 4 abas principais no bottom tab bar; settings no sheet "Mais".
+ * Tab metadata
  * ---------------------------------------------------------------- */
 
 type TabDef = {
@@ -33,12 +33,12 @@ const PRIMARY_TABS: TabDef[] = [
   { id: 'empresa',      label: 'Empresa',    icon: Building2 },
   { id: 'contratos',    label: 'Licitações', icon: Gavel },
   { id: 'mercado',      label: 'Mercado',    icon: ShoppingBag },
-  { id: 'propriedades', label: 'Obras',       icon: HardHat },
+  { id: 'propriedades', label: 'Obras',      icon: HardHat },
   { id: 'empresas',     label: 'Empresas',   icon: Trophy },
 ];
 
 const SECONDARY_TABS: TabDef[] = [
-  { id: 'chat',     label: 'Chat',   icon: MessageSquare },
+  { id: 'chat',     label: 'Chat',    icon: MessageSquare },
   { id: 'settings', label: 'Ajustes', icon: SettingsIcon },
 ];
 
@@ -117,104 +117,162 @@ export const GameLayout = ({
 
   const isNegative = money < 0;
 
-  const rep          = ensureReputation(reputation);
-  const isMaxLevel   = rep.level >= MAX_LEVEL;
-  const xpNeeded     = isMaxLevel ? 0 : xpRequiredForLevel(rep.level + 1);
+  const rep           = ensureReputation(reputation);
+  const isMaxLevel    = rep.level >= MAX_LEVEL;
+  const xpNeeded      = isMaxLevel ? 0 : xpRequiredForLevel(rep.level + 1);
   const xpProgressPct = Math.round(levelProgress(rep) * 100);
 
   return (
-    <div className="min-h-screen flex flex-col bg-background">
-      {/* Top Nav Bar */}
+    <div
+      className="min-h-screen flex flex-col"
+      style={{ background: 'var(--gradient-bg)', backgroundAttachment: 'fixed' }}
+    >
+      {/* ── Top Header ── */}
       <header className="ios-nav-bar">
-        <div className="flex items-center justify-between py-2">
+        <div className="flex items-center justify-between gap-2 py-2.5">
+
           {/* Brand */}
-          <div className="flex items-center gap-2 min-w-0">
+          <div className="flex items-center gap-2.5 min-w-0">
             <div
-              className="w-8 h-8 rounded-[10px] flex items-center justify-center text-white font-bold text-sm shadow-sm"
-              style={{ background: 'var(--gradient-primary)' }}
+              className="w-9 h-9 rounded-[14px] flex items-center justify-center text-lg shadow-md flex-shrink-0"
+              style={{
+                background: 'var(--gradient-primary-btn)',
+                boxShadow: 'var(--shadow-md), var(--glow-primary-sm), inset 0 1px 0 hsl(0 0% 100% / 0.25)',
+              }}
             >
               🏗️
             </div>
             <div className="flex flex-col leading-tight min-w-0">
-              <span className="font-game-title text-[15px] font-bold text-foreground tracking-tight truncate">
+              <span
+                className="font-game-title text-[15px] tracking-tight truncate"
+                style={{ color: 'hsl(var(--foreground))', textShadow: '0 1px 8px hsl(228 35% 2% / 0.5)' }}
+              >
                 GSIA Construtora
               </span>
-              <div className="flex items-center gap-1 mt-0.5">
-                <span className="text-[11px] font-bold text-primary tabular-nums">
+              <div className="flex items-center gap-1.5 mt-0.5">
+                <span
+                  className="text-[11px] font-bold tabular-nums"
+                  style={{ color: 'hsl(var(--primary))' }}
+                >
                   📅 {gameTime.time}
                 </span>
                 {isSyncing && (
-                  <span className="text-[10px] text-muted-foreground opacity-70">· sync…</span>
+                  <span className="text-[10px] opacity-50" style={{ color: 'hsl(var(--muted-foreground))' }}>
+                    · sync…
+                  </span>
                 )}
               </div>
             </div>
           </div>
 
-          {/* User chip */}
-          <div className="flex items-center gap-1">
+          {/* Right: user chip */}
+          <div className="flex items-center gap-1.5 flex-shrink-0">
             {user && (
-              <div className="flex items-center gap-1 ios-surface px-2 py-1 !shadow-none">
-                <User size={12} className="text-muted-foreground" />
-                <span className="text-[11px] font-semibold text-foreground truncate max-w-[80px]">
+              <div
+                className="flex items-center gap-1.5 px-2 py-1 rounded-full"
+                style={{
+                  background: 'hsl(228 30% 18%)',
+                  border: '1px solid hsl(var(--border) / 0.6)',
+                  boxShadow: 'var(--shadow-sm), var(--bevel-light)',
+                }}
+              >
+                <User size={11} style={{ color: 'hsl(var(--muted-foreground))' }} />
+                <span
+                  className="text-[11px] font-bold truncate max-w-[72px]"
+                  style={{ color: 'hsl(var(--foreground))' }}
+                >
                   {displayName || user.email?.split('@')[0]}
                 </span>
                 {onLogout && (
-                  <Button
-                    variant="ghost"
-                    size="sm"
+                  <button
                     onClick={onLogout}
-                    className="h-6 w-6 p-0"
+                    className="w-5 h-5 flex items-center justify-center rounded-full active:scale-90 transition"
+                    style={{ color: 'hsl(var(--danger))' }}
                     aria-label="Sair"
                   >
-                    <LogOut size={12} className="text-danger" />
-                  </Button>
+                    <LogOut size={10} />
+                  </button>
                 )}
               </div>
             )}
           </div>
         </div>
 
-        {/* HUD balance */}
-        <div className="pb-2">
+        {/* ── Money + Works HUD ── */}
+        <div className="pb-3">
           <div
-            className={`ios-surface flex items-center gap-3 px-3 py-2 ${
-              isNegative ? 'border-danger/40' : ''
-            }`}
+            className={`money-pill w-full ${isNegative ? 'money-pill-negative' : ''}`}
+            style={{ borderRadius: 'var(--radius-lg)' }}
           >
+            {/* Icon */}
             <div
-              className={`w-9 h-9 rounded-[12px] flex items-center justify-center text-white text-base shadow-sm ${
-                isNegative ? 'bg-danger' : ''
-              }`}
-              style={!isNegative ? { background: 'var(--gradient-primary)' } : undefined}
+              className="w-10 h-10 rounded-[13px] flex items-center justify-center text-xl flex-shrink-0"
+              style={
+                isNegative
+                  ? {
+                      background: 'var(--gradient-danger)',
+                      boxShadow: 'var(--shadow-sm), var(--glow-danger)',
+                    }
+                  : {
+                      background: 'var(--gradient-primary-btn)',
+                      boxShadow: 'var(--shadow-sm), var(--glow-primary-sm), inset 0 1px 0 hsl(0 0% 100% / 0.25)',
+                    }
+              }
             >
               {isNegative ? '🏦' : '💰'}
             </div>
 
+            {/* Balance */}
             <div className="flex-1 min-w-0">
-              <div className="text-[10px] uppercase tracking-wider text-muted-foreground font-semibold">
-                Caixa da empresa
+              <div
+                className="text-[10px] uppercase tracking-widest font-bold"
+                style={{ color: 'hsl(var(--muted-foreground))' }}
+              >
+                Caixa
               </div>
               <div
-                className={`font-game-title tabular-nums text-lg font-bold leading-tight ${
-                  isNegative ? 'text-danger' : 'text-foreground'
-                }`}
+                className="font-game-title tabular-nums text-xl leading-tight"
+                style={{
+                  color: isNegative ? 'hsl(var(--danger))' : 'hsl(var(--foreground))',
+                  textShadow: isNegative
+                    ? '0 0 12px hsl(4 100% 59% / 0.35)'
+                    : '0 1px 6px hsl(228 35% 2% / 0.4)',
+                }}
               >
                 {formatMoney(money)}
               </div>
               {isNegative && (
-                <div className="text-[10px] text-danger font-semibold animate-pulse">
-                  Saldo negativo
+                <div
+                  className="text-[10px] font-bold animate-pulse"
+                  style={{ color: 'hsl(var(--danger))' }}
+                >
+                  ⚠ Saldo negativo
                 </div>
               )}
             </div>
 
-            <div className="flex flex-col items-end gap-0.5">
-              <div className="text-[10px] text-muted-foreground tabular-nums">
+            {/* Right chips */}
+            <div className="flex flex-col items-end gap-1.5 flex-shrink-0">
+              {/* Works counter */}
+              <div
+                className="neon-badge text-[10px]"
+                style={
+                  activeWorksCount > 0
+                    ? { color: 'hsl(var(--primary))' }
+                    : { color: 'hsl(var(--muted-foreground))', background: 'hsl(228 30% 16%)', borderColor: 'hsl(var(--border) / 0.5)', boxShadow: 'none' }
+                }
+              >
                 🏗️ {activeWorksCount} obra{activeWorksCount !== 1 ? 's' : ''}
               </div>
+              {/* Settings shortcut */}
               <button
                 onClick={() => handleTab('settings')}
-                className="text-[10px] text-primary font-semibold px-1.5 py-0.5 rounded-md hover:bg-primary/10 active:scale-95 transition"
+                className="text-[10px] font-bold px-2 py-0.5 rounded-full active:scale-90 transition"
+                style={{
+                  color: 'hsl(var(--primary))',
+                  background: 'hsl(108 100% 54% / 0.09)',
+                  border: '1px solid hsl(108 100% 54% / 0.18)',
+                }}
                 aria-label="Abrir ajustes"
               >
                 Ajustes
@@ -222,24 +280,46 @@ export const GameLayout = ({
             </div>
           </div>
 
-          {/* Reputação */}
-          <div className="mt-2 flex items-center gap-2">
+          {/* ── Reputation bar ── */}
+          <div className="mt-2.5 flex items-center gap-2">
             <div
-              className="flex items-center gap-1 px-2 py-1 rounded-full text-white text-[11px] font-bold shadow-sm"
-              style={{ background: 'var(--gradient-primary)' }}
+              className="flex items-center gap-1 px-2.5 py-1 rounded-full text-[11px] font-bold flex-shrink-0"
+              style={{
+                background: isMaxLevel
+                  ? 'var(--gradient-orange)'
+                  : 'var(--gradient-primary-btn)',
+                color: isMaxLevel ? 'white' : 'hsl(var(--primary-foreground))',
+                boxShadow: isMaxLevel ? 'var(--glow-orange)' : 'var(--glow-primary-sm)',
+                textShadow: '0 1px 2px hsl(228 35% 2% / 0.4)',
+              }}
             >
-              <span>⭐</span>
+              <TrendingUp size={10} />
               <span className="tabular-nums">Nv {rep.level}</span>
-              {isMaxLevel && <span className="text-[9px] opacity-90">MAX</span>}
+              {isMaxLevel && <span className="text-[8px] opacity-90 ml-0.5">MAX</span>}
             </div>
+
             <div className="flex-1 min-w-0">
-              <div className="w-full h-1.5 bg-muted rounded-full overflow-hidden">
+              <div
+                className="w-full h-2 rounded-full overflow-hidden"
+                style={{
+                  background: 'hsl(228 30% 18%)',
+                  boxShadow: 'inset 0 1px 2px hsl(228 35% 2% / 0.4)',
+                  border: '1px solid hsl(var(--border) / 0.4)',
+                }}
+              >
                 <div
-                  className="h-full rounded-full transition-all"
-                  style={{ width: `${xpProgressPct}%`, background: 'var(--gradient-primary)' }}
+                  className="h-full rounded-full transition-all duration-500"
+                  style={{
+                    width: `${xpProgressPct}%`,
+                    background: 'var(--gradient-primary)',
+                    boxShadow: '0 0 6px hsl(108 100% 54% / 0.50)',
+                  }}
                 />
               </div>
-              <div className="text-[9px] text-muted-foreground mt-0.5 tabular-nums leading-none">
+              <div
+                className="text-[9px] font-bold mt-0.5 tabular-nums leading-none"
+                style={{ color: 'hsl(var(--muted-foreground))' }}
+              >
                 {isMaxLevel
                   ? `XP total ${rep.totalXp}`
                   : `${rep.xp} / ${xpNeeded} XP · próximo Nv ${rep.level + 1}`}
@@ -249,16 +329,16 @@ export const GameLayout = ({
         </div>
       </header>
 
-      {/* Main content */}
+      {/* ── Main content ── */}
       <main ref={mainRef} className="flex-1 overflow-y-auto smooth-scroll pb-tabbar">
         <div className="px-3 py-3 animate-fade-in max-w-[640px] mx-auto w-full">
           {children}
         </div>
       </main>
 
-      {/* Bottom Tab Bar */}
+      {/* ── Floating Bottom Tab Bar ── */}
       <nav className="ios-tab-bar" role="tablist" aria-label="Navegação principal">
-        <div className="flex items-stretch justify-around px-1">
+        <div className="ios-tab-bar-inner">
           {PRIMARY_TABS.map((tab) => {
             const Icon = tab.icon;
             const active = currentTab === tab.id;
@@ -271,26 +351,28 @@ export const GameLayout = ({
                 onClick={() => handleTab(tab.id)}
                 className="ios-tab-item touch-manipulation"
               >
-                <Icon size={22} strokeWidth={active ? 2.4 : 2} />
+                <Icon size={21} strokeWidth={active ? 2.5 : 2} />
                 <span>{tab.label}</span>
               </button>
             );
           })}
+
+          {/* Mais button */}
           <button
             role="tab"
             aria-selected={!currentTabInPrimary || moreOpen}
-            data-active={!currentTabInPrimary || moreOpen ? 'true' : 'false'}
+            data-active={(!currentTabInPrimary || moreOpen) ? 'true' : 'false'}
             onClick={() => { playClickSound(); setMoreOpen(v => !v); }}
             className="ios-tab-item touch-manipulation"
             aria-label="Mais opções"
           >
-            <MoreHorizontal size={22} strokeWidth={!currentTabInPrimary ? 2.4 : 2} />
+            <MoreHorizontal size={21} strokeWidth={!currentTabInPrimary ? 2.5 : 2} />
             <span>Mais</span>
           </button>
         </div>
       </nav>
 
-      {/* "Mais" — action sheet */}
+      {/* ── "Mais" action sheet ── */}
       {moreOpen && (
         <div
           className="fixed inset-0 z-[60] flex items-end"
@@ -298,45 +380,102 @@ export const GameLayout = ({
           role="dialog"
           aria-modal="true"
         >
-          <div className="absolute inset-0 bg-black/35 animate-fade-in" />
+          {/* Backdrop */}
+          <div
+            className="absolute inset-0 animate-fade-in"
+            style={{ background: 'hsl(228 35% 2% / 0.65)', backdropFilter: 'blur(4px)', WebkitBackdropFilter: 'blur(4px)' }}
+          />
+
+          {/* Sheet */}
           <div
             className="relative w-full max-w-[640px] mx-auto animate-slide-up"
             onClick={(e) => e.stopPropagation()}
             style={{ paddingLeft: 'var(--safe-left)', paddingRight: 'var(--safe-right)' }}
           >
             <div
-              className="ios-surface-elevated mx-3 mb-3 overflow-hidden"
-              style={{ borderRadius: 'var(--radius-lg)' }}
+              className="mx-3 mb-3 overflow-hidden"
+              style={{
+                background: 'hsl(228 30% 12% / 0.95)',
+                backdropFilter: 'saturate(200%) blur(28px)',
+                WebkitBackdropFilter: 'saturate(200%) blur(28px)',
+                borderRadius: 'var(--radius-xl)',
+                border: '1px solid hsl(var(--border) / 0.45)',
+                boxShadow: 'var(--shadow-xl), inset 0 1px 0 hsl(0 0% 100% / 0.07)',
+              }}
             >
-              <div className="flex items-center justify-between px-4 pt-3 pb-2">
-                <div className="text-[11px] uppercase tracking-wider text-muted-foreground font-semibold">
+              {/* Sheet header */}
+              <div className="flex items-center justify-between px-4 pt-4 pb-3">
+                <span
+                  className="text-[11px] uppercase tracking-widest font-bold"
+                  style={{ color: 'hsl(var(--muted-foreground))' }}
+                >
                   Mais opções
-                </div>
+                </span>
                 <button
                   onClick={() => setMoreOpen(false)}
-                  className="w-7 h-7 rounded-full bg-muted flex items-center justify-center text-muted-foreground active:scale-95"
+                  className="w-7 h-7 rounded-full flex items-center justify-center active:scale-90 transition"
+                  style={{
+                    background: 'hsl(228 30% 20%)',
+                    border: '1px solid hsl(var(--border) / 0.5)',
+                    color: 'hsl(var(--muted-foreground))',
+                  }}
                 >
                   <X size={14} />
                 </button>
               </div>
-              <div className="divide-y divide-border">
-                {SECONDARY_TABS.map((tab) => {
+
+              {/* Sheet items */}
+              <div
+                style={{ borderTop: '1px solid hsl(var(--border) / 0.25)' }}
+              >
+                {SECONDARY_TABS.map((tab, idx) => {
                   const Icon = tab.icon;
                   const active = currentTab === tab.id;
                   return (
                     <button
                       key={tab.id}
                       onClick={() => handleTab(tab.id)}
-                      className={`w-full flex items-center gap-3 px-4 py-3 text-left touch-manipulation active:bg-muted transition ${active ? 'bg-primary/5' : ''}`}
+                      className="w-full flex items-center gap-3 px-4 py-3.5 text-left touch-manipulation transition"
+                      style={{
+                        background: active ? 'hsl(108 100% 54% / 0.07)' : 'transparent',
+                        borderTop: idx > 0 ? '1px solid hsl(var(--border) / 0.18)' : 'none',
+                      }}
                     >
-                      <div className={`w-9 h-9 rounded-[10px] flex items-center justify-center ${active ? 'bg-primary text-primary-foreground' : 'bg-muted text-foreground'}`}>
+                      <div
+                        className="w-10 h-10 rounded-[13px] flex items-center justify-center flex-shrink-0"
+                        style={
+                          active
+                            ? {
+                                background: 'var(--gradient-primary-btn)',
+                                color: 'hsl(var(--primary-foreground))',
+                                boxShadow: 'var(--shadow-sm), var(--glow-primary-sm)',
+                              }
+                            : {
+                                background: 'hsl(228 30% 20%)',
+                                color: 'hsl(var(--muted-foreground))',
+                                border: '1px solid hsl(var(--border) / 0.5)',
+                              }
+                        }
+                      >
                         <Icon size={18} />
                       </div>
-                      <span className={`flex-1 font-semibold text-[15px] ${active ? 'text-primary' : 'text-foreground'}`}>
+                      <span
+                        className="flex-1 font-bold text-[15px]"
+                        style={{ color: active ? 'hsl(var(--primary))' : 'hsl(var(--foreground))' }}
+                      >
                         {tab.label}
                       </span>
                       {active && (
-                        <span className="text-[10px] text-primary font-bold uppercase tracking-wider">atual</span>
+                        <span
+                          className="text-[10px] font-bold uppercase tracking-wider px-2 py-0.5 rounded-full"
+                          style={{
+                            color: 'hsl(var(--primary))',
+                            background: 'hsl(108 100% 54% / 0.12)',
+                            border: '1px solid hsl(108 100% 54% / 0.25)',
+                          }}
+                        >
+                          atual
+                        </span>
                       )}
                     </button>
                   );
