@@ -11,7 +11,6 @@ import { Button } from '@/components/ui/button';
 import { LogOut, ShieldAlert } from 'lucide-react';
 import { AdminMarketTab }     from '@/components/admin/AdminMarketTab';
 import { AdminPlayersTab }    from '@/components/admin/AdminPlayersTab';
-import { AdminCarsTab }       from '@/components/admin/AdminCarsTab';
 import { AdminCategoriesTab } from '@/components/admin/AdminCategoriesTab';
 import { AdminErrorsTab }     from '@/components/admin/AdminErrorsTab';
 
@@ -58,17 +57,15 @@ export default function AdminPage(): JSX.Element {
 
         {/* Tabs */}
         <Tabs defaultValue="market" className="w-full">
-          <TabsList className="grid w-full grid-cols-5">
+          <TabsList className="grid w-full grid-cols-4">
             <TabsTrigger value="market">Mercado</TabsTrigger>
             <TabsTrigger value="players">Jogadores</TabsTrigger>
-            <TabsTrigger value="cars">Carros</TabsTrigger>
             <TabsTrigger value="categories">Categorias</TabsTrigger>
             <TabsTrigger value="errors">Erros</TabsTrigger>
           </TabsList>
 
           <TabsContent value="market"     className="mt-4"><AdminMarketTab /></TabsContent>
           <TabsContent value="players"    className="mt-4"><AdminPlayersTab /></TabsContent>
-          <TabsContent value="cars"       className="mt-4"><AdminCarsTab /></TabsContent>
           <TabsContent value="categories" className="mt-4"><AdminCategoriesTab /></TabsContent>
           <TabsContent value="errors"     className="mt-4"><AdminErrorsTab /></TabsContent>
         </Tabs>

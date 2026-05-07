@@ -45,7 +45,7 @@ export const EMPLOYEE_TYPES: EmployeeTypeDef[] = [
     label:       'Ajudante',
     icon:        '👷',
     description: 'Mão de obra básica. Baixa produção, custo acessível.',
-    producaoBase: 5.0,
+    producaoBase: 10.0,
     custoBase:    100,
     hiringCost:   500,
     isRequired:   false,
@@ -56,7 +56,7 @@ export const EMPLOYEE_TYPES: EmployeeTypeDef[] = [
     label:       'Pedreiro',
     icon:        '🧱',
     description: 'Especialista em alvenaria. Produção 2×.',
-    producaoBase: 10.0,
+    producaoBase: 20.0,
     custoBase:    300,
     hiringCost:   2_000,
     isRequired:   false,
@@ -305,10 +305,11 @@ const WORK_TYPE_DEFS: WorkTypeDef[] = [
   //   media   (4aj+3ped+1eng → 25 m²/min): [300,1500]/25 = 12–60min
   //   grande  (8aj+6ped+... → 50 m²/min): [1500,3750]/50 = 30–75min
   //   mega    (20aj+15ped+... → 125 m²/min): [7500,11250]/125 = 60–90min
-  { tipo: 'pequena', label: 'Pequena',  icon: '🏠', tamanhoRange: [50,   300],  tempoRange: [5,   30], margemRange: [1.30, 1.45], minLevel: 1 },
-  { tipo: 'media',   label: 'Média',    icon: '🏢', tamanhoRange: [300,  1500], tempoRange: [12,  60], margemRange: [1.20, 1.35], minLevel: 3 },
-  { tipo: 'grande',  label: 'Grande',   icon: '🏗️', tamanhoRange: [1500, 3750], tempoRange: [30,  75], margemRange: [1.10, 1.20], minLevel: 5 },
-  { tipo: 'mega',    label: 'Mega',     icon: '🌆', tamanhoRange: [7500, 11250],tempoRange: [60,  90], margemRange: [1.05, 1.15], minLevel: 8 },
+  // tempoRange reduzido em 2× (producaoBase dobrado) — obras completam 2× mais rápido
+  { tipo: 'pequena', label: 'Pequena',  icon: '🏠', tamanhoRange: [50,   300],  tempoRange: [2,   15], margemRange: [1.30, 1.45], minLevel: 1 },
+  { tipo: 'media',   label: 'Média',    icon: '🏢', tamanhoRange: [300,  1500], tempoRange: [6,   30], margemRange: [1.20, 1.35], minLevel: 3 },
+  { tipo: 'grande',  label: 'Grande',   icon: '🏗️', tamanhoRange: [1500, 3750], tempoRange: [15,  37], margemRange: [1.10, 1.20], minLevel: 5 },
+  { tipo: 'mega',    label: 'Mega',     icon: '🌆', tamanhoRange: [7500, 11250],tempoRange: [30,  45], margemRange: [1.05, 1.15], minLevel: 8 },
 ];
 
 export function getWorkTypeDef(tipo: WorkType) {
@@ -574,7 +575,7 @@ export function generateServicosRapidos(seed = 0): ServicoRapido[] {
     const tamanhoM2     = randInt(tpl.m2[0], tpl.m2[1]);
     const valorContrato = randInt(tpl.valor[0], tpl.valor[1]);
     const custoEstimado = Math.round(valorContrato / (1.25 + Math.random() * 0.15));
-    const tempoBaseMin  = Math.max(5, Math.round(tamanhoM2 / 5 + Math.random() * (tamanhoM2 / 10)));
+    const tempoBaseMin  = Math.max(2, Math.round(tamanhoM2 / 10 + Math.random() * (tamanhoM2 / 20)));
     const matQty        = tpl.matQtyFn(tamanhoM2);
     const requisitos: WorkRequirements = {
       employees: tpl.req,

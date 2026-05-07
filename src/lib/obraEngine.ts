@@ -320,17 +320,22 @@ export function tickActiveWork(
 
   // ── Verificação de materiais ────────────────────────────────────────
   const requiredMats: WorkMaterialReq[] = work.requisitos?.materials ?? [];
-  const deltaM2Potential = work.producaoPerMin * deltaMin;
+  // Cap ao m² restante: evita consumo excessivo quando o tick é longo
+  // (aba inativa, browser throttle, etc.)
+  const remainingM2Raw   = Math.max(0, work.tamanhoM2 - work.currentM2Done);
+  const deltaM2Potential = Math.min(work.producaoPerMin * deltaMin, remainingM2Raw);
   const deltaConsumed: ConsumedMaterial[] = [];
   let canProgress = true;
 
   if (requiredMats.length > 0 && deltaM2Potential > 0) {
     for (const req of requiredMats) {
-      const qtyPerM2    = req.quantity / work.tamanhoM2;
-      const neededQty   = qtyPerM2 * deltaM2Potential;
+      const qtyPerM2     = req.quantity / work.tamanhoM2;
+      const neededQty    = qtyPerM2 * deltaM2Potential;
       const warehouseQty = warehouse.find(w => w.materialId === req.materialId)?.quantity ?? 0;
+      // Tolerância de float (0.1% ou 0.001 unid) evita starvation espúrio
+      const epsilon      = Math.max(0.001, neededQty * 0.001);
 
-      if (warehouseQty < neededQty) {
+      if (warehouseQty < neededQty - epsilon) {
         canProgress = false;
         break;
       }
