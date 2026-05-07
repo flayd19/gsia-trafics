@@ -16,7 +16,7 @@ import {
   type NeededResources, type WorkInvite,
 } from '@/hooks/useWorkInvites';
 import { fmt, getWorkTypeDef, EMPLOYEE_TYPES, MACHINE_CATALOG } from '@/data/construction';
-import { calcProducaoPerMin, calcTempoEstimadoMin } from '@/lib/obraEngine';
+import { calcProducaoPerMin, calcTempoEstimadoMin, calcMaterialShortages } from '@/lib/obraEngine';
 import {
   WorkPreparation,
   WorkDetailView,
@@ -311,15 +311,46 @@ function ActiveWorkCard({
           </div>
         </div>
 
+        {/* ── Alerta de falta de material ──────────────────────── */}
+        {work.materialStarved && (() => {
+          const shortages = calcMaterialShortages(work.requisitos, work.consumedMaterials, gameState.warehouse);
+          return (
+            <div className="rounded-[10px] bg-amber-500/10 border border-amber-500/40 p-2.5 space-y-1.5">
+              <div className="flex items-center gap-1.5 text-amber-400">
+                <AlertTriangle size={13} />
+                <span className="text-[11px] font-bold">Progresso pausado — falta de material</span>
+              </div>
+              {shortages.length > 0 && (
+                <div className="space-y-0.5">
+                  {shortages.map(s => (
+                    <div key={s.materialId} className="text-[10px] text-amber-300/80 flex justify-between">
+                      <span>• {s.name}</span>
+                      <span>faltam {s.missing} {s.unit}</span>
+                    </div>
+                  ))}
+                </div>
+              )}
+              <div className="text-[9px] text-amber-300/60">
+                Compre os materiais no Mercado para retomar a obra.
+              </div>
+            </div>
+          );
+        })()}
+
         {/* Progress */}
         <div>
           <div className="flex justify-between text-[10px] mb-1 text-muted-foreground">
             <span>{work.progressPct}% · {work.currentM2Done.toFixed(0)}/{work.tamanhoM2} m²</span>
-            <span>{work.producaoPerMin.toFixed(1)} m²/min</span>
+            <span>
+              {work.materialStarved
+                ? <span className="text-amber-400">⏸ pausado</span>
+                : <span>{work.producaoPerMin.toFixed(1)} m²/min</span>
+              }
+            </span>
           </div>
           <div className="w-full h-2.5 bg-muted rounded-full overflow-hidden">
             <div
-              className="h-full bg-primary rounded-full transition-[width] duration-1000 ease-linear"
+              className={`h-full rounded-full transition-[width] duration-1000 ease-linear ${work.materialStarved ? 'bg-amber-500/60' : 'bg-primary'}`}
               style={{ width: `${work.progressPct}%` }}
             />
           </div>

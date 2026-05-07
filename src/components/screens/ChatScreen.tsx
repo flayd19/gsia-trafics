@@ -20,7 +20,13 @@ import {
   type ChatThread,
   type PlayerListEntry,
 } from '@/hooks/useChat';
-import { conditionValueFactor } from '@/data/cars';
+/** Fator de valor de mercado baseado na condição do carro (0–100). */
+function conditionValueFactor(condition: number): number {
+  if (condition >= 85) return 1.10;
+  if (condition >= 60) return 0.97;
+  const ratio = condition / 59;
+  return 0.65 + ratio * 0.18;
+}
 
 interface ChatScreenProps {
   gameState:    GameState;

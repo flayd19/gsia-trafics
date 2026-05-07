@@ -131,7 +131,23 @@ export function useConstrutora() {
         const hasRunning = prev.activeWorks.some(w => w.status === 'running');
         if (!hasRunning) return prev;
 
-        const updatedWorks = prev.activeWorks.map(w => tickActiveWork(w, now));
+        // Processa cada obra, coletando materiais consumidos
+        const tickResults = prev.activeWorks.map(w => tickActiveWork(w, now, prev.warehouse));
+        const updatedWorks = tickResults.map(r => r.work);
+
+        // Debita materiais do galpão (múltiplas obras podem consumir o mesmo material)
+        let warehouse = [...prev.warehouse];
+        for (const { consumed } of tickResults) {
+          for (const c of consumed) {
+            warehouse = warehouse.map(w =>
+              w.materialId === c.materialId
+                ? { ...w, quantity: Math.max(0, w.quantity - c.quantity) }
+                : w
+            );
+          }
+        }
+        // Remove itens zerados (quantidade ≤ 0)
+        warehouse = warehouse.filter(w => w.quantity > 0.0001);
 
         const justCompleted = updatedWorks.filter(
           (w, i) => w.status === 'completed' && prev.activeWorks[i]!.status === 'running',
@@ -141,7 +157,8 @@ export function useConstrutora() {
         );
 
         if (justCompleted.length === 0 && justFailed.length === 0) {
-          return { ...prev, activeWorks: updatedWorks };
+          // Mesmo sem conclusões, aplica consumo de materiais e atualiza progresso
+          return { ...prev, activeWorks: updatedWorks, warehouse };
         }
 
         let money            = prev.money;
@@ -266,6 +283,7 @@ export function useConstrutora() {
           reputation: rep,
           employees:  updatedEmployees,
           machines:   freeMachines,
+          warehouse,
           activeWorks: updatedWorks.filter(
             w => w.status !== 'completed' && w.status !== 'failed',
           ),
@@ -411,24 +429,11 @@ export function useConstrutora() {
     contractValue:      number;
     allocatedEmployees: AllocatedEmployee[];
     allocatedMachines:  AllocatedMachine[];
-    materialQtys:       { materialId: string; quantity: number }[];
+    /** @deprecated ignorado — materiais são consumidos automaticamente pelo tick */
+    materialQtys?:      { materialId: string; quantity: number }[];
     requisitos?:        import('@/types/game').WorkRequirements;
   }): { ok: boolean; message: string } => {
-    const state = stateRef.current;
-
-    const consumedMaterials: ConsumedMaterial[] = params.materialQtys.map(mq => {
-      const wItem = state.warehouse.find(w => w.materialId === mq.materialId);
-      return { materialId: mq.materialId, name: wItem?.name ?? mq.materialId, quantity: mq.quantity, unitPrice: wItem?.unitPrice ?? 0 };
-    });
-
-    const newWarehouse: WarehouseItem[] = state.warehouse
-      .map(w => {
-        const consumed = consumedMaterials.find(c => c.materialId === w.materialId);
-        if (!consumed) return w;
-        return { ...w, quantity: w.quantity - consumed.quantity };
-      })
-      .filter(w => w.quantity > 0);
-
+    // Materiais NÃO são debitados upfront — o tick consome gradualmente do galpão
     const work = buildActiveWork({
       licitacaoId:        params.licitacaoId,
       nome:               params.nome,
@@ -438,7 +443,6 @@ export function useConstrutora() {
       contractValue:      params.contractValue,
       allocatedEmployees: params.allocatedEmployees,
       allocatedMachines:  params.allocatedMachines,
-      consumedMaterials,
       requisitos:         params.requisitos,
     });
 
@@ -449,7 +453,7 @@ export function useConstrutora() {
     setGameState(prev => {
       const next: GameState = {
         ...prev,
-        warehouse: newWarehouse,
+        // galpão inalterado — materiais consumidos pelo tick
         employees: prev.employees.map(e => empIds.has(e.instanceId)  ? { ...e, status: 'working' as const, assignedWorkId: workId } : e),
         machines:  prev.machines.map(m  => machIds.has(m.instanceId) ? { ...m, status: 'working' as const, assignedWorkId: workId } : m),
         activeWorks: [...prev.activeWorks, work],
@@ -457,7 +461,19 @@ export function useConstrutora() {
       saveGame(next);
       return next;
     });
-    return { ok: true, message: 'Obra iniciada!' };
+
+    const hasMaterials = (params.requisitos?.materials ?? []).length === 0
+      || (params.requisitos?.materials ?? []).every(req => {
+        const stock = stateRef.current.warehouse.find(w => w.materialId === req.materialId);
+        return (stock?.quantity ?? 0) >= req.quantity;
+      });
+
+    return {
+      ok: true,
+      message: hasMaterials
+        ? 'Obra iniciada!'
+        : 'Obra iniciada! ⚠️ Materiais insuficientes — compre no Mercado para descongelar o progresso.',
+    };
   }, [saveGame]);
 
   // ── Gerenciar obra em andamento ──────────────────────────────────
@@ -480,7 +496,7 @@ export function useConstrutora() {
         ...w.allocatedEmployees,
         { instanceId: e.instanceId, type: e.type, name: e.name, skill: e.skill, level: e.level ?? 1 },
       ];
-      const newProducao = calcProducaoPerMin(newAllocated);
+      const newProducao = calcProducaoPerMin(newAllocated, w.allocatedMachines);
       const remainingM2 = Math.max(0, w.tamanhoM2 - w.currentM2Done);
       const newEstCompletion = newProducao > 0
         ? now + (remainingM2 / newProducao) * 60_000
@@ -510,7 +526,7 @@ export function useConstrutora() {
       if (!w || w.status !== 'running') return prev;
 
       const newAllocated = w.allocatedEmployees.filter(e => e.instanceId !== instanceId);
-      const newProducao  = calcProducaoPerMin(newAllocated);
+      const newProducao  = calcProducaoPerMin(newAllocated, w.allocatedMachines);
       const remainingM2  = Math.max(0, w.tamanhoM2 - w.currentM2Done);
       const newEstCompletion = newProducao > 0
         ? now + (remainingM2 / newProducao) * 60_000
@@ -535,17 +551,28 @@ export function useConstrutora() {
     if (!mach) return { ok: false, message: 'Máquina não encontrada.' };
     if (mach.status !== 'idle') return { ok: false, message: 'Máquina já está em uso.' };
 
+    const now = Date.now();
     setGameState(prev => {
       const w = prev.activeWorks.find(w => w.id === workId);
       if (!w || w.status !== 'running') return prev;
       const m = prev.machines.find(m => m.instanceId === instanceId);
       if (!m || m.status !== 'idle') return prev;
 
+      const newMachines: AllocatedMachine[] = [
+        ...w.allocatedMachines,
+        { instanceId: m.instanceId, typeId: m.typeId, name: m.name, icon: m.icon, costPerMin: m.costPerMin },
+      ];
+      const newProducao  = calcProducaoPerMin(w.allocatedEmployees, newMachines);
+      const remainingM2  = Math.max(0, w.tamanhoM2 - w.currentM2Done);
+      const newEstCompletion = newProducao > 0
+        ? now + (remainingM2 / newProducao) * 60_000
+        : now + 99_999 * 60_000;
+
       const next: GameState = {
         ...prev,
         machines: prev.machines.map(m => m.instanceId === instanceId ? { ...m, status: 'working' as const, assignedWorkId: workId } : m),
         activeWorks: prev.activeWorks.map(w => w.id === workId
-          ? { ...w, allocatedMachines: [...w.allocatedMachines, { instanceId: m.instanceId, typeId: m.typeId, name: m.name, icon: m.icon, costPerMin: m.costPerMin }] }
+          ? { ...w, allocatedMachines: newMachines, producaoPerMin: newProducao, estimatedCompletesAt: newEstCompletion }
           : w),
       };
       saveGame(next);
@@ -561,15 +588,23 @@ export function useConstrutora() {
     const inWork = work.allocatedMachines.some(m => m.instanceId === instanceId);
     if (!inWork) return { ok: false, message: 'Máquina não está alocada nesta obra.' };
 
+    const now = Date.now();
     setGameState(prev => {
       const w = prev.activeWorks.find(w => w.id === workId);
       if (!w || w.status !== 'running') return prev;
+
+      const newMachines  = w.allocatedMachines.filter(m => m.instanceId !== instanceId);
+      const newProducao  = calcProducaoPerMin(w.allocatedEmployees, newMachines);
+      const remainingM2  = Math.max(0, w.tamanhoM2 - w.currentM2Done);
+      const newEstCompletion = newProducao > 0
+        ? now + (remainingM2 / newProducao) * 60_000
+        : now + 99_999 * 60_000;
 
       const next: GameState = {
         ...prev,
         machines: prev.machines.map(m => m.instanceId === instanceId ? { ...m, status: 'idle' as const, assignedWorkId: undefined } : m),
         activeWorks: prev.activeWorks.map(w => w.id === workId
-          ? { ...w, allocatedMachines: w.allocatedMachines.filter(m => m.instanceId !== instanceId) }
+          ? { ...w, allocatedMachines: newMachines, producaoPerMin: newProducao, estimatedCompletesAt: newEstCompletion }
           : w),
       };
       saveGame(next);

@@ -155,10 +155,18 @@ export interface ActiveWork {
   efficiencyPct: number;
   allocatedEmployees: AllocatedEmployee[];
   allocatedMachines: AllocatedMachine[];
+  /** Materiais consumidos acumulados durante execução (cresce a cada tick) */
   consumedMaterials: ConsumedMaterial[];
   currentM2Done: number;
   /** Requisitos originais da licitação (para exibir slots nos cards) */
   requisitos?: WorkRequirements;
+  /**
+   * true quando o progresso está congelado por falta de materiais no galpão.
+   * A equipe está parada; o prazo continua correndo.
+   */
+  materialStarved: boolean;
+  /** Timestamp do último tick processado (ms real). Usado para cálculo delta. */
+  lastTickAt: number;
 }
 
 // ── Histórico de obras ────────────────────────────────────────────────
@@ -287,6 +295,8 @@ export function ensureGameState(raw: Partial<GameState>): GameState {
     allocatedMachines:    w.allocatedMachines   ?? [],
     consumedMaterials:    w.consumedMaterials   ?? [],
     currentM2Done:        w.currentM2Done       ?? 0,
+    materialStarved:      w.materialStarved     ?? false,
+    lastTickAt:           w.lastTickAt          ?? (w.startedAt ?? Date.now()),
   }));
 
   return {

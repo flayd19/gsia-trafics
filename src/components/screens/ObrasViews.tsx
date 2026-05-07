@@ -117,16 +117,21 @@ export function WorkPreparation({ win, gameState, onBack, onStart }: {
     [selMachines, gameState.machines],
   );
 
-  const producaoPerMin    = calcProducaoPerMin(allocatedEmployees);
+  const producaoPerMin    = calcProducaoPerMin(allocatedEmployees, allocatedMachines);
   const tempoEstMin       = calcTempoEstimadoMin(win.tamanhoM2, producaoPerMin);
-  const deadlineMin       = tempoBaseMin * 2;           // prazo = 2× tempo ideal
+  const deadlineMin       = tempoBaseMin * 2.5;         // prazo = 2.5× tempo ideal
   const efficiencyPct     = calcEfficiencyPct(producaoPerMin, win.tamanhoM2, tempoBaseMin);
   const willFinishOnTime  = producaoPerMin > 0 && tempoEstMin <= deadlineMin;
 
-  const materialQtys      = req.materials.map(m => ({ materialId: m.materialId, quantity: m.quantity }));
+  // Materiais serão consumidos do galpão gradualmente pelo tick; custo estimado para exibição
   const consumedMaterials = req.materials.map(mr => {
     const wItem = gameState.warehouse.find(w => w.materialId === mr.materialId);
     return { materialId: mr.materialId, name: mr.name, quantity: mr.quantity, unitPrice: wItem?.unitPrice ?? 0 };
+  });
+  // Verifica se há materiais suficientes no galpão para a obra completa
+  const matSufficient = req.materials.every(mr => {
+    const stock = gameState.warehouse.find(w => w.materialId === mr.materialId);
+    return (stock?.quantity ?? 0) >= mr.quantity;
   });
   const cost      = calcWorkCost(allocatedEmployees, allocatedMachines, consumedMaterials, tempoEstMin);
   const profitEst = win.contractValue - cost.laborCost - cost.machineCost - cost.materialCost;
@@ -153,7 +158,6 @@ export function WorkPreparation({ win, gameState, onBack, onStart }: {
       contractValue:      win.contractValue,
       allocatedEmployees,
       allocatedMachines,
-      materialQtys,
       requisitos:         req,
     });
     flash(r);
@@ -251,15 +255,32 @@ export function WorkPreparation({ win, gameState, onBack, onStart }: {
 
       {/* Materials */}
       {req.materials.length > 0 && (
-        <div className="ios-surface rounded-[12px] p-3 space-y-1.5">
-          <div className="text-[11px] uppercase tracking-wider text-muted-foreground font-semibold">Materiais (consumo imediato)</div>
+        <div className={`rounded-[12px] p-3 space-y-2 border ${matSufficient ? 'ios-surface border-transparent' : 'bg-amber-500/8 border-amber-500/35'}`}>
+          <div className="flex items-center justify-between">
+            <div className="text-[11px] uppercase tracking-wider text-muted-foreground font-semibold">🧱 Materiais</div>
+            {matSufficient
+              ? <span className="text-[9px] text-emerald-400 font-semibold">✓ Estoque OK</span>
+              : <span className="text-[9px] text-amber-400 font-semibold">⚠ Estoque insuficiente</span>
+            }
+          </div>
+          <div className="text-[9px] text-muted-foreground">
+            Consumidos do galpão gradualmente durante a execução.
+            {!matSufficient && ' Compre o que falta no Mercado antes ou durante a obra.'}
+          </div>
           {req.materials.map(mr => {
-            const stock = gameState.warehouse.find(w => w.materialId === mr.materialId);
-            const ok    = (stock?.quantity ?? 0) >= mr.quantity;
+            const stock    = gameState.warehouse.find(w => w.materialId === mr.materialId);
+            const have     = stock?.quantity ?? 0;
+            const ok       = have >= mr.quantity;
+            const pct      = Math.min(100, Math.round((have / mr.quantity) * 100));
             return (
-              <div key={mr.materialId} className={`flex items-center justify-between text-[12px] ${ok ? '' : 'text-amber-400'}`}>
-                <span>{mr.name}</span>
-                <span>{mr.quantity.toLocaleString('pt-BR')} {mr.unit}{!ok && ` (estoque: ${(stock?.quantity ?? 0).toLocaleString('pt-BR')})`}</span>
+              <div key={mr.materialId} className="space-y-0.5">
+                <div className={`flex items-center justify-between text-[11px] ${ok ? 'text-foreground' : 'text-amber-400'}`}>
+                  <span>{mr.name}</span>
+                  <span>{have.toFixed(0)}/{mr.quantity} {mr.unit}</span>
+                </div>
+                <div className="w-full h-1 bg-muted rounded-full overflow-hidden">
+                  <div className={`h-full rounded-full ${ok ? 'bg-emerald-500' : 'bg-amber-500'}`} style={{ width: `${pct}%` }} />
+                </div>
               </div>
             );
           })}

@@ -132,6 +132,8 @@ export interface MachineTypeDef {
   /** Nível mínimo para comprar */
   minLevel: number;
   description: string;
+  /** Bônus de produção aditivo (ex: 0.20 = +20% na produção da equipe) */
+  producaoBonus: number;
 }
 
 export const MACHINE_CATALOG: MachineTypeDef[] = [
@@ -140,79 +142,94 @@ export const MACHINE_CATALOG: MachineTypeDef[] = [
     typeId: 'retroescavadeira', name: 'Retroescavadeira', icon: '🚜',
     category: 'terraplanagem', costPerMin: 200, purchasePrice: 120_000,
     minLevel: 1, description: 'Versátil. Escavação e carga.',
+    producaoBonus: 0.15,
   },
   {
     typeId: 'escavadeira', name: 'Escavadeira Hidráulica', icon: '⛏️',
     category: 'terraplanagem', costPerMin: 300, purchasePrice: 180_000,
     minLevel: 2, description: 'Alta capacidade de escavação.',
+    producaoBonus: 0.25,
   },
   {
     typeId: 'pa_carregadeira', name: 'Pá Carregadeira', icon: '🚧',
     category: 'terraplanagem', costPerMin: 250, purchasePrice: 150_000,
     minLevel: 2, description: 'Carregamento e transporte de material.',
+    producaoBonus: 0.12,
   },
   {
     typeId: 'motoniveladora', name: 'Motoniveladora', icon: '🛤️',
     category: 'terraplanagem', costPerMin: 400, purchasePrice: 300_000,
     minLevel: 3, description: 'Nivelar terrenos com precisão.',
+    producaoBonus: 0.18,
   },
   {
     typeId: 'rolo_compactador', name: 'Rolo Compactador', icon: '🛞',
     category: 'terraplanagem', costPerMin: 220, purchasePrice: 140_000,
     minLevel: 2, description: 'Compactação de solo e asfalto.',
+    producaoBonus: 0.10,
   },
   // ── Estrutura ─────────────────────────────────────────────────────
   {
     typeId: 'guindaste_movel', name: 'Guindaste Móvel', icon: '🏗️',
     category: 'estrutura', costPerMin: 600, purchasePrice: 500_000,
     minLevel: 4, description: 'Içamento de cargas pesadas em obras.',
+    producaoBonus: 0.30,
   },
   {
     typeId: 'guindaste_torre', name: 'Guindaste Torre', icon: '🗼',
     category: 'estrutura', costPerMin: 900, purchasePrice: 1_200_000,
     minLevel: 6, description: 'Para obras de grande altura.',
+    producaoBonus: 0.45,
   },
   {
     typeId: 'munck', name: 'Caminhão Munck', icon: '🚛',
     category: 'estrutura', costPerMin: 350, purchasePrice: 250_000,
     minLevel: 3, description: 'Carga e descarga com braço articulado.',
+    producaoBonus: 0.20,
   },
   {
     typeId: 'bomba_concreto', name: 'Bomba de Concreto', icon: '🪣',
     category: 'estrutura', costPerMin: 400, purchasePrice: 300_000,
     minLevel: 3, description: 'Lança concreto a grande distância.',
+    producaoBonus: 0.22,
   },
   // ── Logística ─────────────────────────────────────────────────────
   {
     typeId: 'caminhao_basculante', name: 'Caminhão Basculante', icon: '🚚',
     category: 'logistica', costPerMin: 300, purchasePrice: 220_000,
     minLevel: 2, description: 'Transporte de terra, areia e entulho.',
+    producaoBonus: 0.08,
   },
   {
     typeId: 'caminhao_prancha', name: 'Caminhão Prancha', icon: '🚛',
     category: 'logistica', costPerMin: 350, purchasePrice: 260_000,
     minLevel: 2, description: 'Transporte de máquinas e equipamentos.',
+    producaoBonus: 0.06,
   },
   {
     typeId: 'empilhadeira', name: 'Empilhadeira', icon: '📦',
     category: 'logistica', costPerMin: 150, purchasePrice: 90_000,
     minLevel: 1, description: 'Movimentação de materiais no canteiro.',
+    producaoBonus: 0.10,
   },
   // ── Concretagem ───────────────────────────────────────────────────
   {
     typeId: 'betoneira', name: 'Betoneira', icon: '🔄',
     category: 'concretagem', costPerMin: 100, purchasePrice: 60_000,
     minLevel: 1, description: 'Mistura de concreto no local.',
+    producaoBonus: 0.13,
   },
   {
     typeId: 'caminhao_betoneira', name: 'Caminhão Betoneira', icon: '🚛',
     category: 'concretagem', costPerMin: 500, purchasePrice: 400_000,
     minLevel: 4, description: 'Concreto pronto entregue no canteiro.',
+    producaoBonus: 0.28,
   },
   {
     typeId: 'vibrador', name: 'Vibrador de Concreto', icon: '⚡',
     category: 'concretagem', costPerMin: 80, purchasePrice: 40_000,
     minLevel: 1, description: 'Adensa o concreto para maior resistência.',
+    producaoBonus: 0.08,
   },
 ];
 
