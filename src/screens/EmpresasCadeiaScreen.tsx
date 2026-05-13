@@ -282,7 +282,13 @@ function CompanyCard({ company, cadeia }: { company: Company; cadeia: UseCadeiaR
   );
 }
 
-// ── Modal de criação de empresa ───────────────────────────────────────
+// ── Modal de criação de empresa (2 etapas) ────────────────────────────
+//
+// Estrutura: modal ocupa h-[92dvh], split em:
+//   - cabeçalho fixo (shrink-0)
+//   - área scrollável central (flex-1 overflow-y-auto)
+//   - rodapé fixo com botão de ação (shrink-0) — SEMPRE visível
+//
 function CreateCompanyModal({
   cadeia,
   onClose,
@@ -290,18 +296,34 @@ function CreateCompanyModal({
   cadeia: UseCadeiaReturn;
   onClose: () => void;
 }) {
+  // Etapa 1: escolher tipo | Etapa 2: escolher tamanho + nome + região
+  const [step, setStep] = useState<1 | 2>(1);
+  const [activeCategory, setActiveCategory] = useState<string>('extracao');
   const [selectedType, setSelectedType] = useState<CompanyTypeId | null>(null);
   const [selectedSize, setSelectedSize] = useState<CompanySize>('pequena');
   const [selectedRegion, setSelectedRegion] = useState<RegionId>('sudeste');
   const [companyName, setCompanyName] = useState('');
   const [error, setError] = useState('');
 
-  const groupedTypes = [
-    { label: '⛏️ Extração', types: COMPANY_TYPES.filter((t) => t.category === 'extracao') },
-    { label: '🏭 Indústria', types: COMPANY_TYPES.filter((t) => t.category === 'industria') },
-    { label: '🚚 Logística', types: COMPANY_TYPES.filter((t) => t.category === 'logistica') },
-    { label: '🛒 Varejo', types: COMPANY_TYPES.filter((t) => t.category === 'varejo') },
+  const categories = [
+    { id: 'extracao',  label: '⛏️ Extração' },
+    { id: 'industria', label: '🏭 Indústria' },
+    { id: 'logistica', label: '🚚 Logística' },
+    { id: 'varejo',    label: '🛒 Varejo' },
   ];
+  const visibleTypes = COMPANY_TYPES.filter((t) => t.category === activeCategory);
+
+  function selectType(typeId: CompanyTypeId) {
+    setSelectedType(typeId);
+    setCompanyName(getCompanyType(typeId).name);
+    setError('');
+  }
+
+  function goToStep2() {
+    if (!selectedType) { setError('Selecione um tipo de empresa.'); return; }
+    setError('');
+    setStep(2);
+  }
 
   function handleCreate() {
     if (!selectedType) { setError('Selecione um tipo de empresa.'); return; }
@@ -313,157 +335,236 @@ function CreateCompanyModal({
     }
   }
 
-  const def = selectedType ? getCompanyType(selectedType) : null;
+  const def     = selectedType ? getCompanyType(selectedType) : null;
   const variant = selectedType ? getSizeVariant(selectedType, selectedSize) : null;
+  const canAfford = variant ? cadeia.state.playerCapital >= variant.baseCost : false;
 
   return (
-    <div className="fixed inset-0 z-50 flex items-end justify-center bg-black/60 backdrop-blur-sm">
-      <div className="w-full max-w-lg bg-[hsl(228_30%_12%)] rounded-t-3xl p-5 max-h-[85vh] overflow-y-auto">
-        <div className="flex items-center justify-between mb-4">
-          <h2 className="font-bold text-lg">Nova Empresa</h2>
-          <button onClick={onClose} className="p-2 rounded-full bg-background/40">
-            <X size={18} />
-          </button>
+    <div className="fixed inset-0 z-50 flex items-end justify-center bg-black/70 backdrop-blur-sm">
+      {/* Container: altura fixa, flex-col para empurrar rodapé para baixo */}
+      <div
+        className="w-full max-w-lg bg-[hsl(228_30%_11%)] rounded-t-3xl flex flex-col"
+        style={{ height: '92dvh' }}
+      >
+        {/* ── Cabeçalho fixo ─────────────────────────────────────── */}
+        <div className="shrink-0 px-5 pt-5 pb-3">
+          <div className="flex items-center justify-between">
+            <div className="flex items-center gap-3">
+              {step === 2 && (
+                <button
+                  onClick={() => { setStep(1); setError(''); }}
+                  className="p-2 rounded-full bg-background/40 text-muted-foreground"
+                >
+                  ‹
+                </button>
+              )}
+              <h2 className="font-bold text-lg">
+                {step === 1 ? 'Escolha o tipo' : `${def?.icon} ${def?.name}`}
+              </h2>
+            </div>
+            <button onClick={onClose} className="p-2 rounded-full bg-background/40">
+              <X size={18} />
+            </button>
+          </div>
+
+          {/* Indicador de etapa */}
+          <div className="flex gap-1.5 mt-3">
+            <div className={`h-1 flex-1 rounded-full transition-colors ${step >= 1 ? 'bg-primary' : 'bg-border'}`} />
+            <div className={`h-1 flex-1 rounded-full transition-colors ${step >= 2 ? 'bg-primary' : 'bg-border/40'}`} />
+          </div>
         </div>
 
-        {/* Seleção de tipo */}
-        <div className="flex flex-col gap-3 mb-4">
-          {groupedTypes.map(({ label, types }) => (
-            <div key={label}>
-              <p className="text-xs text-muted-foreground mb-2">{label}</p>
-              <div className="flex flex-col gap-1.5">
-                {types.map((t) => {
-                  const minVariant = t.sizes[0]!;
-                  return (
-                    <button
-                      key={t.id}
-                      className={`flex items-center gap-3 p-3 rounded-xl text-left transition-colors ${
-                        selectedType === t.id
-                          ? 'bg-primary/20 border border-primary/50'
-                          : 'bg-background/40 border border-transparent'
-                      }`}
-                      onClick={() => { setSelectedType(t.id); setCompanyName(t.name); }}
-                    >
-                      <span className="text-xl">{t.icon}</span>
-                      <div className="flex-1 min-w-0">
-                        <p className="text-sm font-medium">{t.name}</p>
-                        <p className="text-xs text-muted-foreground truncate">{t.description}</p>
-                      </div>
-                      <div className="text-right shrink-0">
-                        <p className="text-sm font-bold text-primary">
-                          a partir de {minVariant.baseCost >= 1_000 ? `R$${(minVariant.baseCost / 1_000).toFixed(0)}k` : `R$${minVariant.baseCost}`}
-                        </p>
-                        <p className="text-[11px] text-muted-foreground">nível {t.minLevel}</p>
-                      </div>
-                    </button>
-                  );
-                })}
-              </div>
-            </div>
-          ))}
-        </div>
+        {/* ── Área scrollável ────────────────────────────────────── */}
+        <div className="flex-1 overflow-y-auto overscroll-contain px-5">
 
-        {/* Seleção de tamanho + nome + região */}
-        {selectedType && def && (
-          <>
-            {/* Seletor de tamanho */}
-            <div className="mb-4">
-              <p className="text-xs text-muted-foreground mb-2">Tamanho</p>
-              <div className="grid grid-cols-3 gap-2">
-                {((['pequena', 'media', 'grande'] as CompanySize[])).map((size) => {
-                  const sv = getSizeVariant(selectedType, size);
-                  return (
-                    <button
-                      key={size}
-                      className={`flex flex-col items-center p-3 rounded-xl text-center transition-colors ${
-                        selectedSize === size
-                          ? 'bg-primary/20 border border-primary/50 text-primary'
-                          : 'bg-background/40 border border-transparent'
-                      }`}
-                      onClick={() => setSelectedSize(size)}
-                    >
-                      <span className="text-xs font-bold">{SIZE_NAMES[size]}</span>
-                      <span className={`text-sm font-bold mt-1 ${selectedSize === size ? 'text-primary' : 'text-foreground'}`}>
-                        {sv.baseCost >= 1_000 ? `R$${(sv.baseCost / 1_000).toFixed(0)}k` : `R$${sv.baseCost}`}
-                      </span>
-                      {sv.storageCapacity > 0 && (
-                        <span className="text-[10px] text-muted-foreground mt-0.5">
-                          {sv.storageCapacity.toLocaleString('pt-BR')} cap
-                        </span>
-                      )}
-                      <span className="text-[10px] text-red-400 mt-0.5">
-                        -{(sv.operationalCostPerDay / 1_000).toFixed(1)}k/dia
-                      </span>
-                    </button>
-                  );
-                })}
-              </div>
-            </div>
-
-            <div className="mb-3">
-              <p className="text-xs text-muted-foreground mb-1">Nome da empresa</p>
-              <input
-                className="w-full bg-background/60 border border-border/40 rounded-xl px-3 py-2 text-sm"
-                value={companyName}
-                onChange={(e) => setCompanyName(e.target.value)}
-                placeholder="Nome personalizado..."
-              />
-            </div>
-
-            {/* Região */}
-            <div className="mb-4">
-              <p className="text-xs text-muted-foreground mb-2">Região</p>
-              <div className="grid grid-cols-5 gap-1">
-                {REGIONS.map((r) => (
+          {step === 1 && (
+            <>
+              {/* Tabs de categoria — scroll horizontal */}
+              <div className="flex gap-2 pb-3 overflow-x-auto no-scrollbar">
+                {categories.map((cat) => (
                   <button
-                    key={r.id}
-                    className={`flex flex-col items-center p-2 rounded-xl text-[11px] transition-colors ${
-                      selectedRegion === r.id
-                        ? 'bg-primary/20 border border-primary/50 text-primary'
-                        : 'bg-background/40'
+                    key={cat.id}
+                    onClick={() => setActiveCategory(cat.id)}
+                    className={`shrink-0 px-3 py-2 rounded-full text-xs font-medium transition-colors whitespace-nowrap ${
+                      activeCategory === cat.id
+                        ? 'bg-primary text-background'
+                        : 'bg-background/40 text-muted-foreground'
                     }`}
-                    onClick={() => setSelectedRegion(r.id)}
                   >
-                    <span className="text-base">{r.icon}</span>
-                    <span className="mt-0.5 text-center leading-tight">{r.name}</span>
+                    {cat.label}
                   </button>
                 ))}
               </div>
-            </div>
 
-            {/* Resumo de custo */}
-            {variant && (
-              <div className="bg-background/40 rounded-xl p-3 mb-4 text-xs">
-                <div className="flex justify-between mb-1">
-                  <span className="text-muted-foreground">Custo de abertura</span>
-                  <span className="font-bold text-red-400">-{fmt(variant.baseCost)}</span>
-                </div>
-                <div className="flex justify-between mb-1">
-                  <span className="text-muted-foreground">Custo operacional/dia</span>
-                  <span className="font-bold text-orange-400">-{fmt(variant.operationalCostPerDay)}</span>
-                </div>
-                <div className="flex justify-between border-t border-border/30 pt-1 mt-1">
-                  <span className="text-muted-foreground">Após compra</span>
-                  <span className={`font-bold ${cadeia.state.playerCapital - variant.baseCost < 0 ? 'text-red-400' : ''}`}>
-                    {fmt(cadeia.state.playerCapital - variant.baseCost)}
-                  </span>
+              {/* Lista de tipos (compacta, touch targets ≥44px) */}
+              <div className="flex flex-col gap-2 pb-4">
+                {visibleTypes.map((t) => {
+                  const minCost = t.sizes[0]!.baseCost;
+                  const isSelected = selectedType === t.id;
+                  return (
+                    <button
+                      key={t.id}
+                      className={`flex items-center gap-3 px-4 rounded-2xl text-left transition-colors ${
+                        isSelected
+                          ? 'bg-primary/20 border border-primary/50'
+                          : 'bg-background/30 border border-transparent active:bg-background/50'
+                      }`}
+                      style={{ minHeight: 60 }}
+                      onClick={() => selectType(t.id)}
+                    >
+                      <span className="text-2xl shrink-0">{t.icon}</span>
+                      <div className="flex-1 min-w-0 py-3">
+                        <p className="text-sm font-semibold leading-tight">{t.name}</p>
+                        <p className="text-[11px] text-muted-foreground mt-0.5 truncate">{t.description}</p>
+                      </div>
+                      <div className="shrink-0 text-right py-3">
+                        <p className={`text-sm font-bold ${isSelected ? 'text-primary' : 'text-foreground/70'}`}>
+                          {minCost >= 1_000 ? `R$${(minCost / 1_000).toFixed(0)}k` : `R$${minCost}`}
+                        </p>
+                        <p className="text-[10px] text-muted-foreground">nível {t.minLevel}</p>
+                      </div>
+                    </button>
+                  );
+                })}
+              </div>
+            </>
+          )}
+
+          {step === 2 && selectedType && (
+            <div className="flex flex-col gap-5 pb-6 pt-1">
+
+              {/* Tamanho — 3 cards grandes (touch targets ≥64px) */}
+              <div>
+                <p className="text-xs text-muted-foreground font-medium mb-2 uppercase tracking-wide">Tamanho</p>
+                <div className="grid grid-cols-3 gap-2">
+                  {(['pequena', 'media', 'grande'] as CompanySize[]).map((size) => {
+                    const sv = getSizeVariant(selectedType, size);
+                    const active = selectedSize === size;
+                    return (
+                      <button
+                        key={size}
+                        onClick={() => setSelectedSize(size)}
+                        className={`flex flex-col items-center justify-center rounded-2xl py-4 transition-colors ${
+                          active
+                            ? 'bg-primary/20 border-2 border-primary'
+                            : 'bg-background/30 border-2 border-transparent active:bg-background/50'
+                        }`}
+                      >
+                        <span className={`text-sm font-bold ${active ? 'text-primary' : ''}`}>
+                          {SIZE_NAMES[size]}
+                        </span>
+                        <span className={`text-base font-extrabold mt-1 ${active ? 'text-primary' : 'text-foreground'}`}>
+                          {sv.baseCost >= 1_000_000
+                            ? `R$${(sv.baseCost / 1_000_000).toFixed(1)}M`
+                            : `R$${(sv.baseCost / 1_000).toFixed(0)}k`}
+                        </span>
+                        <span className="text-[10px] text-red-400 mt-1">
+                          -{(sv.operationalCostPerDay / 1_000).toFixed(1)}k/dia
+                        </span>
+                        {sv.storageCapacity > 0 && (
+                          <span className="text-[10px] text-muted-foreground mt-0.5">
+                            {sv.storageCapacity >= 1_000
+                              ? `${(sv.storageCapacity / 1_000).toFixed(0)}k cap`
+                              : `${sv.storageCapacity} cap`}
+                          </span>
+                        )}
+                      </button>
+                    );
+                  })}
                 </div>
               </div>
-            )}
-          </>
-        )}
 
-        {error && (
-          <p className="text-xs text-red-400 mb-3 text-center">{error}</p>
-        )}
+              {/* Nome */}
+              <div>
+                <p className="text-xs text-muted-foreground font-medium mb-2 uppercase tracking-wide">Nome</p>
+                <input
+                  className="w-full bg-background/50 border border-border/50 rounded-2xl px-4 py-3 text-sm focus:outline-none focus:border-primary"
+                  value={companyName}
+                  onChange={(e) => setCompanyName(e.target.value)}
+                  placeholder="Nome da empresa..."
+                  autoComplete="off"
+                />
+              </div>
 
-        <button
-          className="btn-gaming w-full py-3"
-          onClick={handleCreate}
-          disabled={!selectedType}
+              {/* Região */}
+              <div>
+                <p className="text-xs text-muted-foreground font-medium mb-2 uppercase tracking-wide">Região</p>
+                <div className="grid grid-cols-5 gap-1.5">
+                  {REGIONS.map((r) => (
+                    <button
+                      key={r.id}
+                      onClick={() => setSelectedRegion(r.id)}
+                      className={`flex flex-col items-center py-3 rounded-2xl text-[11px] transition-colors ${
+                        selectedRegion === r.id
+                          ? 'bg-primary/20 border-2 border-primary text-primary'
+                          : 'bg-background/30 border-2 border-transparent active:bg-background/50'
+                      }`}
+                    >
+                      <span className="text-lg">{r.icon}</span>
+                      <span className="mt-1 text-center leading-tight">{r.name}</span>
+                    </button>
+                  ))}
+                </div>
+              </div>
+
+              {/* Resumo inline */}
+              {variant && (
+                <div className="rounded-2xl bg-background/30 px-4 py-3 text-xs flex flex-col gap-1.5">
+                  <div className="flex justify-between">
+                    <span className="text-muted-foreground">Custo de abertura</span>
+                    <span className="font-bold text-red-400">-{fmt(variant.baseCost)}</span>
+                  </div>
+                  <div className="flex justify-between">
+                    <span className="text-muted-foreground">Custo diário</span>
+                    <span className="font-bold text-orange-400">-{fmt(variant.operationalCostPerDay)}</span>
+                  </div>
+                  <div className="flex justify-between border-t border-border/20 pt-1.5 mt-0.5">
+                    <span className="text-muted-foreground">Saldo após</span>
+                    <span className={`font-bold ${!canAfford ? 'text-red-400' : 'text-green-400'}`}>
+                      {fmt(cadeia.state.playerCapital - variant.baseCost)}
+                    </span>
+                  </div>
+                </div>
+              )}
+            </div>
+          )}
+        </div>
+
+        {/* ── Rodapé fixo — SEMPRE visível ───────────────────────── */}
+        <div
+          className="shrink-0 px-5 pt-3 pb-5 border-t border-border/20 bg-[hsl(228_30%_11%)]"
+          style={{ paddingBottom: 'max(20px, env(safe-area-inset-bottom))' }}
         >
-          <Plus size={16} className="inline mr-1" /> Abrir empresa
-        </button>
+          {error && (
+            <p className="text-xs text-red-400 mb-2 text-center">{error}</p>
+          )}
+
+          {step === 1 ? (
+            <button
+              className={`w-full py-4 rounded-2xl text-sm font-bold transition-colors ${
+                selectedType
+                  ? 'btn-gaming'
+                  : 'bg-background/30 text-muted-foreground border border-border/30'
+              }`}
+              onClick={goToStep2}
+            >
+              {selectedType ? `Continuar com ${getCompanyType(selectedType).name} →` : 'Selecione um tipo'}
+            </button>
+          ) : (
+            <button
+              className={`w-full py-4 rounded-2xl text-sm font-bold transition-colors ${
+                canAfford
+                  ? 'btn-gaming'
+                  : 'bg-red-900/40 text-red-400 border border-red-500/30'
+              }`}
+              onClick={handleCreate}
+            >
+              {canAfford
+                ? `✅ Abrir empresa — ${variant ? fmt(variant.baseCost) : ''}`
+                : `❌ Capital insuficiente`}
+            </button>
+          )}
+        </div>
       </div>
     </div>
   );
