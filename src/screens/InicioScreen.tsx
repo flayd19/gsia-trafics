@@ -4,10 +4,10 @@
 // =====================================================================
 
 import { useState } from 'react';
-import { Building2, TrendingUp, TrendingDown, Bell, BellOff, Plus, ChevronRight, Factory, Truck, ShoppingCart, Pickaxe } from 'lucide-react';
+import { Building2, TrendingUp, TrendingDown, Bell, Plus, ChevronRight, Factory, Truck, ShoppingCart, Pickaxe, X, Share, ArrowDownToLine } from 'lucide-react';
 import type { UseCadeiaReturn } from '@/hooks/useCadeia';
 import { getCompanyType } from '@/data/cadeia';
-import { getPMR } from '@/lib/cadeiaEngine';
+import { usePWAInstall } from '@/hooks/usePWAInstall';
 
 interface Props {
   cadeia: UseCadeiaReturn;
@@ -30,6 +30,7 @@ const CATEGORY_ICONS: Record<string, React.ReactNode> = {
 export function InicioScreen({ cadeia, onNavigate }: Props) {
   const { state, markNotificationRead, clearNotifications } = cadeia;
   const [showNotifs, setShowNotifs] = useState(false);
+  const { installState, triggerInstall, dismissInstall } = usePWAInstall();
 
   const activeCompanies = state.companies.filter((c) => c.status === 'active');
   const totalCompanyCapital = state.companies.reduce((sum, c) => sum + c.capital, 0);
@@ -43,6 +44,47 @@ export function InicioScreen({ cadeia, onNavigate }: Props) {
 
   return (
     <div className="flex flex-col gap-4 p-4 pb-28">
+
+      {/* ── Banner de instalação iOS ─────────────────────────────── */}
+      {installState === 'ios-safari' && (
+        <div className="rounded-2xl bg-gradient-to-r from-blue-900/60 to-indigo-900/60 border border-blue-500/30 p-4 flex items-start gap-3">
+          <span className="text-2xl mt-0.5">📲</span>
+          <div className="flex-1 min-w-0">
+            <p className="text-sm font-semibold text-blue-200 mb-1">Instalar no iPhone</p>
+            <p className="text-xs text-blue-300/80 leading-relaxed">
+              Toque em <Share size={12} className="inline mx-0.5 text-blue-300" /> <strong>Compartilhar</strong> e depois em{' '}
+              <strong>Adicionar à Tela de Início</strong> para jogar offline como app nativo.
+            </p>
+          </div>
+          <button
+            onClick={dismissInstall}
+            className="text-blue-400/60 hover:text-blue-300 shrink-0 mt-0.5"
+          >
+            <X size={16} />
+          </button>
+        </div>
+      )}
+
+      {/* ── Banner de instalação Android/Chrome ──────────────────── */}
+      {installState === 'android-chrome' && (
+        <button
+          className="rounded-2xl bg-gradient-to-r from-green-900/60 to-emerald-900/60 border border-green-500/30 p-4 flex items-center gap-3 w-full text-left"
+          onClick={triggerInstall}
+        >
+          <ArrowDownToLine size={22} className="text-green-400 shrink-0" />
+          <div className="flex-1">
+            <p className="text-sm font-semibold text-green-200">Instalar app</p>
+            <p className="text-xs text-green-300/80">Adicionar Cadeia à tela inicial</p>
+          </div>
+          <button
+            onClick={(e) => { e.stopPropagation(); dismissInstall(); }}
+            className="text-green-400/60 hover:text-green-300 shrink-0"
+          >
+            <X size={16} />
+          </button>
+        </button>
+      )}
+
       {/* ── Cabeçalho de riqueza ────────────────────────────────── */}
       <div className="ios-card p-5 flex flex-col gap-1">
         <p className="text-xs text-muted-foreground uppercase tracking-wider">Caixa Pessoal</p>

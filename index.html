@@ -3,21 +3,32 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover, user-scalable=no" />
-    <title>GSIA TRAFICS</title>
-    <meta name="description" content="Jogo de Estratégia e Administração — GSIA TRAFICS" />
+    <title>Cadeia — Império Econômico</title>
+    <meta name="description" content="Gerencie empresas, domine o mercado e construa seu império econômico. Jogo multiplayer de estratégia econômica." />
 
     <!-- PWA core -->
     <link rel="manifest" href="/manifest.webmanifest" />
-    <meta name="theme-color" content="#F2F2F7" media="(prefers-color-scheme: light)" />
-    <meta name="theme-color" content="#007AFF" media="(prefers-color-scheme: dark)" />
-    <meta name="color-scheme" content="light" />
+    <meta name="theme-color" content="#0F1120" />
+    <meta name="color-scheme" content="dark" />
 
     <!-- iOS PWA (Add to Home Screen) -->
     <meta name="apple-mobile-web-app-capable" content="yes" />
     <meta name="mobile-web-app-capable" content="yes" />
-    <meta name="apple-mobile-web-app-status-bar-style" content="default" />
-    <meta name="apple-mobile-web-app-title" content="GSIA" />
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+    <meta name="apple-mobile-web-app-title" content="Cadeia" />
     <meta name="format-detection" content="telephone=no" />
+
+    <!-- iOS safe-area: empurra conteúdo abaixo do notch e acima do home indicator -->
+    <style>
+      :root {
+        --safe-top:    env(safe-area-inset-top, 0px);
+        --safe-bottom: env(safe-area-inset-bottom, 0px);
+        --safe-left:   env(safe-area-inset-left, 0px);
+        --safe-right:  env(safe-area-inset-right, 0px);
+      }
+      html, body { margin: 0; padding: 0; background: #0F1120; overflow: hidden; }
+      #root { height: 100dvh; }
+    </style>
 
     <!-- Ícones -->
     <link rel="icon" href="/favicon.ico" sizes="any" />
@@ -25,7 +36,10 @@
     <link rel="icon" type="image/png" sizes="512x512" href="/icons/icon-512.png" />
     <link rel="apple-touch-icon" sizes="180x180" href="/icons/apple-touch-icon.png" />
 
-    <!-- Fontes: stack system-first (SF Pro no iOS) + Inter como fallback pra Android/Web -->
+    <!-- Splash screens iOS (tamanhos comuns) -->
+    <link rel="apple-touch-startup-image" href="/icons/icon-512.png" />
+
+    <!-- Fontes: SF Pro no iOS, Inter no resto -->
     <link rel="preconnect" href="https://fonts.googleapis.com" />
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
     <link
@@ -34,8 +48,8 @@
     />
 
     <!-- Open Graph -->
-    <meta property="og:title" content="GSIA TRAFICS" />
-    <meta property="og:description" content="Jogo de Estratégia e Administração — GSIA TRAFICS" />
+    <meta property="og:title" content="Cadeia — Império Econômico" />
+    <meta property="og:description" content="Gerencie empresas, domine o mercado e construa seu império econômico multiplayer." />
     <meta property="og:type" content="website" />
     <meta property="og:image" content="/icons/icon-512.png" />
     <meta name="twitter:card" content="summary_large_image" />

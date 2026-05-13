@@ -1,11 +1,11 @@
-/* GSIA TRAFICS — Service Worker
+/* Cadeia — Império Econômico — Service Worker
  * Estratégia:
  *  - HTML/navegação: network-first com fallback pra cache (offline)
  *  - Assets estáticos (JS/CSS/imagens/fontes): stale-while-revalidate
  *  - Requests Supabase e outras APIs: passa direto (sem interferir)
  */
 
-const VERSION = 'gsia-v1';
+const VERSION = 'cadeia-v1';
 const STATIC_CACHE = `${VERSION}-static`;
 const RUNTIME_CACHE = `${VERSION}-runtime`;
 

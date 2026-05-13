@@ -1,17 +1,18 @@
 {
-  "name": "GSIA TRAFICS",
-  "short_name": "GSIA",
-  "description": "Jogo de Estratégia e Administração — GSIA TRAFICS",
+  "name": "Cadeia — Império Econômico",
+  "short_name": "Cadeia",
+  "description": "Gerencie empresas, domine o mercado e construa seu império econômico multiplayer.",
   "start_url": "/",
   "scope": "/",
   "display": "standalone",
   "display_override": ["standalone", "fullscreen"],
   "orientation": "portrait",
-  "theme_color": "#007AFF",
-  "background_color": "#F2F2F7",
+  "theme_color": "#0F1120",
+  "background_color": "#0F1120",
   "categories": ["games", "business", "entertainment"],
   "lang": "pt-BR",
   "dir": "ltr",
+  "prefer_related_applications": false,
   "icons": [
     {
       "src": "/icons/icon-192.png",
@@ -42,6 +43,15 @@
       "sizes": "180x180",
       "type": "image/png",
       "purpose": "any"
+    }
+  ],
+  "screenshots": [
+    {
+      "src": "/icons/icon-512.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "form_factor": "narrow",
+      "label": "Tela inicial do Cadeia"
     }
   ]
 }
