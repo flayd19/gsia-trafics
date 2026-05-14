@@ -562,3 +562,12 @@ export const RETAIL_BASE_VELOCITY_PER_HOUR: Record<string, Record<string, Record
 export function getRegion(id: RegionId): Region {
   return REGIONS.find(r => r.id === id) ?? REGIONS[0]!;
 }
+
+// Returns the PMR price for a product/region pair; 0 if not found
+export function getPMR(
+  pmrList: import('@/types/cadeia').PMREntry[],
+  productId: string,
+  regionId: string,
+): number {
+  return pmrList.find(p => p.productId === productId && p.regionId === regionId)?.price ?? 0;
+}
