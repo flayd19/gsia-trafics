@@ -216,6 +216,16 @@ export interface GameNotification {
   companyId?: string;
 }
 
+// ── Navegação Hub ─────────────────────────────────────────────────────
+export type HubModule =
+  | 'hub'
+  | 'empresas'
+  | 'mercado'
+  | 'mapa'
+  | 'negociacoes'
+  | 'financas'
+  | 'perfil';
+
 // ── Estado Principal do Jogo ──────────────────────────────────────────
 export interface CadeiaState {
   playerCapital: number;
