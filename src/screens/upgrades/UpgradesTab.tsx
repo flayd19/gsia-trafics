@@ -1,12 +1,9 @@
 // =====================================================================
-// UpgradesTab.tsx — Upgrade catalog tab within company detail
-// Doc 04v2 — Modular Progression System
+// UpgradesTab.tsx — Upgrade catalog (fully offline, stored in Company)
 // =====================================================================
 
-import { useState, useEffect, useCallback } from 'react';
+import { useState } from 'react';
 import { ArrowUp, Lock, CheckCircle, Zap } from 'lucide-react';
-import { supabase } from '@/integrations/supabase/client';
-import { useAuth } from '@/hooks/useAuth';
 import type { Company } from '@/types/cadeia';
 import type { UseCadeiaReturn } from '@/hooks/useCadeia';
 import { getUpgradesForType, type UpgradeDef } from '@/data/upgrades';
@@ -37,34 +34,17 @@ interface Props {
 }
 
 export function UpgradesTab({ company, cadeia }: Props) {
-  const { user } = useAuth();
-  const [owned,      setOwned]      = useState<Set<string>>(new Set());
-  const [loading,    setLoading]    = useState(true);
-  const [buying,     setBuying]     = useState<string | null>(null);
-  const [toast,      setToast]      = useState<string | null>(null);
-  const [activeTab,  setActiveTab]  = useState<string>('equipment');
+  const [activeTab, setActiveTab] = useState<string>('equipment');
+  const [toast, setToast]         = useState<string | null>(null);
 
   const showToast = (msg: string) => {
     setToast(msg);
     setTimeout(() => setToast(null), 3000);
   };
 
-  const fetchOwned = useCallback(async () => {
-    if (!user) return;
-    const { data } = await supabase
-      .from('company_upgrades')
-      .select('upgrade_id')
-      .eq('user_id', user.id)
-      .eq('company_id', company.id);
-    setOwned(new Set((data ?? []).map((r) => (r as { upgrade_id: string }).upgrade_id)));
-    setLoading(false);
-  }, [user, company.id]);
-
-  useEffect(() => { fetchOwned(); }, [fetchOwned]);
-
+  const owned = new Set(company.upgrades ?? []);
   const upgrades = getUpgradesForType(company.typeId);
   const categories = [...new Set(upgrades.map((u) => u.category))];
-
   const displayed = upgrades.filter((u) => u.category === activeTab);
 
   const isUnlocked = (u: UpgradeDef): boolean => {
@@ -72,45 +52,21 @@ export function UpgradesTab({ company, cadeia }: Props) {
     return owned.has(u.requiresId);
   };
 
-  const purchase = async (upgrade: UpgradeDef) => {
-    if (!user) return;
+  const purchase = (upgrade: UpgradeDef) => {
+    if (owned.has(upgrade.id))    { showToast('Você já possui este upgrade.'); return; }
+    if (!isUnlocked(upgrade))     { showToast('Pré-requisito não atendido.'); return; }
     if (company.capital < upgrade.cost) {
-      showToast(`Caixa insuficiente (R$ ${company.capital.toFixed(2)})`);
+      showToast(`Caixa insuficiente. Custo: ${fmt(upgrade.cost)}`);
       return;
     }
-    if (owned.has(upgrade.id)) {
-      showToast('Você já possui este upgrade');
-      return;
-    }
-    if (!isUnlocked(upgrade)) {
-      showToast('Pré-requisito não atendido');
-      return;
-    }
-
-    setBuying(upgrade.id);
-    const { error: e } = await supabase.from('company_upgrades').insert({
-      user_id:    user.id,
-      company_id: company.id,
-      upgrade_id: upgrade.id,
-    });
-    if (e) {
-      showToast(`Erro: ${e.message}`);
-    } else {
-      // Deduct from company capital
-      cadeia.withdrawFromCompany(company.id, upgrade.cost);
-      setOwned((prev) => new Set([...prev, upgrade.id]));
-      showToast(`${upgrade.name} instalado!`);
-    }
-    setBuying(null);
+    const r = cadeia.buyUpgrade(company.id, upgrade.id, upgrade.cost);
+    if (r.ok) showToast(`✅ ${upgrade.name} instalado!`);
+    else showToast(r.error ?? 'Erro ao adquirir upgrade.');
   };
-
-  if (loading) {
-    return <div className="text-center text-slate-500 py-8 text-sm">Carregando...</div>;
-  }
 
   if (upgrades.length === 0) {
     return (
-      <div className="text-center text-slate-500 py-12">
+      <div className="text-center text-slate-500 py-12 px-4">
         <ArrowUp size={36} className="mx-auto mb-3 opacity-40" />
         <p className="text-sm">Nenhum upgrade disponível para este tipo de empresa.</p>
       </div>
@@ -118,7 +74,7 @@ export function UpgradesTab({ company, cadeia }: Props) {
   }
 
   return (
-    <div className="space-y-4">
+    <div className="p-4 space-y-4">
       {/* Category tabs */}
       <div className="flex gap-1 overflow-x-auto pb-1 no-scrollbar">
         {categories.map((cat) => (
@@ -136,13 +92,18 @@ export function UpgradesTab({ company, cadeia }: Props) {
         ))}
       </div>
 
+      {/* Info bar */}
+      <div className="rounded-xl bg-slate-800/40 border border-slate-700/30 px-3 py-2 text-xs text-slate-400 flex justify-between">
+        <span>{owned.size} upgrade{owned.size !== 1 ? 's' : ''} instalado{owned.size !== 1 ? 's' : ''}</span>
+        <span>Caixa: <span className="text-white font-semibold">{fmt(company.capital)}</span></span>
+      </div>
+
       {/* Upgrade cards */}
       <div className="space-y-2">
         {displayed.map((upgrade) => {
-          const isOwned    = owned.has(upgrade.id);
-          const unlocked   = isUnlocked(upgrade);
-          const canAfford  = company.capital >= upgrade.cost;
-          const isBuying   = buying === upgrade.id;
+          const isOwned   = owned.has(upgrade.id);
+          const unlocked  = isUnlocked(upgrade);
+          const canAfford = company.capital >= upgrade.cost;
 
           return (
             <div
@@ -173,28 +134,36 @@ export function UpgradesTab({ company, cadeia }: Props) {
                   <p className="text-slate-400 text-xs mt-1 leading-relaxed">{upgrade.description}</p>
                   {!unlocked && upgrade.requiresId && (
                     <p className="text-amber-400/70 text-[10px] mt-1">
-                      Requer: {upgrade.requiresId.replace(/_/g, ' ')}
+                      🔒 Requer: {upgrade.requiresId.replace(/_/g, ' ')}
                     </p>
                   )}
+                  {/* Effects preview */}
+                  <div className="flex flex-wrap gap-1.5 mt-2">
+                    {Object.entries(upgrade.effects).map(([key, val]) => (
+                      <span key={key} className="text-[10px] bg-slate-700/60 text-slate-300 px-1.5 py-0.5 rounded-lg">
+                        {key.replace(/_/g, ' ')}: {String(val)}
+                      </span>
+                    ))}
+                  </div>
                 </div>
 
-                {!isOwned && (
-                  <button
-                    disabled={!unlocked || !canAfford || !!isBuying}
-                    onClick={() => purchase(upgrade)}
-                    className={`shrink-0 px-3 py-1.5 rounded-xl text-xs font-bold transition-all active:scale-95 ${
-                      unlocked && canAfford
-                        ? 'bg-blue-600 hover:bg-blue-500 text-white'
-                        : 'bg-slate-700 text-slate-500 cursor-not-allowed'
-                    }`}
-                  >
-                    {isBuying ? '...' : fmt(upgrade.cost)}
-                  </button>
-                )}
-
-                {isOwned && (
-                  <span className="shrink-0 text-emerald-400 text-xs font-semibold">Instalado</span>
-                )}
+                <div className="shrink-0 flex flex-col items-end gap-2">
+                  {isOwned ? (
+                    <span className="text-emerald-400 text-xs font-semibold">✅ Instalado</span>
+                  ) : (
+                    <button
+                      disabled={!unlocked || !canAfford}
+                      onClick={() => purchase(upgrade)}
+                      className={`px-3 py-1.5 rounded-xl text-xs font-bold transition-all active:scale-95 ${
+                        unlocked && canAfford
+                          ? 'bg-blue-600 hover:bg-blue-500 text-white'
+                          : 'bg-slate-700 text-slate-500 cursor-not-allowed'
+                      }`}
+                    >
+                      {fmt(upgrade.cost)}
+                    </button>
+                  )}
+                </div>
               </div>
             </div>
           );
@@ -202,7 +171,7 @@ export function UpgradesTab({ company, cadeia }: Props) {
       </div>
 
       {toast && (
-        <div className="fixed bottom-6 left-1/2 -translate-x-1/2 bg-slate-800 border border-slate-600 text-white text-sm px-4 py-2 rounded-full shadow-xl z-50">
+        <div className="fixed bottom-6 left-1/2 -translate-x-1/2 bg-slate-800 border border-slate-600 text-white text-sm px-4 py-2 rounded-full shadow-xl z-50 pointer-events-none">
           {toast}
         </div>
       )}

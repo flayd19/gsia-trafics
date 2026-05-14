@@ -138,6 +138,29 @@ export interface CompanyConfig {
   salesPolicy: SalesPolicy;
 }
 
+// ── Contrato de Fornecimento ──────────────────────────────────────────
+export type ContractSide = 'buy' | 'sell';
+
+export interface SupplyContract {
+  id: string;
+  /** Quem assinou: o jogador compra ('buy') ou vende ('sell') */
+  side: ContractSide;
+  productId: string;
+  /** Quantidade por ciclo contratual (qtyPerDay unidades/dia) */
+  qtyPerDay: number;
+  /** Preço fixo acordado por unidade */
+  pricePerUnit: number;
+  /** Nome do parceiro NPC */
+  partnerName: string;
+  /** Duração em dias reais (null = permanente até cancelamento) */
+  durationDays: number | null;
+  createdAt: number;
+  /** Quando o contrato expira (ms); null se permanente */
+  expiresAt: number | null;
+  /** Último tick em que foi processado */
+  lastProcessedAt: number;
+}
+
 export interface Company {
   id: string;
   cnpj: string;
@@ -156,6 +179,12 @@ export interface Company {
   createdAt: number;
   /** Timestamp do último débito de custo operacional */
   lastOperationalCostAt: number;
+  /** Funcionários contratados: { role: count } */
+  employees: Record<string, number>;
+  /** IDs de upgrades adquiridos */
+  upgrades: string[];
+  /** Contratos de fornecimento ativos */
+  contracts: SupplyContract[];
 }
 
 // ── Transações ────────────────────────────────────────────────────────
@@ -168,7 +197,10 @@ export type TransactionType =
   | 'dividend'
   | 'logistics_income'
   | 'company_purchase'
-  | 'operational_cost';
+  | 'operational_cost'
+  | 'salary_cost'
+  | 'contract_purchase'
+  | 'contract_sale';
 
 export interface Transaction {
   id: string;

@@ -253,7 +253,42 @@ export function buildCompany(params: BuildCompanyParams): Company {
     totalCost: 0,
     createdAt: Date.now(),
     lastOperationalCostAt: Date.now(),
+    employees: {},
+    upgrades: [],
+    contracts: [],
   };
+}
+
+// ── Tabela de salários diários (R$) ───────────────────────────────────
+export const EMPLOYEE_SALARY: Record<string, number> = {
+  repositor: 70,
+  atendente: 90,
+  caixa: 95,
+  operario: 80,
+  tecnico: 180,
+  motorista: 150,
+  mecanico: 200,
+  engenheiro: 500,
+  gerente: 400,
+};
+
+// Cycle-time reduction per role per head (fraction)
+const EMPLOYEE_CYCLE_REDUCTION: Record<string, number> = {
+  operario:   0.05,
+  tecnico:    0.10,
+  engenheiro: 0.15,
+};
+
+/**
+ * Retorna o multiplicador de duração do ciclo dado o plantel.
+ * Redução é somada e capada em 50% → multiplicador mín. 0.50.
+ */
+export function calcProductionSpeedMultiplier(employees: Record<string, number>): number {
+  let totalReduction = 0;
+  for (const [role, count] of Object.entries(employees)) {
+    totalReduction += (EMPLOYEE_CYCLE_REDUCTION[role] ?? 0) * count;
+  }
+  return 1 - Math.min(totalReduction, 0.5);
 }
 
 // ── Resultado do tick por empresa ─────────────────────────────────────
@@ -342,6 +377,35 @@ export function tickCompany(
     }
   }
 
+  // ── 0b. Salários de funcionários (proporcional ao delta) ─────────
+  {
+    const totalDailySalary = Object.entries(c.employees ?? {}).reduce(
+      (sum, [role, count]) => sum + (EMPLOYEE_SALARY[role] ?? 0) * count,
+      0,
+    );
+    if (totalDailySalary > 0) {
+      const costPerMs = totalDailySalary / (24 * 60 * 60 * 1_000);
+      const salaryCost = costPerMs * deltaMs;
+      if (salaryCost > 0.01) {
+        c = { ...c, capital: c.capital - salaryCost, totalCost: c.totalCost + salaryCost };
+        // Transação de salário a cada 60 min
+        const lastSalaryKey = `lastSalaryAt_${c.id}`;
+        const lastSalaryAt = (c as unknown as Record<string, number>)[lastSalaryKey] ?? 0;
+        if (nowMs - lastSalaryAt >= 60 * 60 * 1_000) {
+          newTransactions.push({
+            id: uid(),
+            companyId: c.id,
+            companyName: c.name,
+            type: 'salary_cost',
+            amount: -salaryCost,
+            description: `👷 Salários (${Object.values(c.employees ?? {}).reduce((s, n) => s + n, 0)} func.)`,
+            occurredAt: nowMs,
+          });
+        }
+      }
+    }
+  }
+
   // ── 1. Completar produções ────────────────────────────────────────
   const stillRunning: ActiveProduction[] = [];
   for (const prod of c.activeProductions) {
@@ -415,11 +479,12 @@ export function tickCompany(
             occurredAt: nowMs,
           });
         }
+        const speedMult = calcProductionSpeedMultiplier(c.employees ?? {});
         const newProd: ActiveProduction = {
           id: uid(),
           recipeId: recipe.id,
           startedAt: nowMs,
-          completesAt: nowMs + recipe.durationMin * 60_000,
+          completesAt: nowMs + recipe.durationMin * 60_000 * speedMult,
           status: 'running',
         };
         c = { ...c, activeProductions: [...c.activeProductions, newProd] };
@@ -565,6 +630,105 @@ export function tickCompany(
         pmrUpdates.push({ productId: inp.productId, regionId: c.regionId, price: listing.pricePerUnit });
       }
     }
+  }
+
+  // ── 6. Processar contratos de fornecimento ────────────────────────
+  if ((c.contracts ?? []).length > 0) {
+    const MS_PER_DAY = 24 * 60 * 60 * 1_000;
+    const updatedContracts = [...(c.contracts ?? [])];
+
+    for (let i = 0; i < updatedContracts.length; i++) {
+      const contract = updatedContracts[i]!;
+
+      // Expirar contratos vencidos
+      if (contract.expiresAt !== null && nowMs >= contract.expiresAt) {
+        updatedContracts.splice(i, 1);
+        i--;
+        newNotifications.push({
+          id: uid(),
+          type: 'info',
+          title: 'Contrato encerrado',
+          message: `Contrato com ${contract.partnerName} expirou.`,
+          createdAt: nowMs,
+          read: false,
+          companyId: c.id,
+        });
+        continue;
+      }
+
+      // Calcular quanto processar no delta
+      const lastProcessed = contract.lastProcessedAt;
+      const pendingMs = nowMs - lastProcessed;
+      if (pendingMs < 0) continue;
+      const qtyToProcess = (contract.qtyPerDay / MS_PER_DAY) * pendingMs;
+      if (qtyToProcess < 0.001) continue;
+
+      const product = getProduct(contract.productId);
+      const totalCost = qtyToProcess * contract.pricePerUnit;
+
+      if (contract.side === 'buy') {
+        // Compra: precisa de capital
+        if (c.capital < totalCost) {
+          newNotifications.push({
+            id: uid(),
+            type: 'warning',
+            title: 'Contrato pausado',
+            message: `Sem capital para executar contrato de compra de ${product.name}.`,
+            createdAt: nowMs,
+            read: false,
+            companyId: c.id,
+          });
+          continue;
+        }
+        c.inventory = addToInventory(c.inventory, contract.productId, qtyToProcess, contract.pricePerUnit);
+        c = { ...c, capital: c.capital - totalCost, totalCost: c.totalCost + totalCost };
+        newTransactions.push({
+          id: uid(),
+          companyId: c.id,
+          companyName: c.name,
+          type: 'contract_purchase',
+          productId: contract.productId,
+          productName: product.name,
+          quantity: qtyToProcess,
+          amount: -totalCost,
+          description: `📋 Contrato: ${qtyToProcess.toFixed(1)} ${product.unit} × R$${contract.pricePerUnit.toFixed(2)} de ${contract.partnerName}`,
+          occurredAt: nowMs,
+        });
+      } else {
+        // Venda: precisa de estoque
+        const inStock = getInventoryQty(c, contract.productId);
+        const actualQty = Math.min(qtyToProcess, inStock);
+        if (actualQty < 0.001) continue;
+        const revenue = actualQty * contract.pricePerUnit;
+        const taxRate = calcTaxRate(totalCompanies);
+        const taxAmt = revenue * taxRate;
+        const netRevenue = revenue - taxAmt;
+        c.inventory = removeFromInventory(c.inventory, contract.productId, actualQty);
+        c = {
+          ...c,
+          capital: c.capital + netRevenue,
+          totalRevenue: c.totalRevenue + revenue,
+          totalCost: c.totalCost + taxAmt,
+        };
+        newTransactions.push({
+          id: uid(),
+          companyId: c.id,
+          companyName: c.name,
+          type: 'contract_sale',
+          productId: contract.productId,
+          productName: product.name,
+          quantity: actualQty,
+          amount: netRevenue,
+          description: `📋 Contrato venda: ${actualQty.toFixed(1)} ${product.unit} × R$${contract.pricePerUnit.toFixed(2)} para ${contract.partnerName}`,
+          occurredAt: nowMs,
+        });
+        pmrUpdates.push({ productId: contract.productId, regionId: c.regionId, price: contract.pricePerUnit });
+      }
+
+      updatedContracts[i] = { ...contract, lastProcessedAt: nowMs };
+    }
+
+    c = { ...c, contracts: updatedContracts };
   }
 
   return {

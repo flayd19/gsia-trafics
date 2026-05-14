@@ -653,49 +653,67 @@ function TabVender({ company, cadeia }: { company: Company; cadeia: UseCadeiaRet
   );
 }
 
-// 👷 RH
+// 👷 RH — persisted via company.employees
 function TabRH({ company, cadeia }: { company: Company; cadeia: UseCadeiaReturn }) {
   const def   = getCompanyType(company.typeId);
   const roles = EMPLOYEE_ROLES[def.category] ?? EMPLOYEE_ROLES.extracao!;
-  const [counts, setCounts] = useState<Record<string, number>>({});
-  const [toast, setToast]   = useState<string | null>(null);
+  const [toast, setToast] = useState<string | null>(null);
 
   const showToast = (msg: string) => { setToast(msg); setTimeout(() => setToast(null), 2500); };
 
-  const totalSalary = Object.entries(counts).reduce((s, [, n]) => s + n * (roles.find((r) => r.role === Object.keys(counts)[0])?.salary ?? 0), 0);
+  const employees = company.employees ?? {};
+  const totalHeads = Object.values(employees).reduce((s, n) => s + n, 0);
+  const totalDailySalary = Object.entries(employees).reduce(
+    (s, [role, n]) => s + (roles.find((r) => r.role === role)?.salary ?? 0) * n,
+    0,
+  );
+
+  // Approximate cycle speedup
+  const speedups: string[] = [];
+  Object.entries(employees).forEach(([role, n]) => {
+    if (n > 0 && (role === 'operario' || role === 'tecnico' || role === 'engenheiro')) {
+      const pct = Math.round(({ operario: 5, tecnico: 10, engenheiro: 15 }[role] ?? 0) * n);
+      speedups.push(`-${pct}% ciclo`);
+    }
+  });
 
   const hire = (role: string, salary: number, max?: number) => {
-    const cur = counts[role] ?? 0;
-    if (max !== undefined && cur >= max) { showToast(`Máximo de ${max} para esta função`); return; }
-    const dayCost = salary;
-    if (company.capital < dayCost * 7) { showToast(`Caixa insuficiente para 1 semana de salário`); return; }
-    setCounts((prev) => ({ ...prev, [role]: (prev[role] ?? 0) + 1 }));
-    showToast(`+1 ${role} contratado!`);
+    const r = cadeia.hireEmployee(company.id, role, salary, max);
+    if (r.ok) showToast(`✅ +1 contratado!`);
+    else showToast(r.error ?? 'Erro.');
   };
 
   const fire = (role: string) => {
-    setCounts((prev) => ({ ...prev, [role]: Math.max(0, (prev[role] ?? 0) - 1) }));
+    const r = cadeia.fireEmployee(company.id, role);
+    if (!r.ok) showToast(r.error ?? 'Erro.');
+    else showToast('Funcionário demitido.');
   };
 
   return (
     <div className="p-4 space-y-4">
+      {/* Summary */}
       <div className="rounded-2xl bg-slate-800/60 border border-slate-700/40 p-3 text-sm space-y-1">
         <div className="flex justify-between">
           <span className="text-slate-400">Funcionários</span>
-          <span className="text-white font-semibold">
-            {Object.values(counts).reduce((s, n) => s + n, 0)} contratados
-          </span>
+          <span className="text-white font-semibold">{totalHeads} contratados</span>
         </div>
         <div className="flex justify-between">
-          <span className="text-slate-400">Salários diários</span>
-          <span className="text-red-400 font-semibold">{fmt(Object.entries(counts).reduce((s, [r, n]) => s + n * (roles.find((ro) => ro.role === r)?.salary ?? 0), 0))}</span>
+          <span className="text-slate-400">Custo diário</span>
+          <span className="text-red-400 font-semibold">{fmt(totalDailySalary)}/dia</span>
         </div>
+        {speedups.length > 0 && (
+          <div className="flex flex-wrap gap-1 mt-1">
+            {speedups.map((s, i) => (
+              <span key={i} className="text-[10px] bg-emerald-900/30 text-emerald-400 px-1.5 py-0.5 rounded-lg">{s}</span>
+            ))}
+          </div>
+        )}
       </div>
 
       <p className="text-slate-500 text-[10px] font-bold uppercase tracking-widest">Tipos disponíveis</p>
 
       {roles.map((r) => {
-        const n = counts[r.role] ?? 0;
+        const n = employees[r.role] ?? 0;
         return (
           <div key={r.role} className="rounded-2xl bg-slate-800/60 border border-slate-700/40 p-4 space-y-2">
             <div className="flex items-start justify-between">
@@ -704,7 +722,9 @@ function TabRH({ company, cadeia }: { company: Company; cadeia: UseCadeiaReturn 
                 <p className="text-slate-400 text-xs">{fmt(r.salary)}/dia · {r.bonus}</p>
                 {r.max && <p className="text-slate-500 text-xs">Máx: {r.max}</p>}
               </div>
-              <span className="text-slate-400 text-sm">Tem: {n}</span>
+              <span className={`text-sm font-semibold ${n > 0 ? 'text-emerald-400' : 'text-slate-500'}`}>
+                {n > 0 ? `${n} ativo${n !== 1 ? 's' : ''}` : 'Nenhum'}
+              </span>
             </div>
             <div className="flex gap-2">
               <button
@@ -726,7 +746,7 @@ function TabRH({ company, cadeia }: { company: Company; cadeia: UseCadeiaReturn 
       })}
 
       {toast && (
-        <div className="fixed bottom-6 left-1/2 -translate-x-1/2 bg-slate-800 border border-slate-600 text-white text-sm px-4 py-2 rounded-full shadow-xl z-50">
+        <div className="fixed bottom-6 left-1/2 -translate-x-1/2 bg-slate-800 border border-slate-600 text-white text-sm px-4 py-2 rounded-full shadow-xl z-50 pointer-events-none">
           {toast}
         </div>
       )}
@@ -734,24 +754,233 @@ function TabRH({ company, cadeia }: { company: Company; cadeia: UseCadeiaReturn 
   );
 }
 
-// 📋 Contratos
-function TabContratos() {
+// ── NPC contract templates ────────────────────────────────────────────
+const NPC_PARTNERS = [
+  'Aço Industrial Brasil', 'Granel Express', 'PetroSul Distribuidora',
+  'AlimentBR', 'Construmax Atacado', 'MineraFerro SA',
+  'Combustível Nacional', 'FarinhaTop Moinho',
+];
+
+function randomPartner() {
+  return NPC_PARTNERS[Math.floor(Math.random() * NPC_PARTNERS.length)]!;
+}
+
+// 📋 Contratos — NPC supply contracts (offline)
+function TabContratos({ company, cadeia }: { company: Company; cadeia: UseCadeiaReturn }) {
+  const def = getCompanyType(company.typeId);
+  const contracts = company.contracts ?? [];
+
+  // Wizard state
+  const [showWizard, setShowWizard]   = useState(false);
+  const [side, setSide]               = useState<'buy' | 'sell'>('buy');
+  const [productId, setProductId]     = useState('');
+  const [qtyPerDay, setQtyPerDay]     = useState('');
+  const [pricePerUnit, setPricePerUnit] = useState('');
+  const [durationDays, setDurationDays] = useState('30');
+  const [toast, setToast]             = useState<string | null>(null);
+
+  const showToast = (msg: string) => { setToast(msg); setTimeout(() => setToast(null), 3000); };
+
+  // Products accepted by this company type
+  const accepted = def.acceptedProducts;
+
+  const handleSign = () => {
+    const qty   = parseFloat(qtyPerDay);
+    const price = parseFloat(pricePerUnit);
+    const days  = parseInt(durationDays);
+    if (!productId)          { showToast('Selecione um produto.'); return; }
+    if (isNaN(qty) || qty <= 0)    { showToast('Quantidade inválida.'); return; }
+    if (isNaN(price) || price <= 0) { showToast('Preço inválido.'); return; }
+
+    const r = cadeia.signContract(company.id, {
+      side,
+      productId,
+      qtyPerDay: qty,
+      pricePerUnit: price,
+      partnerName: randomPartner(),
+      durationDays: isNaN(days) || days <= 0 ? null : days,
+      expiresAt: null, // engine calculates
+    });
+
+    if (r.ok) {
+      showToast('✅ Contrato assinado!');
+      setShowWizard(false);
+      setProductId('');
+      setQtyPerDay('');
+      setPricePerUnit('');
+    } else {
+      showToast(r.error ?? 'Erro.');
+    }
+  };
+
   return (
     <div className="p-4 space-y-4">
-      <div className="rounded-2xl bg-slate-800/40 border border-slate-700/30 p-6 text-center space-y-3">
-        <FileText size={40} className="mx-auto text-slate-600" />
-        <p className="text-white font-semibold text-sm">Contratos ativos: 0</p>
-        <p className="text-slate-400 text-xs leading-relaxed">
-          Contratos garantem volume e preço fixo, criando previsibilidade no fornecimento.
-        </p>
-      </div>
-      <button className="w-full rounded-2xl bg-blue-600/20 border border-blue-700/30 text-blue-300 text-sm font-semibold py-3 hover:bg-blue-600/30 active:scale-[0.98] transition-all">
-        Propor contrato a outro jogador
-      </button>
-      <div className="rounded-2xl bg-slate-800/40 border border-slate-700/30 p-4 text-sm text-slate-500">
-        <p className="font-semibold mb-1">Contratos recebidos: 0</p>
-        <p className="text-xs">Quando alguém propor um contrato para você, aparece aqui.</p>
-      </div>
+      {/* Active contracts */}
+      {contracts.length === 0 ? (
+        <div className="rounded-2xl bg-slate-800/40 border border-slate-700/30 p-6 text-center space-y-2">
+          <FileText size={36} className="mx-auto text-slate-600" />
+          <p className="text-slate-400 text-sm leading-relaxed">
+            Contratos garantem volume e preço fixo por dia — compra ou venda automática sem precisar acessar o mercado.
+          </p>
+        </div>
+      ) : (
+        <div className="space-y-3">
+          <p className="text-slate-500 text-[10px] font-bold uppercase tracking-widest">
+            Contratos ativos ({contracts.length}/5)
+          </p>
+          {contracts.map((c) => {
+            const p = PRODUCTS.find((pr) => pr.id === c.productId);
+            const daysLeft = c.expiresAt ? Math.max(0, Math.ceil((c.expiresAt - Date.now()) / 86_400_000)) : null;
+            return (
+              <div key={c.id} className="rounded-2xl bg-slate-800/60 border border-slate-700/40 p-4 space-y-2">
+                <div className="flex items-start justify-between gap-2">
+                  <div className="flex-1 min-w-0">
+                    <p className="font-semibold text-white text-sm">
+                      {c.side === 'buy' ? '🛒' : '💰'} {p?.icon} {p?.name ?? c.productId}
+                    </p>
+                    <p className="text-slate-400 text-xs">{c.partnerName}</p>
+                  </div>
+                  <button
+                    onClick={() => { cadeia.cancelContract(company.id, c.id); showToast('Contrato cancelado.'); }}
+                    className="text-red-400/60 hover:text-red-400 text-xs shrink-0 p-1"
+                  >
+                    ✕
+                  </button>
+                </div>
+                <div className="grid grid-cols-3 gap-2 text-xs text-center">
+                  <div className="bg-slate-700/40 rounded-lg py-1.5">
+                    <p className="text-slate-400">Qtd/dia</p>
+                    <p className="text-white font-semibold">{c.qtyPerDay.toFixed(1)}</p>
+                  </div>
+                  <div className="bg-slate-700/40 rounded-lg py-1.5">
+                    <p className="text-slate-400">Preço/un</p>
+                    <p className="text-white font-semibold">{fmt(c.pricePerUnit)}</p>
+                  </div>
+                  <div className="bg-slate-700/40 rounded-lg py-1.5">
+                    <p className="text-slate-400">Restam</p>
+                    <p className="text-white font-semibold">{daysLeft !== null ? `${daysLeft}d` : '∞'}</p>
+                  </div>
+                </div>
+                <p className={`text-xs font-semibold ${c.side === 'buy' ? 'text-amber-400' : 'text-emerald-400'}`}>
+                  {c.side === 'buy' ? '📥 Compra automática' : '📤 Venda automática'} · {fmt(c.qtyPerDay * c.pricePerUnit)}/dia
+                </p>
+              </div>
+            );
+          })}
+        </div>
+      )}
+
+      {/* New contract button / wizard */}
+      {contracts.length < 5 && !showWizard && (
+        <button
+          onClick={() => setShowWizard(true)}
+          className="w-full rounded-2xl bg-blue-600/20 border border-blue-700/30 text-blue-300 text-sm font-semibold py-3 hover:bg-blue-600/30 active:scale-[0.98] transition-all"
+        >
+          + Novo contrato NPC
+        </button>
+      )}
+
+      {showWizard && (
+        <div className="rounded-2xl bg-slate-800/60 border border-slate-700/40 p-4 space-y-3">
+          <p className="text-white font-semibold text-sm">Novo contrato</p>
+
+          {/* Side */}
+          <div className="flex gap-2">
+            {(['buy', 'sell'] as const).map((s) => (
+              <button
+                key={s}
+                onClick={() => setSide(s)}
+                className={`flex-1 py-2 rounded-xl text-sm font-semibold transition-all ${
+                  side === s ? 'bg-slate-600 text-white' : 'text-slate-500 hover:text-slate-300'
+                }`}
+              >
+                {s === 'buy' ? '🛒 Eu compro' : '💰 Eu vendo'}
+              </button>
+            ))}
+          </div>
+
+          {/* Product */}
+          <div>
+            <label className="text-slate-400 text-xs block mb-1">Produto</label>
+            <select
+              value={productId}
+              onChange={(e) => setProductId(e.target.value)}
+              className="w-full rounded-xl bg-slate-700 border border-slate-600 text-white px-3 py-2.5 text-sm focus:outline-none focus:border-blue-500"
+            >
+              <option value="">Selecionar...</option>
+              {accepted.map((pid) => {
+                const p = PRODUCTS.find((pr) => pr.id === pid);
+                return <option key={pid} value={pid}>{p?.icon} {p?.name ?? pid}</option>;
+              })}
+            </select>
+          </div>
+
+          {/* Qty + Price */}
+          <div className="grid grid-cols-2 gap-3">
+            <div>
+              <label className="text-slate-400 text-xs block mb-1">Qtd/dia</label>
+              <input
+                type="number" min={1} value={qtyPerDay}
+                onChange={(e) => setQtyPerDay(e.target.value)}
+                placeholder="0"
+                className="w-full rounded-xl bg-slate-700 border border-slate-600 text-white px-3 py-2 text-sm focus:outline-none focus:border-blue-500"
+              />
+            </div>
+            <div>
+              <label className="text-slate-400 text-xs block mb-1">Preço/un (R$)</label>
+              <input
+                type="number" min={0} step={0.01} value={pricePerUnit}
+                onChange={(e) => setPricePerUnit(e.target.value)}
+                placeholder="0,00"
+                className="w-full rounded-xl bg-slate-700 border border-slate-600 text-white px-3 py-2 text-sm focus:outline-none focus:border-blue-500"
+              />
+            </div>
+          </div>
+
+          {/* Duration */}
+          <div>
+            <label className="text-slate-400 text-xs block mb-1">Duração (dias, 0 = permanente)</label>
+            <select
+              value={durationDays}
+              onChange={(e) => setDurationDays(e.target.value)}
+              className="w-full rounded-xl bg-slate-700 border border-slate-600 text-white px-3 py-2.5 text-sm focus:outline-none focus:border-blue-500"
+            >
+              <option value="7">7 dias</option>
+              <option value="30">30 dias</option>
+              <option value="90">90 dias</option>
+              <option value="0">Permanente</option>
+            </select>
+          </div>
+
+          {/* Cost preview */}
+          {qtyPerDay && pricePerUnit && (
+            <div className={`text-xs rounded-lg px-3 py-2 ${side === 'buy' ? 'bg-amber-900/20 text-amber-300' : 'bg-emerald-900/20 text-emerald-300'}`}>
+              {side === 'buy' ? '💸' : '💰'} {fmt(parseFloat(qtyPerDay || '0') * parseFloat(pricePerUnit || '0'))}/dia
+            </div>
+          )}
+
+          <div className="flex gap-2">
+            <button
+              onClick={() => setShowWizard(false)}
+              className="flex-1 py-2.5 rounded-xl bg-slate-700 text-slate-400 text-sm font-semibold active:scale-95 transition-all"
+            >
+              Cancelar
+            </button>
+            <button
+              onClick={handleSign}
+              className="flex-1 py-2.5 rounded-xl bg-blue-600 hover:bg-blue-500 text-white text-sm font-bold active:scale-95 transition-all"
+            >
+              Assinar
+            </button>
+          </div>
+        </div>
+      )}
+
+      {toast && (
+        <div className="fixed bottom-6 left-1/2 -translate-x-1/2 bg-slate-800 border border-slate-600 text-white text-sm px-4 py-2 rounded-full shadow-xl z-50 pointer-events-none">
+          {toast}
+        </div>
+      )}
     </div>
   );
 }
@@ -951,7 +1180,7 @@ export function CompanyDetailScreen({ company, cadeia, onBack }: Props) {
         {tab === 'vender'    && <TabVender    company={company} cadeia={cadeia} />}
         {tab === 'rh'        && <TabRH        company={company} cadeia={cadeia} />}
         {tab === 'upgrades'  && <UpgradesTab  company={company} cadeia={cadeia} />}
-        {tab === 'contratos' && <TabContratos />}
+        {tab === 'contratos' && <TabContratos company={company} cadeia={cadeia} />}
         {tab === 'caixa'     && <TabCaixa     company={company} cadeia={cadeia} />}
       </div>
     </div>

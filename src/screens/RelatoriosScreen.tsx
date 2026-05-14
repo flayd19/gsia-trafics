@@ -19,12 +19,17 @@ function fmt(v: number): string {
 
 const TX_TYPE_LABELS: Record<string, string> = {
   production_complete: '⚙️ Produção',
-  sale: '💰 Venda',
-  purchase: '🛒 Compra',
-  tax: '🏛️ Imposto',
-  dividend: '💸 Dividendo',
-  logistics_income: '🚚 Logística',
-  company_purchase: '🏢 Empresa',
+  production_cost:     '⚙️ Custo lote',
+  sale:                '💰 Venda',
+  purchase:            '🛒 Compra',
+  tax:                 '🏛️ Imposto',
+  dividend:            '💸 Dividendo',
+  logistics_income:    '🚚 Logística',
+  company_purchase:    '🏢 Empresa',
+  operational_cost:    '🏭 Custo fixo',
+  salary_cost:         '👷 Salários',
+  contract_purchase:   '📋 Contrato compra',
+  contract_sale:       '📋 Contrato venda',
 };
 
 export function RelatoriosScreen({ cadeia }: Props) {

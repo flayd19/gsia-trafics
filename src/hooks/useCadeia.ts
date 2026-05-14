@@ -79,7 +79,14 @@ function loadState(): CadeiaState {
           return existing ?? { productId: p.id, regionId: r.id as RegionId, price: p.basePrice, lastUpdated: nowMs };
         }),
       );
-      return { ...parsed, pmr: fullPmr };
+      // Migrar empresas antigas que não têm employees/upgrades/contracts
+      const migratedCompanies = (parsed.companies ?? []).map((c) => ({
+        ...c,
+        employees: c.employees ?? {},
+        upgrades:  c.upgrades  ?? [],
+        contracts: c.contracts ?? [],
+      }));
+      return { ...parsed, pmr: fullPmr, companies: migratedCompanies };
     }
   } catch {
     // ignore
@@ -122,6 +129,17 @@ export interface UseCadeiaReturn {
   listOnMarket: (companyId: string, productId: string, qty: number, price: number) => { ok: boolean; error?: string };
   buyFromSpotMarket: (buyerCompanyId: string, listingId: string, qty: number) => { ok: boolean; error?: string };
   refreshMarket: () => void;
+
+  // RH — Funcionários
+  hireEmployee: (companyId: string, role: string, salary: number, max?: number) => { ok: boolean; error?: string };
+  fireEmployee: (companyId: string, role: string) => { ok: boolean; error?: string };
+
+  // Upgrades
+  buyUpgrade: (companyId: string, upgradeId: string, cost: number) => { ok: boolean; error?: string };
+
+  // Contratos
+  signContract: (companyId: string, contract: Omit<import('@/types/cadeia').SupplyContract, 'id' | 'createdAt' | 'lastProcessedAt'>) => { ok: boolean; error?: string };
+  cancelContract: (companyId: string, contractId: string) => void;
 
   // Utilitários
   resetGame: () => void;
@@ -608,6 +626,127 @@ export function useCadeia(): UseCadeiaReturn {
     [state.marketListings],
   );
 
+  // ── RH ────────────────────────────────────────────────────────────
+
+  const hireEmployee = useCallback(
+    (companyId: string, role: string, salary: number, max?: number): { ok: boolean; error?: string } => {
+      const s = stateRef.current;
+      const company = s.companies.find((c) => c.id === companyId);
+      if (!company) return { ok: false, error: 'Empresa não encontrada.' };
+
+      const current = (company.employees ?? {})[role] ?? 0;
+      if (max !== undefined && current >= max) {
+        return { ok: false, error: `Máximo de ${max} para esta função.` };
+      }
+      // Exige capital para pelo menos 7 dias de salário
+      if (company.capital < salary * 7) {
+        return { ok: false, error: 'Caixa insuficiente para 1 semana de salário.' };
+      }
+
+      setState((prev) => ({
+        ...prev,
+        companies: prev.companies.map((c) =>
+          c.id === companyId
+            ? { ...c, employees: { ...(c.employees ?? {}), [role]: ((c.employees ?? {})[role] ?? 0) + 1 } }
+            : c,
+        ),
+      }));
+      return { ok: true };
+    },
+    [],
+  );
+
+  const fireEmployee = useCallback(
+    (companyId: string, role: string): { ok: boolean; error?: string } => {
+      const s = stateRef.current;
+      const company = s.companies.find((c) => c.id === companyId);
+      if (!company) return { ok: false, error: 'Empresa não encontrada.' };
+
+      const current = (company.employees ?? {})[role] ?? 0;
+      if (current <= 0) return { ok: false, error: 'Sem funcionários nesta função.' };
+
+      setState((prev) => ({
+        ...prev,
+        companies: prev.companies.map((c) => {
+          if (c.id !== companyId) return c;
+          const updated = { ...(c.employees ?? {}), [role]: Math.max(0, ((c.employees ?? {})[role] ?? 0) - 1) };
+          if (updated[role] === 0) delete updated[role];
+          return { ...c, employees: updated };
+        }),
+      }));
+      return { ok: true };
+    },
+    [],
+  );
+
+  // ── Upgrades ──────────────────────────────────────────────────────
+
+  const buyUpgrade = useCallback(
+    (companyId: string, upgradeId: string, cost: number): { ok: boolean; error?: string } => {
+      const s = stateRef.current;
+      const company = s.companies.find((c) => c.id === companyId);
+      if (!company) return { ok: false, error: 'Empresa não encontrada.' };
+      if ((company.upgrades ?? []).includes(upgradeId)) return { ok: false, error: 'Upgrade já adquirido.' };
+      if (company.capital < cost) return { ok: false, error: 'Caixa insuficiente.' };
+
+      setState((prev) => ({
+        ...prev,
+        companies: prev.companies.map((c) =>
+          c.id === companyId
+            ? { ...c, capital: c.capital - cost, totalCost: c.totalCost + cost, upgrades: [...(c.upgrades ?? []), upgradeId] }
+            : c,
+        ),
+      }));
+      return { ok: true };
+    },
+    [],
+  );
+
+  // ── Contratos ────────────────────────────────────────────────────
+
+  const signContract = useCallback(
+    (
+      companyId: string,
+      contract: Omit<import('@/types/cadeia').SupplyContract, 'id' | 'createdAt' | 'lastProcessedAt'>,
+    ): { ok: boolean; error?: string } => {
+      const s = stateRef.current;
+      const company = s.companies.find((c) => c.id === companyId);
+      if (!company) return { ok: false, error: 'Empresa não encontrada.' };
+      if ((company.contracts ?? []).length >= 5) return { ok: false, error: 'Máximo de 5 contratos ativos.' };
+
+      const nowMs = Date.now();
+      const newContract: import('@/types/cadeia').SupplyContract = {
+        ...contract,
+        id: Math.random().toString(36).slice(2) + Date.now().toString(36),
+        createdAt: nowMs,
+        lastProcessedAt: nowMs,
+        expiresAt: contract.durationDays !== null ? nowMs + contract.durationDays * 24 * 60 * 60 * 1_000 : null,
+      };
+
+      setState((prev) => ({
+        ...prev,
+        companies: prev.companies.map((c) =>
+          c.id === companyId
+            ? { ...c, contracts: [...(c.contracts ?? []), newContract] }
+            : c,
+        ),
+      }));
+      return { ok: true };
+    },
+    [],
+  );
+
+  const cancelContract = useCallback((companyId: string, contractId: string) => {
+    setState((prev) => ({
+      ...prev,
+      companies: prev.companies.map((c) =>
+        c.id === companyId
+          ? { ...c, contracts: (c.contracts ?? []).filter((con) => con.id !== contractId) }
+          : c,
+      ),
+    }));
+  }, []);
+
   return {
     state,
     setPlayerName,
@@ -623,6 +762,11 @@ export function useCadeia(): UseCadeiaReturn {
     listOnMarket,
     buyFromSpotMarket,
     refreshMarket,
+    hireEmployee,
+    fireEmployee,
+    buyUpgrade,
+    signContract,
+    cancelContract,
     resetGame,
     markNotificationRead,
     clearNotifications,
