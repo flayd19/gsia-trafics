@@ -157,42 +157,51 @@ export function MercadoCadeiaScreen({ cadeia }: Props) {
                 const pmr = getPMR(state.pmr, listing.productId, listing.regionId);
                 const ratio = pmr > 0 ? listing.pricePerUnit / pmr : 1;
                 const region = REGIONS.find((r) => r.id === listing.regionId);
+                const pmrPct = ((ratio - 1) * 100).toFixed(0);
+                const pmrColor = ratio > 1.1
+                  ? 'bg-red-900/40 text-red-400'
+                  : ratio < 0.95
+                  ? 'bg-emerald-900/40 text-emerald-400'
+                  : 'bg-slate-700/60 text-slate-400';
 
                 return (
-                  <div key={listing.id} className="ios-card p-3 flex items-center gap-3">
-                    <span className="text-xl">{product?.icon ?? '📦'}</span>
-                    <div className="flex-1 min-w-0">
-                      <div className="flex items-center gap-2">
-                        <p className="text-sm font-medium">{product?.name ?? listing.productId}</p>
-                        {listing.isNPC && (
-                          <span className="text-[10px] bg-muted/30 text-muted-foreground px-1.5 py-0.5 rounded">NPC</span>
-                        )}
+                  <div key={listing.id} className="ios-card p-4">
+                    {/* Linha superior: ícone + nome + preço */}
+                    <div className="flex items-start gap-3">
+                      <span className="text-2xl shrink-0 mt-0.5">{product?.icon ?? '📦'}</span>
+                      <div className="flex-1 min-w-0">
+                        <div className="flex items-center gap-2 flex-wrap">
+                          <p className="text-sm font-semibold text-white">{product?.name ?? listing.productId}</p>
+                          {listing.isNPC && (
+                            <span className="text-[10px] bg-muted/30 text-muted-foreground px-1.5 py-0.5 rounded">NPC</span>
+                          )}
+                        </div>
+                        <p className="text-xs text-muted-foreground mt-0.5">
+                          {region?.icon} {region?.name} · {listing.availableQty.toFixed(1)} {product?.unit} · {listing.sellerName}
+                        </p>
                       </div>
-                      <p className="text-xs text-muted-foreground">
-                        {region?.icon} {region?.name} • {listing.availableQty.toFixed(1)} {product?.unit}
-                      </p>
-                      <p className="text-xs text-muted-foreground truncate">{listing.sellerName}</p>
+                      <div className="shrink-0 text-right">
+                        <p className="text-base font-bold text-white">{fmt(listing.pricePerUnit)}</p>
+                        <span className={`inline-block text-[10px] font-semibold px-1.5 py-0.5 rounded-full mt-0.5 ${pmrColor}`}>
+                          {ratio >= 1 ? '+' : ''}{pmrPct}% PMR
+                        </span>
+                      </div>
                     </div>
-                    <div className="text-right shrink-0">
-                      <p className="text-sm font-bold">{fmt(listing.pricePerUnit)}</p>
-                      <p className={`text-[11px] ${ratio > 1.1 ? 'text-red-400' : ratio < 0.95 ? 'text-green-400' : 'text-muted-foreground'}`}>
-                        PMR: {ratio > 1 ? '+' : ''}{((ratio - 1) * 100).toFixed(0)}%
-                      </p>
-                      <button
-                        className="btn-gaming px-3 py-1 text-xs mt-1"
-                        onClick={() =>
-                          setBuyModal({
-                            listingId: listing.id,
-                            maxQty: listing.availableQty,
-                            price: listing.pricePerUnit,
-                            productId: listing.productId,
-                            sellerName: listing.sellerName,
-                          })
-                        }
-                      >
-                        Comprar
-                      </button>
-                    </div>
+                    {/* Botão comprar */}
+                    <button
+                      className="w-full mt-3 py-2.5 rounded-xl bg-blue-600 hover:bg-blue-500 text-white text-sm font-bold active:scale-[0.98] transition-all"
+                      onClick={() =>
+                        setBuyModal({
+                          listingId: listing.id,
+                          maxQty: listing.availableQty,
+                          price: listing.pricePerUnit,
+                          productId: listing.productId,
+                          sellerName: listing.sellerName,
+                        })
+                      }
+                    >
+                      Comprar
+                    </button>
                   </div>
                 );
               })}
@@ -204,28 +213,28 @@ export function MercadoCadeiaScreen({ cadeia }: Props) {
       {/* ── Aba: PMR ──────────────────────────────────────────── */}
       {tab === 'pmr' && (
         <div className="flex flex-col gap-3 p-4 pb-28 overflow-y-auto">
-          <p className="text-xs text-muted-foreground">
-            Preço Médio de Referência por produto e região. Atualizado em tempo real pelas transações.
-          </p>
+          <div className="rounded-xl bg-slate-800/40 border border-slate-700/30 px-3 py-2.5 text-xs text-slate-400">
+            📊 Preço Médio de Referência por produto e região. Atualizado em tempo real pelas transações.
+          </div>
           {PRODUCTS.map((product) => (
-            <div key={product.id} className="ios-card p-3">
-              <div className="flex items-center gap-2 mb-2">
-                <span className="text-xl">{product.icon}</span>
+            <div key={product.id} className="ios-card p-4">
+              <div className="flex items-center gap-2 mb-3">
+                <span className="text-2xl">{product.icon}</span>
                 <div>
-                  <p className="text-sm font-medium">{product.name}</p>
-                  <p className="text-xs text-muted-foreground">Base: {fmt(product.basePrice)} / {product.unit}</p>
+                  <p className="text-sm font-semibold text-white">{product.name}</p>
+                  <p className="text-xs text-muted-foreground">Preço base: {fmt(product.basePrice)} / {product.unit}</p>
                 </div>
               </div>
-              <div className="grid grid-cols-5 gap-1">
+              <div className="grid grid-cols-5 gap-1.5">
                 {REGIONS.map((r) => {
                   const pmr = getPMR(state.pmr, product.id, r.id);
                   const diff = ((pmr - product.basePrice) / product.basePrice) * 100;
                   return (
-                    <div key={r.id} className="flex flex-col items-center bg-background/40 rounded-lg p-1.5">
-                      <span className="text-base">{r.icon}</span>
-                      <p className="text-[10px] text-muted-foreground text-center">{r.name}</p>
-                      <p className="text-xs font-bold">{fmt(pmr)}</p>
-                      <p className={`text-[10px] ${diff > 0 ? 'text-green-400' : diff < 0 ? 'text-red-400' : 'text-muted-foreground'}`}>
+                    <div key={r.id} className="flex flex-col items-center bg-slate-800/60 rounded-xl p-2">
+                      <span className="text-lg">{r.icon}</span>
+                      <p className="text-[9px] text-slate-500 text-center mt-0.5">{r.name}</p>
+                      <p className="text-xs font-bold text-white mt-0.5">{fmt(pmr)}</p>
+                      <p className={`text-[9px] font-semibold mt-0.5 ${diff > 0 ? 'text-emerald-400' : diff < 0 ? 'text-red-400' : 'text-slate-500'}`}>
                         {diff > 0 ? '+' : ''}{diff.toFixed(0)}%
                       </p>
                     </div>
@@ -345,13 +354,13 @@ export function MercadoCadeiaScreen({ cadeia }: Props) {
                   .map((l) => {
                     const product = PRODUCTS.find((p) => p.id === l.productId);
                     return (
-                      <div key={l.id} className="flex items-center gap-2 text-xs">
-                        <span>{product?.icon ?? '📦'}</span>
-                        <div className="flex-1">
-                          <p>{product?.name}</p>
-                          <p className="text-muted-foreground">{l.availableQty.toFixed(1)} {product?.unit} × {fmt(l.pricePerUnit)}</p>
+                      <div key={l.id} className="flex items-center gap-3 rounded-xl bg-slate-800/40 px-3 py-2.5">
+                        <span className="text-lg">{product?.icon ?? '📦'}</span>
+                        <div className="flex-1 min-w-0">
+                          <p className="text-sm font-medium text-white truncate">{product?.name}</p>
+                          <p className="text-xs text-muted-foreground">{l.availableQty.toFixed(1)} {product?.unit} disponível</p>
                         </div>
-                        <p className="text-muted-foreground">{l.sellerName}</p>
+                        <p className="text-sm font-bold text-white shrink-0">{fmt(l.pricePerUnit)}</p>
                       </div>
                     );
                   })}

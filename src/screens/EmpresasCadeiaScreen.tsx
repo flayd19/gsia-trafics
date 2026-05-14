@@ -117,13 +117,13 @@ function CompanyCard({
       {/* Barra de produção */}
       {hasProduction && (
         <div className="mt-3">
-          <div className="flex justify-between text-[11px] text-muted-foreground mb-1">
-            <span>⚙️ Produzindo… {minsLeft}min</span>
-            <span>{pct}%</span>
+          <div className="flex justify-between text-[11px] text-muted-foreground mb-1.5">
+            <span>⚙️ Produzindo… {minsLeft}min restante</span>
+            <span className="font-semibold text-slate-300">{pct}%</span>
           </div>
-          <div className="h-1.5 rounded-full bg-background/60 overflow-hidden">
+          <div className="h-2 rounded-full bg-background/60 overflow-hidden">
             <div
-              className="h-full bg-primary rounded-full transition-all duration-1000"
+              className="h-full bg-emerald-500 rounded-full transition-all duration-1000"
               style={{ width: `${pct}%` }}
             />
           </div>
@@ -417,6 +417,13 @@ export function EmpresasCadeiaScreen({ cadeia }: Props) {
     return true;
   });
 
+  const activeCount  = cadeia.state.companies.filter((c) => c.status === 'active').length;
+  const totalCash    = cadeia.state.companies.reduce((s, c) => s + c.capital, 0);
+  const today        = new Date().toDateString();
+  const todayAllPL   = cadeia.state.transactions
+    .filter((t) => new Date(t.occurredAt).toDateString() === today)
+    .reduce((s, t) => s + t.amount, 0);
+
   // ── Tela de detalhe (full-screen overlay dentro do módulo)
   if (selectedCompanyId) {
     const company = cadeia.state.companies.find((c) => c.id === selectedCompanyId);
@@ -433,6 +440,25 @@ export function EmpresasCadeiaScreen({ cadeia }: Props) {
 
   return (
     <div className="flex flex-col gap-4 p-4 pb-28">
+
+      {/* ── Painel de resumo ─────────────────────────────────────────── */}
+      <div className="flex gap-2">
+        <div className="flex-1 rounded-2xl bg-slate-800/60 border border-slate-700/40 px-3 py-3 text-center">
+          <p className="text-[10px] text-slate-500 uppercase font-bold tracking-widest">Ativas</p>
+          <p className="text-xl font-bold text-white mt-0.5">{activeCount}</p>
+        </div>
+        <div className="flex-1 rounded-2xl bg-slate-800/60 border border-slate-700/40 px-3 py-3 text-center">
+          <p className="text-[10px] text-slate-500 uppercase font-bold tracking-widest">Caixa total</p>
+          <p className="text-xl font-bold text-white mt-0.5">{fmt(totalCash)}</p>
+        </div>
+        <div className="flex-1 rounded-2xl bg-slate-800/60 border border-slate-700/40 px-3 py-3 text-center">
+          <p className="text-[10px] text-slate-500 uppercase font-bold tracking-widest">Hoje</p>
+          <p className={`text-xl font-bold mt-0.5 ${todayAllPL >= 0 ? 'text-emerald-400' : 'text-red-400'}`}>
+            {todayAllPL >= 0 ? '+' : ''}{fmt(todayAllPL)}
+          </p>
+        </div>
+      </div>
+
       {/* Filtros + botão nova */}
       <div className="flex items-center justify-between">
         <div className="flex gap-2">
