@@ -132,22 +132,22 @@ export function HubScreen({ cadeia, onNavigate, bankBalance = 0 }: Props) {
       <main className="flex-1 overflow-y-auto px-4 py-4 space-y-4" style={{ WebkitOverflowScrolling: 'touch' }}>
 
         {/* Balance card */}
-        <div className="rounded-2xl bg-gradient-to-br from-slate-800 to-slate-900 border border-slate-700/50 p-4">
-          <p className="text-slate-400 text-xs font-medium mb-0.5">Conta pessoal</p>
-          <p className="text-3xl font-bold text-white">{fmt(state.playerCapital)}</p>
-          <div className="flex items-center justify-between mt-2">
-            <p className="text-slate-400 text-xs">
-              Caixa empresas: <span className="text-slate-300 font-medium">{fmt(companyCash)}</span>
-            </p>
-            {Math.abs(todayProfit) > 0 && (
-              <p className={`text-xs font-semibold ${todayProfit >= 0 ? 'text-emerald-400' : 'text-red-400'}`}>
-                Hoje: {todayProfit >= 0 ? '+' : ''}{fmt(todayProfit)}
-              </p>
-            )}
+        <div className="rounded-2xl bg-gradient-to-br from-slate-800 to-slate-900 border border-slate-700/50 p-5">
+          <p className="text-slate-400 text-[10px] font-bold uppercase tracking-widest mb-1">Patrimônio Total</p>
+          <p className="text-4xl font-bold text-white">{fmt(state.playerCapital + companyCash)}</p>
+          <div className="grid grid-cols-2 gap-2 mt-3">
+            <div className="bg-slate-700/30 rounded-xl px-3 py-2">
+              <p className="text-[10px] text-slate-500 uppercase font-bold tracking-widest">Pessoal</p>
+              <p className="text-sm font-bold text-white mt-0.5">{fmt(state.playerCapital)}</p>
+            </div>
+            <div className="bg-slate-700/30 rounded-xl px-3 py-2">
+              <p className="text-[10px] text-slate-500 uppercase font-bold tracking-widest">Empresas</p>
+              <p className="text-sm font-bold text-white mt-0.5">{fmt(companyCash)}</p>
+            </div>
           </div>
-          {bankBalance > 0 && (
-            <p className="text-slate-400 text-xs mt-1">
-              🏦 Banco: <span className="text-slate-300 font-medium">{fmt(bankBalance)}</span>
+          {Math.abs(todayProfit) > 0 && (
+            <p className={`text-xs font-semibold mt-2 ${todayProfit >= 0 ? 'text-emerald-400' : 'text-red-400'}`}>
+              {todayProfit >= 0 ? '▲' : '▼'} {todayProfit >= 0 ? '+' : ''}{fmt(todayProfit)} hoje
             </p>
           )}
         </div>
@@ -160,6 +160,39 @@ export function HubScreen({ cadeia, onNavigate, bankBalance = 0 }: Props) {
               <p key={i} className="text-amber-300 text-sm">• {a}</p>
             ))}
           </div>
+        )}
+
+        {/* PWA iOS — antes do grid de módulos */}
+        {installState === 'ios-safari' && (
+          <div className="rounded-2xl bg-gradient-to-r from-blue-900/50 to-indigo-900/50 border border-blue-700/30 p-4 flex items-start gap-3">
+            <span className="text-2xl mt-0.5 shrink-0">📲</span>
+            <div className="flex-1 min-w-0">
+              <p className="text-sm font-semibold text-blue-200 mb-1">Instalar no iPhone</p>
+              <p className="text-xs text-blue-300/70 leading-relaxed">
+                Toque em <Share size={11} className="inline mx-0.5" /> <strong>Compartilhar</strong> → <strong>Adicionar à Tela de Início</strong>
+              </p>
+            </div>
+            <button onClick={dismissInstall} className="text-blue-400/50 hover:text-blue-300 shrink-0">
+              <X size={16} />
+            </button>
+          </div>
+        )}
+
+        {/* PWA Android — antes do grid de módulos */}
+        {installState === 'android-chrome' && (
+          <button
+            onClick={triggerInstall}
+            className="w-full rounded-xl bg-green-900/30 border border-green-700/40 p-3 flex items-center gap-3"
+          >
+            <ArrowDownToLine size={20} className="text-green-400 shrink-0" />
+            <div className="flex-1 text-left">
+              <p className="text-green-300 text-sm font-semibold">Instalar app</p>
+              <p className="text-green-400/60 text-xs">Adicionar Cadeia à tela inicial</p>
+            </div>
+            <button onClick={e => { e.stopPropagation(); dismissInstall(); }} className="text-green-400/50">
+              <X size={14} />
+            </button>
+          </button>
         )}
 
         {/* Modules grid */}
@@ -187,39 +220,6 @@ export function HubScreen({ cadeia, onNavigate, bankBalance = 0 }: Props) {
             })}
           </div>
         </div>
-
-        {/* PWA iOS */}
-        {installState === 'ios-safari' && (
-          <div className="rounded-2xl bg-gradient-to-r from-blue-900/50 to-indigo-900/50 border border-blue-700/30 p-4 flex items-start gap-3">
-            <span className="text-2xl mt-0.5 shrink-0">📲</span>
-            <div className="flex-1 min-w-0">
-              <p className="text-sm font-semibold text-blue-200 mb-1">Instalar no iPhone</p>
-              <p className="text-xs text-blue-300/70 leading-relaxed">
-                Toque em <Share size={11} className="inline mx-0.5" /> <strong>Compartilhar</strong> → <strong>Adicionar à Tela de Início</strong>
-              </p>
-            </div>
-            <button onClick={dismissInstall} className="text-blue-400/50 hover:text-blue-300 shrink-0">
-              <X size={16} />
-            </button>
-          </div>
-        )}
-
-        {/* PWA Android */}
-        {installState === 'android-chrome' && (
-          <button
-            onClick={triggerInstall}
-            className="w-full rounded-xl bg-green-900/30 border border-green-700/40 p-3 flex items-center gap-3"
-          >
-            <ArrowDownToLine size={20} className="text-green-400 shrink-0" />
-            <div className="flex-1 text-left">
-              <p className="text-green-300 text-sm font-semibold">Instalar app</p>
-              <p className="text-green-400/60 text-xs">Adicionar Cadeia à tela inicial</p>
-            </div>
-            <button onClick={e => { e.stopPropagation(); dismissInstall(); }} className="text-green-400/50">
-              <X size={14} />
-            </button>
-          </button>
-        )}
 
         {/* Spacer for FAB */}
         <div className="h-16" />

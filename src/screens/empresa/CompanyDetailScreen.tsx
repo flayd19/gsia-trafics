@@ -94,18 +94,19 @@ function TabResumo({ company, cadeia, onGoTo }: { company: Company; cadeia: UseC
   const todayProfit  = todayRevenue + todayExpense;
 
   return (
-    <div className="space-y-3 p-4">
+    <div className="space-y-3 p-4 pb-6">
+
       {/* Onboarding para empresa vazia */}
       {noStock && company.status === 'active' && (
         <div className="rounded-2xl bg-blue-900/20 border border-blue-700/30 p-4 space-y-3">
           <p className="text-blue-200 font-bold text-sm">👋 Bem-vindo ao {company.name}!</p>
           <p className="text-blue-300/80 text-xs leading-relaxed">
-            Para começar a vender, você precisa comprar mercadoria.
+            Para começar a vender, compre mercadoria, defina preços e ative a auto-venda.
           </p>
-          <div className="space-y-1.5 text-xs text-blue-300/70">
-            <p>Passo 1: Compre estoque 🛒</p>
-            <p>Passo 2: Defina preços de venda 💰</p>
-            <p>Passo 3: Ative auto-venda ⚙️</p>
+          <div className="grid grid-cols-3 gap-2 text-center text-xs text-blue-300/70">
+            <div className="bg-blue-900/30 rounded-xl py-2 px-1">🛒<p className="mt-0.5">Comprar</p></div>
+            <div className="bg-blue-900/30 rounded-xl py-2 px-1">💰<p className="mt-0.5">Preços</p></div>
+            <div className="bg-blue-900/30 rounded-xl py-2 px-1">⚙️<p className="mt-0.5">Auto-venda</p></div>
           </div>
           <button
             onClick={() => onGoTo('comprar')}
@@ -116,62 +117,67 @@ function TabResumo({ company, cadeia, onGoTo }: { company: Company; cadeia: UseC
         </div>
       )}
 
-      {/* Info geral */}
-      <div className="rounded-2xl bg-slate-800/60 border border-slate-700/40 p-4 space-y-2">
-        <div className="flex items-center justify-between">
-          <p className="text-slate-400 text-xs">Status</p>
-          <span className={`text-xs font-bold px-2 py-0.5 rounded-full ${
-            company.status === 'active' ? 'bg-emerald-900/40 text-emerald-400' :
-            company.status === 'paused' ? 'bg-amber-900/40 text-amber-400' :
-            'bg-red-900/40 text-red-400'
-          }`}>
-            {company.status === 'active' ? '🟢 Ativa' : company.status === 'paused' ? '🟡 Pausada' : '🔴 Fechada'}
-          </span>
-        </div>
-        <div className="flex justify-between text-xs">
-          <span className="text-slate-400">Localização</span>
-          <span className="text-slate-300">{def.name} • {region?.icon} {region?.name}</span>
-        </div>
-        <div className="flex justify-between text-xs">
-          <span className="text-slate-400">Capacidade</span>
-          <span className="text-slate-300">
-            {company.inventory.reduce((s, i) => s + i.quantity, 0).toFixed(0)}/{variant.storageCapacity > 0 ? variant.storageCapacity : '∞'} un
-          </span>
-        </div>
-      </div>
-
-      {/* Lucro hoje */}
-      <div className="rounded-2xl bg-slate-800/60 border border-slate-700/40 p-4 space-y-1.5">
-        <p className="text-slate-500 text-[10px] font-bold uppercase tracking-widest">Hoje</p>
-        <div className="flex justify-between text-sm">
-          <span className="text-slate-400">Receita</span>
-          <span className="text-emerald-400 font-semibold">+{fmt(todayRevenue)}</span>
-        </div>
-        <div className="flex justify-between text-sm">
-          <span className="text-slate-400">Despesas</span>
-          <span className="text-red-400 font-semibold">{fmt(todayExpense)}</span>
-        </div>
-        <div className="flex justify-between text-sm border-t border-slate-700/40 pt-1.5 mt-1">
-          <span className="text-slate-300 font-semibold">Lucro</span>
-          <span className={`font-bold ${todayProfit >= 0 ? 'text-emerald-400' : 'text-red-400'}`}>
-            {todayProfit >= 0 ? '+' : ''}{fmt(todayProfit)}
-          </span>
-        </div>
-      </div>
-
-      {/* Produção em andamento */}
+      {/* Produção em andamento — destaque no topo quando ativa */}
       {prod && (
-        <div className="rounded-2xl bg-slate-800/60 border border-slate-700/40 p-4 space-y-2">
-          <p className="text-slate-500 text-[10px] font-bold uppercase tracking-widest">Produção</p>
-          <div className="flex justify-between text-xs text-slate-400">
-            <span>⚙️ Produzindo…</span>
-            <span>{minsLeft}min restante · {pct}%</span>
+        <div className="rounded-2xl bg-slate-800/60 border border-emerald-700/20 p-4 space-y-2">
+          <div className="flex items-center justify-between">
+            <p className="text-emerald-400 text-xs font-bold uppercase tracking-widest">⚙️ Produzindo</p>
+            <span className="text-slate-300 text-xs font-semibold">{pct}% · {minsLeft}min restante</span>
           </div>
-          <div className="h-2 rounded-full bg-slate-700 overflow-hidden">
+          <div className="h-2.5 rounded-full bg-slate-700 overflow-hidden">
             <div className="h-full bg-emerald-500 rounded-full transition-all" style={{ width: `${pct}%` }} />
           </div>
         </div>
       )}
+
+      {/* Info geral + Hoje — lado a lado em 2 cols */}
+      <div className="grid grid-cols-2 gap-3">
+        <div className="rounded-2xl bg-slate-800/60 border border-slate-700/40 p-3 space-y-2">
+          <p className="text-slate-500 text-[10px] font-bold uppercase tracking-widest">Empresa</p>
+          <div className="space-y-1.5">
+            <div className="flex items-center justify-between">
+              <span className="text-slate-400 text-xs">Status</span>
+              <span className={`text-[10px] font-bold px-1.5 py-0.5 rounded-full ${
+                company.status === 'active' ? 'bg-emerald-900/40 text-emerald-400' :
+                company.status === 'paused' ? 'bg-amber-900/40 text-amber-400' :
+                'bg-red-900/40 text-red-400'
+              }`}>
+                {company.status === 'active' ? '● Ativa' : company.status === 'paused' ? '● Pausada' : '● Fechada'}
+              </span>
+            </div>
+            <div className="flex justify-between text-xs">
+              <span className="text-slate-400">Região</span>
+              <span className="text-slate-300">{region?.icon} {region?.name}</span>
+            </div>
+            <div className="flex justify-between text-xs">
+              <span className="text-slate-400">Estoque</span>
+              <span className="text-slate-300">
+                {company.inventory.reduce((s, i) => s + i.quantity, 0).toFixed(0)}/{variant.storageCapacity > 0 ? variant.storageCapacity : '∞'}
+              </span>
+            </div>
+          </div>
+        </div>
+
+        <div className="rounded-2xl bg-slate-800/60 border border-slate-700/40 p-3 space-y-2">
+          <p className="text-slate-500 text-[10px] font-bold uppercase tracking-widest">Hoje</p>
+          <div className="space-y-1.5">
+            <div className="flex justify-between text-xs">
+              <span className="text-slate-400">Receita</span>
+              <span className="text-emerald-400 font-semibold">+{fmt(todayRevenue)}</span>
+            </div>
+            <div className="flex justify-between text-xs">
+              <span className="text-slate-400">Despesas</span>
+              <span className="text-red-400 font-semibold">{fmt(todayExpense)}</span>
+            </div>
+            <div className="flex justify-between text-xs border-t border-slate-700/40 pt-1.5">
+              <span className="text-slate-300 font-semibold">Lucro</span>
+              <span className={`font-bold text-sm ${todayProfit >= 0 ? 'text-emerald-400' : 'text-red-400'}`}>
+                {todayProfit >= 0 ? '+' : ''}{fmt(todayProfit)}
+              </span>
+            </div>
+          </div>
+        </div>
+      </div>
 
       {/* Alerta sem estoque */}
       {noStock && company.status === 'active' && (
@@ -188,26 +194,31 @@ function TabResumo({ company, cadeia, onGoTo }: { company: Company; cadeia: UseC
       )}
 
       {/* Automação */}
-      <div className="rounded-2xl bg-slate-800/60 border border-slate-700/40 p-4 space-y-2.5">
-        <p className="text-slate-500 text-[10px] font-bold uppercase tracking-widest">Automação</p>
-        {[
-          { key: 'autoProduction', label: 'Auto-produção' },
-          { key: 'autoSell',       label: 'Auto-venda'    },
-          { key: 'autoBuy',        label: 'Auto-compra'   },
-        ].map(({ key, label }) => {
-          const val = (company.config as Record<string, unknown>)[key] as boolean;
-          return (
-            <div key={key} className="flex items-center justify-between">
-              <span className="text-sm text-slate-300">{label}</span>
-              <button
-                onClick={() => cadeia.updateCompanyConfig(company.id, { [key]: !val } as Partial<Company['config']>)}
-                className={`transition-colors ${val ? 'text-emerald-400' : 'text-slate-600'}`}
-              >
-                {val ? <ToggleRight size={24} /> : <ToggleLeft size={24} />}
-              </button>
-            </div>
-          );
-        })}
+      <div className="rounded-2xl bg-slate-800/60 border border-slate-700/40 p-4">
+        <p className="text-slate-500 text-[10px] font-bold uppercase tracking-widest mb-3">Automação</p>
+        <div className="space-y-0">
+          {[
+            { key: 'autoProduction', label: 'Auto-produção', desc: 'Inicia produção automaticamente' },
+            { key: 'autoSell',       label: 'Auto-venda',    desc: 'Vende no mercado pelo preço configurado' },
+            { key: 'autoBuy',        label: 'Auto-compra',   desc: 'Repõe estoque mínimo automaticamente' },
+          ].map(({ key, label, desc }, i, arr) => {
+            const val = (company.config as Record<string, unknown>)[key] as boolean;
+            return (
+              <div key={key} className={`flex items-center justify-between py-2.5 ${i < arr.length - 1 ? 'border-b border-slate-700/40' : ''}`}>
+                <div>
+                  <span className="text-sm text-slate-200 font-medium">{label}</span>
+                  <p className="text-[10px] text-slate-500 mt-0.5">{desc}</p>
+                </div>
+                <button
+                  onClick={() => cadeia.updateCompanyConfig(company.id, { [key]: !val } as Partial<Company['config']>)}
+                  className={`transition-colors ml-4 shrink-0 ${val ? 'text-emerald-400' : 'text-slate-600'}`}
+                >
+                  {val ? <ToggleRight size={26} /> : <ToggleLeft size={26} />}
+                </button>
+              </div>
+            );
+          })}
+        </div>
       </div>
 
       {/* Receita ativa (se múltiplas) */}
@@ -220,7 +231,7 @@ function TabResumo({ company, cadeia, onGoTo }: { company: Company; cadeia: UseC
               <button
                 key={r.id}
                 onClick={() => cadeia.setSelectedRecipe(company.id, r.id)}
-                className={`w-full text-left rounded-xl px-3 py-2 text-xs border transition-all ${
+                className={`w-full text-left rounded-xl px-3 py-2.5 text-xs border transition-all ${
                   active ? 'bg-emerald-900/20 border-emerald-700/40 text-emerald-300' : 'bg-slate-700/40 border-slate-600/30 text-slate-400'
                 }`}
               >
@@ -237,17 +248,17 @@ function TabResumo({ company, cadeia, onGoTo }: { company: Company; cadeia: UseC
       {/* Ações */}
       <div className="flex gap-2 pt-1">
         {company.status === 'active' && (
-          <button onClick={() => cadeia.pauseCompany(company.id)} className="flex-1 py-2.5 rounded-xl bg-amber-900/30 text-amber-400 text-sm font-semibold border border-amber-700/30 active:scale-95 transition-all">
-            Pausar
+          <button onClick={() => cadeia.pauseCompany(company.id)} className="flex-1 py-3 rounded-xl bg-amber-900/30 text-amber-400 text-sm font-semibold border border-amber-700/30 active:scale-95 transition-all">
+            ⏸ Pausar
           </button>
         )}
         {company.status === 'paused' && (
-          <button onClick={() => cadeia.resumeCompany(company.id)} className="flex-1 py-2.5 rounded-xl bg-emerald-900/30 text-emerald-400 text-sm font-semibold border border-emerald-700/30 active:scale-95 transition-all">
-            Retomar
+          <button onClick={() => cadeia.resumeCompany(company.id)} className="flex-1 py-3 rounded-xl bg-emerald-900/30 text-emerald-400 text-sm font-semibold border border-emerald-700/30 active:scale-95 transition-all">
+            ▶ Retomar
           </button>
         )}
         {company.status !== 'closed' && (
-          <button onClick={() => cadeia.closeCompany(company.id)} className="flex-1 py-2.5 rounded-xl bg-red-900/30 text-red-400 text-sm font-semibold border border-red-700/30 active:scale-95 transition-all">
+          <button onClick={() => cadeia.closeCompany(company.id)} className="flex-1 py-3 rounded-xl bg-red-900/30 text-red-400 text-sm font-semibold border border-red-700/30 active:scale-95 transition-all">
             Fechar empresa
           </button>
         )}
@@ -715,28 +726,29 @@ function TabRH({ company, cadeia }: { company: Company; cadeia: UseCadeiaReturn 
       {roles.map((r) => {
         const n = employees[r.role] ?? 0;
         return (
-          <div key={r.role} className="rounded-2xl bg-slate-800/60 border border-slate-700/40 p-4 space-y-2">
-            <div className="flex items-start justify-between">
-              <div>
-                <p className="font-semibold text-white text-sm">{r.icon} {r.label}</p>
-                <p className="text-slate-400 text-xs">{fmt(r.salary)}/dia · {r.bonus}</p>
-                {r.max && <p className="text-slate-500 text-xs">Máx: {r.max}</p>}
+          <div key={r.role} className="rounded-2xl bg-slate-800/60 border border-slate-700/40 p-4">
+            <div className="flex items-center gap-3 mb-3">
+              <span className="text-2xl shrink-0">{r.icon}</span>
+              <div className="flex-1 min-w-0">
+                <p className="font-semibold text-white text-sm">{r.label}</p>
+                <p className="text-slate-400 text-xs mt-0.5">{fmt(r.salary)}/dia · {r.bonus}</p>
               </div>
-              <span className={`text-sm font-semibold ${n > 0 ? 'text-emerald-400' : 'text-slate-500'}`}>
-                {n > 0 ? `${n} ativo${n !== 1 ? 's' : ''}` : 'Nenhum'}
-              </span>
+              <div className={`rounded-xl px-3 py-1.5 text-center shrink-0 ${n > 0 ? 'bg-emerald-900/30 border border-emerald-700/30' : 'bg-slate-700/30 border border-slate-600/20'}`}>
+                <p className={`text-lg font-bold leading-none ${n > 0 ? 'text-emerald-400' : 'text-slate-500'}`}>{n}</p>
+                <p className={`text-[9px] mt-0.5 ${n > 0 ? 'text-emerald-500' : 'text-slate-600'}`}>{r.max ? `/ ${r.max} máx` : 'ativos'}</p>
+              </div>
             </div>
             <div className="flex gap-2">
               <button
                 onClick={() => fire(r.role)}
                 disabled={n === 0}
-                className={`p-2 rounded-xl transition-all ${n > 0 ? 'bg-red-900/30 text-red-400 hover:bg-red-900/50 active:scale-95' : 'bg-slate-700/30 text-slate-600 cursor-not-allowed'}`}
+                className={`w-10 h-10 rounded-xl flex items-center justify-center transition-all ${n > 0 ? 'bg-red-900/30 text-red-400 hover:bg-red-900/50 active:scale-95 border border-red-800/30' : 'bg-slate-700/30 text-slate-600 cursor-not-allowed border border-slate-700/20'}`}
               >
                 <Minus size={14} />
               </button>
               <button
                 onClick={() => hire(r.role, r.salary, r.max)}
-                className="flex-1 flex items-center justify-center gap-1.5 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-white text-sm font-bold py-2 active:scale-95 transition-all"
+                className="flex-1 flex items-center justify-center gap-1.5 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-white text-sm font-bold h-10 active:scale-95 transition-all"
               >
                 <UserPlus size={14} /> Contratar +1
               </button>
@@ -1022,54 +1034,56 @@ function TabCaixa({ company, cadeia }: { company: Company; cadeia: UseCadeiaRetu
   };
 
   return (
-    <div className="p-4 space-y-4">
-      {/* Saldo */}
-      <div className="rounded-2xl bg-gradient-to-br from-slate-800 to-slate-900 border border-slate-700/40 p-4">
-        <p className="text-slate-400 text-xs mb-1">Caixa atual</p>
-        <p className="text-2xl font-bold text-white">{fmt(company.capital)}</p>
-        <p className={`text-sm mt-1 ${todayChange >= 0 ? 'text-emerald-400' : 'text-red-400'}`}>
-          Mudança hoje: {todayChange >= 0 ? '+' : ''}{fmt(todayChange)}
-        </p>
-      </div>
-
-      {/* Ações */}
-      <div className="grid grid-cols-2 gap-3">
-        <div className="space-y-1.5">
-          <label className="text-slate-400 text-xs font-medium">↑ Retirar (10% imposto)</label>
-          <div className="flex gap-1.5">
-            <input
-              type="number" min={1} value={withdrawAmt}
-              onChange={(e) => setWithdrawAmt(e.target.value)}
-              placeholder="R$ valor"
-              className="flex-1 min-w-0 rounded-xl bg-slate-800 border border-slate-600 text-white px-2 py-2 text-sm focus:outline-none focus:border-amber-500"
-            />
-            <button onClick={handleWithdraw} className="p-2 rounded-xl bg-amber-600 hover:bg-amber-500 text-white active:scale-95 transition-all">
-              <ArrowUpToLine size={15} />
-            </button>
-          </div>
-        </div>
-        <div className="space-y-1.5">
-          <label className="text-slate-400 text-xs font-medium">↓ Depositar (livre)</label>
-          <div className="flex gap-1.5">
-            <input
-              type="number" min={1} value={depositAmt}
-              onChange={(e) => setDepositAmt(e.target.value)}
-              placeholder="R$ valor"
-              className="flex-1 min-w-0 rounded-xl bg-slate-800 border border-slate-600 text-white px-2 py-2 text-sm focus:outline-none focus:border-blue-500"
-            />
-            <button onClick={handleDeposit} className="p-2 rounded-xl bg-blue-600 hover:bg-blue-500 text-white active:scale-95 transition-all">
-              <ArrowDownToLine size={15} />
-            </button>
-          </div>
+    <div className="p-4 space-y-4 pb-6">
+      {/* Saldo — destaque */}
+      <div className="rounded-2xl bg-gradient-to-br from-slate-800 to-slate-900 border border-slate-700/40 p-5">
+        <p className="text-slate-400 text-xs font-medium uppercase tracking-widest mb-1">Caixa da empresa</p>
+        <p className="text-3xl font-bold text-white">{fmt(company.capital)}</p>
+        <div className="flex items-center gap-3 mt-2">
+          <span className={`text-sm font-semibold ${todayChange >= 0 ? 'text-emerald-400' : 'text-red-400'}`}>
+            {todayChange >= 0 ? '▲' : '▼'} {todayChange >= 0 ? '+' : ''}{fmt(todayChange)} hoje
+          </span>
+          <span className="text-slate-600 text-xs">·</span>
+          <span className="text-slate-400 text-xs">Custo fixo: -{fmt(variant.operationalCostPerDay)}/dia</span>
         </div>
       </div>
 
-      {/* Próximos compromissos */}
-      <div className="rounded-2xl bg-slate-800/60 border border-slate-700/40 p-3 space-y-1.5 text-sm">
-        <p className="text-slate-500 text-[10px] font-bold uppercase tracking-widest mb-2">Próximos compromissos</p>
-        <div className="flex justify-between text-xs">
-          <span className="text-slate-400">• Custos fixos (em ~12min)</span>
-          <span className="text-red-400">-{fmt(variant.operationalCostPerDay)}</span>
+      {/* Ações: retirar e depositar */}
+      <div className="rounded-2xl bg-slate-800/60 border border-slate-700/40 p-4 space-y-3">
+        <p className="text-slate-500 text-[10px] font-bold uppercase tracking-widest">Movimentar capital</p>
+        <div className="grid grid-cols-2 gap-3">
+          <div className="space-y-1.5">
+            <label className="text-slate-400 text-xs font-medium flex items-center gap-1">
+              <ArrowUpToLine size={11} /> Retirar <span className="text-slate-600">(10% imposto)</span>
+            </label>
+            <div className="flex gap-1.5">
+              <input
+                type="number" min={1} value={withdrawAmt}
+                onChange={(e) => setWithdrawAmt(e.target.value)}
+                placeholder="R$ valor"
+                className="flex-1 min-w-0 rounded-xl bg-slate-700 border border-slate-600 text-white px-2 py-2 text-sm focus:outline-none focus:border-amber-500"
+              />
+              <button onClick={handleWithdraw} className="w-9 h-9 rounded-xl bg-amber-600 hover:bg-amber-500 text-white flex items-center justify-center active:scale-95 transition-all">
+                <ArrowUpToLine size={14} />
+              </button>
+            </div>
+          </div>
+          <div className="space-y-1.5">
+            <label className="text-slate-400 text-xs font-medium flex items-center gap-1">
+              <ArrowDownToLine size={11} /> Depositar <span className="text-slate-600">(livre)</span>
+            </label>
+            <div className="flex gap-1.5">
+              <input
+                type="number" min={1} value={depositAmt}
+                onChange={(e) => setDepositAmt(e.target.value)}
+                placeholder="R$ valor"
+                className="flex-1 min-w-0 rounded-xl bg-slate-700 border border-slate-600 text-white px-2 py-2 text-sm focus:outline-none focus:border-blue-500"
+              />
+              <button onClick={handleDeposit} className="w-9 h-9 rounded-xl bg-blue-600 hover:bg-blue-500 text-white flex items-center justify-center active:scale-95 transition-all">
+                <ArrowDownToLine size={14} />
+              </button>
+            </div>
+          </div>
         </div>
       </div>
 
@@ -1079,9 +1093,10 @@ function TabCaixa({ company, cadeia }: { company: Company; cadeia: UseCadeiaRetu
           <p className="text-slate-500 text-[10px] font-bold uppercase tracking-widest mb-2">Últimas movimentações</p>
           <div className="space-y-1.5">
             {recentTxs.map((tx) => (
-              <div key={tx.id} className="rounded-xl bg-slate-800/40 border border-slate-700/30 px-3 py-2 flex items-center justify-between">
+              <div key={tx.id} className="rounded-xl bg-slate-800/40 border border-slate-700/30 px-3 py-2.5 flex items-center gap-3">
+                <span className={`w-1.5 h-1.5 rounded-full shrink-0 ${tx.amount >= 0 ? 'bg-emerald-400' : 'bg-red-400'}`} />
                 <span className="text-slate-300 text-xs truncate flex-1">{tx.description}</span>
-                <span className={`text-xs font-semibold ml-2 shrink-0 ${tx.amount >= 0 ? 'text-emerald-400' : 'text-red-400'}`}>
+                <span className={`text-xs font-bold shrink-0 ${tx.amount >= 0 ? 'text-emerald-400' : 'text-red-400'}`}>
                   {tx.amount >= 0 ? '+' : ''}{fmt(tx.amount)}
                 </span>
               </div>

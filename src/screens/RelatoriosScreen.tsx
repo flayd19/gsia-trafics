@@ -81,27 +81,27 @@ export function RelatoriosScreen({ cadeia }: Props) {
       {tab === 'resumo' && (
         <div className="flex flex-col gap-4 p-4 pb-28 overflow-y-auto">
           {/* Patrimônio total */}
-          <div className="ios-card p-4">
-            <p className="text-xs text-muted-foreground mb-1">Patrimônio Total</p>
-            <p className="text-3xl font-bold text-primary">{fmt(totalAssets)}</p>
-            <div className="grid grid-cols-2 gap-3 mt-3">
-              <div className="bg-background/40 rounded-xl p-3">
-                <p className="text-xs text-muted-foreground">Caixa Pessoal</p>
-                <p className="text-base font-bold">{fmt(state.playerCapital)}</p>
+          <div className="ios-card p-5">
+            <p className="text-[10px] text-muted-foreground font-bold uppercase tracking-widest mb-1">Patrimônio Total</p>
+            <p className="text-4xl font-bold text-primary">{fmt(totalAssets)}</p>
+            <div className="grid grid-cols-2 gap-2.5 mt-4">
+              <div className="bg-background/40 rounded-2xl p-3">
+                <p className="text-[10px] text-muted-foreground uppercase font-bold tracking-widest">Caixa Pessoal</p>
+                <p className="text-lg font-bold mt-1">{fmt(state.playerCapital)}</p>
               </div>
-              <div className="bg-background/40 rounded-xl p-3">
-                <p className="text-xs text-muted-foreground">Nas Empresas</p>
-                <p className="text-base font-bold">
+              <div className="bg-background/40 rounded-2xl p-3">
+                <p className="text-[10px] text-muted-foreground uppercase font-bold tracking-widest">Nas Empresas</p>
+                <p className="text-lg font-bold mt-1">
                   {fmt(state.companies.reduce((s, c) => s + c.capital, 0))}
                 </p>
               </div>
-              <div className="bg-background/40 rounded-xl p-3">
-                <p className="text-xs text-muted-foreground">Total Ganho</p>
-                <p className="text-base font-bold text-green-400">{fmt(state.totalEarned)}</p>
+              <div className="bg-background/40 rounded-2xl p-3">
+                <p className="text-[10px] text-muted-foreground uppercase font-bold tracking-widest">Total Ganho</p>
+                <p className="text-lg font-bold text-green-400 mt-1">{fmt(state.totalEarned)}</p>
               </div>
-              <div className="bg-background/40 rounded-xl p-3">
-                <p className="text-xs text-muted-foreground">Total Gasto</p>
-                <p className="text-base font-bold text-red-400">{fmt(state.totalSpent)}</p>
+              <div className="bg-background/40 rounded-2xl p-3">
+                <p className="text-[10px] text-muted-foreground uppercase font-bold tracking-widest">Total Gasto</p>
+                <p className="text-lg font-bold text-red-400 mt-1">{fmt(state.totalSpent)}</p>
               </div>
             </div>
           </div>
@@ -139,29 +139,25 @@ export function RelatoriosScreen({ cadeia }: Props) {
           {companyStats.length > 0 && (
             <div className="ios-card p-4">
               <p className="text-sm font-semibold mb-3">📈 Desempenho por Empresa</p>
-              <div className="flex flex-col gap-3">
+              <div className="flex flex-col gap-2">
                 {companyStats.map((c) => {
                   const def = getCompanyType(c.typeId);
                   const profit = c.totalRevenue - c.totalCost;
                   return (
-                    <div key={c.id} className="flex items-center gap-3">
-                      <span className="text-xl">{def.icon}</span>
+                    <div key={c.id} className="rounded-2xl bg-background/30 border border-border/20 p-3 flex items-center gap-3">
+                      <span className="text-2xl shrink-0">{def.icon}</span>
                       <div className="flex-1 min-w-0">
-                        <p className="text-xs font-medium truncate">{c.name}</p>
+                        <p className="text-sm font-semibold truncate">{c.name}</p>
                         <div className="flex gap-3 mt-0.5">
-                          <span className="text-[11px] text-green-400">
-                            ↑ {fmt(c.totalRevenue)}
-                          </span>
-                          <span className="text-[11px] text-red-400">
-                            ↓ {fmt(c.totalCost)}
-                          </span>
+                          <span className="text-[11px] text-green-400">↑ {fmt(c.totalRevenue)}</span>
+                          <span className="text-[11px] text-red-400">↓ {fmt(c.totalCost)}</span>
                         </div>
                       </div>
                       <div className="text-right shrink-0">
-                        <p className={`text-sm font-bold ${profit >= 0 ? 'text-green-400' : 'text-red-400'}`}>
+                        <p className={`text-base font-bold ${profit >= 0 ? 'text-green-400' : 'text-red-400'}`}>
                           {profit >= 0 ? '+' : ''}{fmt(profit)}
                         </p>
-                        <p className="text-[11px] text-muted-foreground">caixa: {fmt(c.capital)}</p>
+                        <p className="text-[10px] text-muted-foreground">caixa: {fmt(c.capital)}</p>
                       </div>
                     </div>
                   );
@@ -198,18 +194,18 @@ export function RelatoriosScreen({ cadeia }: Props) {
               <p className="text-sm text-muted-foreground">Nenhuma transação encontrada.</p>
             </div>
           ) : (
-            <div className="flex flex-col gap-2">
+            <div className="flex flex-col gap-1.5">
               {filteredTxns.slice(0, 50).map((t) => (
-                <div key={t.id} className="ios-card p-3 flex items-center gap-3">
-                  <span className="text-lg">
+                <div key={t.id} className="ios-card px-3 py-3 flex items-center gap-3">
+                  <span className="text-lg shrink-0">
                     {TX_TYPE_LABELS[t.type]?.split(' ')[0] ?? '💫'}
                   </span>
                   <div className="flex-1 min-w-0">
-                    <p className="text-xs truncate">{t.description}</p>
-                    <p className="text-[11px] text-muted-foreground">{t.companyName}</p>
+                    <p className="text-xs font-medium truncate">{t.description}</p>
+                    <p className="text-[10px] text-muted-foreground mt-0.5">{t.companyName}</p>
                   </div>
                   <span
-                    className={`text-sm font-bold whitespace-nowrap ${
+                    className={`text-sm font-bold whitespace-nowrap shrink-0 ${
                       t.amount > 0 ? 'text-green-400' : t.amount < 0 ? 'text-red-400' : 'text-muted-foreground'
                     }`}
                   >
